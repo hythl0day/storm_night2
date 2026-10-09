@@ -1,0 +1,50 @@
+# 《暴风夜》玩家席位配置
+# 复制本文件为 players.toml 后填入你的接口信息。
+# 安全约定：api_key 不落盘，这里只填【环境变量名】，程序运行时读取真实 key。
+
+[settings]
+temperature = 1.0   # 六席统一采样温度，保证公平
+
+# ---- 中转站 4 家：base_url 指向你的中转站，key 用同一个环境变量 ----
+
+# api_type 可选 "openai"（默认）或 "anthropic"（Claude 原生 /v1/messages 协议）
+
+[[player]]
+name = "查特"       # ChatGPT
+model = "gpt-5.2"           # TODO: 改成你中转站里的实际模型名
+base_url = "https://your-relay.example.com/v1"
+api_key_env = "RELAY_API_KEY"
+api_type = "openai"
+
+[[player]]
+name = "桑娜"       # Claude
+model = "claude-opus-4-6"   # TODO
+base_url = "https://api.anthropic.com/v1"   # 走原生协议；若中转站支持 anthropic 转发则改成中转站地址
+api_key_env = "ANTHROPIC_API_KEY"
+api_type = "anthropic"
+
+[[player]]
+name = "杰米娜"     # Gemini
+model = "gemini-3-pro"      # TODO
+base_url = "https://your-relay.example.com/v1"
+api_key_env = "RELAY_API_KEY"
+
+[[player]]
+name = "智谱"       # GLM
+model = "glm-4.7"           # TODO
+base_url = "https://your-relay.example.com/v1"
+api_key_env = "RELAY_API_KEY"
+
+# ---- 官方直连 2 家 ----
+
+[[player]]
+name = "狄西"       # DeepSeek
+model = "deepseek-chat"
+base_url = "https://api.deepseek.com/v1"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[[player]]
+name = "奇米"       # Kimi
+model = "kimi-k2.5"
+base_url = "https://api.moonshot.cn/v1"
+api_key_env = "MOONSHOT_API_KEY"
