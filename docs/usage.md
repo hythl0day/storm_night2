@@ -13,13 +13,7 @@ pip install -r src/requirements.txt
 
 ## 2. 配置玩家席位
 
-复制模板并填入你的接口信息：
-
-```bash
-cp src/players.example.toml src/players.toml
-```
-
-`players.toml` 已被 `.gitignore` 忽略，不会进版本库。
+`src/players.toml` 随仓库跟踪分发（只含接口地址与环境变量名，无任何密钥），换机器克隆即用；按需修改各席位的 `model` / `base_url` / `api_key_env`。
 
 **安全约定：api_key 不落盘。** 配置里只填环境变量名（`api_key_env`），真实 key 在运行前注入环境变量。Git Bash 当前会话：
 
@@ -39,8 +33,7 @@ python -m src.smoke --all                               # 全部席位，不询�
 python -m src.smoke --random 6                          # 随机抽 6 席
 python -m src.smoke --only deepseek,kimi               # 按 id 或名字指定席位
 python -m src.smoke --human 老陈 --random 5              # 追加真人席位，可与以上组合
-python -m src.smoke --config src/players.example.toml  # 指定配置文件（模板无真实 key，用于验证报错路径）
-python -m src.smoke --prompt "你为什么被困在古堡里？"    # 自定义提问
+python -m src.smoke --prompt "你为什么被困在古堡里？"    # 自定义提问（--config 默认即 src/players.toml）
 ```
 
 **席位选择**：不带 `--all/--random/--only` 时进入交互模式——先打印席位列表（含人设摘要），输入 `all` / `r N`（随机 N 席）/ 逗号分隔序号（如 `1,3,5`）；随后可输入一个名字追加真人席位（直接回车跳过）。真人席位不调用 API：脚本打印问题，由你在终端键入回答，同样计入汇总。
@@ -66,7 +59,7 @@ python -m src.ping deepseek                 # 按席位 id 点名
 python -m src.ping 狄西                     # 按席位名点名
 python -m src.ping 杰米娜 --timeout 120     # 调整超时（默认 60s）
 python -m src.ping 格罗克 --insecure        # 跳过 TLS 证书校验（仅调试用，会打印警告）
-python -m src.ping kimi --config src/players.example.toml   # 指定配置文件
+python -m src.ping kimi                                # 指定配置文件用 --config（默认即 src/players.toml）
 ```
 
 输出内容：席位配置回显（api_type / base_url / model / key 是否设置及长度，**不显示 key 本身**）、实际请求的完整 URL、HTTP 状态码、响应内容或错误详情。三类典型结果：
@@ -103,9 +96,37 @@ inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
 
 内心独白等私密素材（M4 起）按席位归档到 `private/<id>/`（如 `inner.md` 内心独白、私聊记录、个人调查结果），与私密卡并列。
 
-分配约束（生成即校验，违反会报错退出）：身份 4 平民/1 帮凶/1 杀手；职业 9 选 6 不重复；道具 14 选 6 不重复，杀手与帮凶各得一件互不相同的凶器；平民从剩余道具池抽取（可能拿到仅供自卫的武器或无权的反派道具）；保险箱固定 1 件凶器（开局全员公告"主人字条"，但不公布具体哪件）。
+分配约束（生成即校验，违反会报错退出）：**席位中美 3+3 对称**（随机模式自动满足，两侧 API 渠道均衡；手动 `--seats` 不对称时仅提示）；身份 4 平民/1 帮凶/1 杀手；职业 9 选 6 不重复；道具 14 选 6 不重复，杀手与帮凶各得一件互不相同的凶器；平民从剩余道具池抽取（可能拿到仅供自卫的武器或无权的反派道具）；保险箱固定 1 件凶器（开局全员公告"主人字条"，但不公布具体哪件）。
 
 控制台输出是**主持人视角**（含身份分配），不要外发。
+
+### 3.3 编排器主循环：orchestrator.py（M4）
+
+把引擎接上六家 API，按阶段驱动一整天的对局：简报 → 收集三通道 JSON（speech/inner/notes/actions）→ 引擎裁决 → 落盘。
+
+```bash
+python -m src.orchestrator --game game/012345            # 跑通第 1 天全天（进入第 2 天清晨即停）
+python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（阶段粒度）
+```
+
+第 1 天流程：开局准备（仅反派建筑师/窃听器持有者有义务，其余跳过不调用）→ 公共发言（按行动顺序）→ 交换环节（先问赠送者，再单独问接收者）→ 自由活动（停电声明并入选房菜单；秘密选房+同入邀请；引擎结算；≥2 人且非黑暗的房间进行一轮房间内交谈；逐人房间行动菜单）→ 晚间休息（留宿邀请、夜间房间行动，选择互相不可见）→ 进入第 2 天清晨停止。
+
+行为约定：
+
+- **消息结构**：system = `prompt/game_system.md` 渲染（人设 + 规则书快照 + 私密卡），user = 当次简报；对话不累积，记忆靠 notes 通道（每阶段原样返还）+ 增量简报。全部顺序执行，不并发。
+- **JSON 解析**：从回复提取 ```json 代码块；失败重试 ≤2 次；仍失败记"放弃行动"（能抢救出 speech 仍采用）。非法动作逐条驳回（私下告知本人），其余动作正常执行。
+- **断点续跑**：每阶段结束 state.json 落盘；`--resume` 从当前阶段重跑该阶段（选房/晚间归宿已完成则由引擎标记跳过，发言类环节会重新调用）。
+- **席位失败**：某席 API 连续失败记 log 并按"放弃行动"继续，不中断整局。
+
+落盘产物（`game/<id>/`）：
+
+```
+public/log.md            # 公告、发言、交换、死亡公告（按阶段标题）
+private/<id>/inner.md    # 内心独白（追加）；notes.md 私人笔记（每阶段覆盖）
+private/<id>/log.md      # 该席听到的房间内交谈存档
+inbox/<id>/day{N}-*.md   # 每环节简报存档；outbox/<id>/ 原始回复存档
+host_log.jsonl           # 每次 API 调用 {ts, player, stage, ok, latency, total_tokens, error}
+```
 
 ## 4. 配置字段参考
 
@@ -151,5 +172,7 @@ inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
 | `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
 | `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](engine.md) |
-| `tests/test_engine.py` | ✅ 可用 | 引擎单测（64 用例）：`python -m unittest discover -s tests` |
-| `src/orchestrator.py` 等 | 待开发 | 编排器主循环（M4）、CLI（M4.5 起）——见 `rules/dev-plan.md` |
+| `tests/test_engine.py` | ✅ 可用 | 引擎单测（66 用例）：`python -m unittest discover -s tests` |
+| `prompt/game_system.md` | ✅ 可用 | 对局系统提示模板（扮演设定 + 输出契约 + 规则书 + 私密卡），占位符 {name}/{profile}/{card}/{rules} |
+| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4）：阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
+| `src/cli.py` 等 | 待开发 | CLI 查看器（M4.5 起）——见 `rules/dev-plan.md` |

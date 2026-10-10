@@ -6,7 +6,7 @@
     python -m src.smoke --random 6             # 随机抽 6 席
     python -m src.smoke --only deepseek,kimi   # 按 id 或名字指定席位
     python -m src.smoke --human 老陈            # 追加真人席位（回答从键盘输入）
-    python -m src.smoke --config src/players.example.toml --prompt "……"
+    python -m src.smoke --config src/players.toml --prompt "……"   # 一般不需要 --config，默认即此路径
 """
 from __future__ import annotations
 

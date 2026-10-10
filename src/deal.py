@@ -7,7 +7,7 @@
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
 
 随机调用顺序（影响复现，勿随意调整）：
-    席位抽取 → 身份洗牌 → 职业抽取 → 反派凶器 → 平民道具 → 保险箱 → 行动顺序
+    席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器 → 保险箱 → 平民道具 → 行动顺序
 """
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
     """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。"""
     rng = random.Random(seed)
 
-    # 1. 席位抽取（或手动指定）
+    # 1. 席位抽取（或手动指定）。随机模式为中美 3+3 对称抽取，两侧 API 渠道均衡
     if seat_keys:
         seats = []
         for k in seat_keys:
@@ -73,9 +73,18 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
                 raise SystemExit(f"席位 {k!r} 不在配置中")
             seats.append(p)
     else:
-        seats = rng.sample(players, len(IDENTITIES))
+        us = [p for p in players if personas.get(p.name, {}).get("nationality") == "美国"]
+        cn = [p for p in players if personas.get(p.name, {}).get("nationality") == "中国"]
+        if len(us) < 3 or len(cn) < 3:
+            raise SystemExit(f"阵容池中美两侧不足 3 席（美国 {len(us)} / 中国 {len(cn)}）")
+        seats = rng.sample(us, 3) + rng.sample(cn, 3)
+        rng.shuffle(seats)
     if len(seats) != len(IDENTITIES):
         raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前 {len(seats)} 席")
+    if seat_keys:
+        nat = [personas.get(p.name, {}).get("nationality") for p in seats]
+        if nat.count("美国") != 3 or nat.count("中国") != 3:
+            print("提示：手动席位不是中美 3+3 对称结构")
 
     # 角色属性必须能在人设卡中找到
     roster = []
@@ -100,12 +109,12 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
     killer_idx = identities.index("杀手")
     accom_idx = identities.index("帮凶")
     villain_weapons = rng.sample(WEAPONS, 2)
-    # 5. 平民道具（从剩余道具池，可能拿到武器用于自卫）
-    civilian_pool = [i for i in ITEMS if i not in villain_weapons]
-    civilian_items = rng.sample(civilian_pool, len(seats) - 2)
-    # 6. 保险箱（固定一件凶器：从未分配的两件凶器中随机；开局全员公告但不公布具体）
+    # 5. 保险箱（固定一件凶器：从未分配的两件中随机；开局全员公告但不公布具体）
     unused_weapons = [w for w in WEAPONS if w not in villain_weapons]
     safe_item = rng.choice(unused_weapons)
+    # 6. 平民道具（从剩余道具池，可能拿到仅剩的一件凶器用于自卫）
+    civilian_pool = [i for i in ITEMS if i not in villain_weapons and i != safe_item]
+    civilian_items = rng.sample(civilian_pool, len(seats) - 2)
     unused_items = [i for i in civilian_pool if i not in civilian_items]
     # 7. 首日行动顺序
     order = [r["name"] for r in roster]

@@ -306,6 +306,7 @@ class Engine:
                 s["bedroom_relock"].append(room)
             private[payer] = f"你用{means}打开了{room}"
         s["positions"] = dict(assignments)
+        s["rooms_entered"] = current_period(s)
         for name, room in assignments.items():
             record_entry(s, name, room)
         for room, payer in unlock_plan.items():
@@ -409,6 +410,7 @@ class Engine:
             positions[name] = placed
             record_entry(s, name, placed)
         s["positions"] = positions
+        s["night_assigned"] = current_period(s)
         device_events = murder_mod.trigger_devices(s)
         for dev_ev in device_events:
             private.update(dev_ev["private"])

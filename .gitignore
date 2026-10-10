@@ -1,4 +1,5 @@
-src/players.toml
 __pycache__/
+# 本机 AI 技能目录（非项目内容）
+.agents/
 # 对局存档（生成的素材，体积大；想入库的经典局可用 git add -f 单独豁免）
 game/

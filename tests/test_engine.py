@@ -95,10 +95,12 @@ class TestSampleState(unittest.TestCase):
         self.assertTrue(st["locks"]["地下室"])
         self.assertFalse(st["locks"]["书房"])
         self.assertTrue(st["locks"]["桑娜·克劳德的卧室"])
-        self.assertEqual(st["skill_uses"]["索尔·杰普特"], {"看破伪装": 2, "舞台魔术": 1})
-        self.assertEqual(st["skill_uses"]["奇米"], {"破门而入": 1, "延时装置": 1})
+        for p in st["players"]:
+            skills = st["skill_uses"][p["name"]]
+            self.assertTrue(skills, f"{p['name']} 缺少技能台账")
+            self.assertTrue(all(n > 0 for n in skills.values()))
         killer = next(p for p in st["players"] if p["identity"] == "杀手")
-        self.assertEqual(killer["items"][0]["name"], "刀")
+        self.assertIn(killer["items"][0]["name"], {"消音手枪", "刀", "棒球棍", "毒药"})
 
     def test_sample_day1_flow_and_rotation(self):
         eng = Engine(load_state(ROOT / "game" / "000042" / "state.json"))
@@ -851,6 +853,30 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "公共发言", day=2)
         self.assertFalse(eng.declare_blackout("D")["ok"])
+
+    def test_blackout_window_until_rooms_entered(self):
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "自由活动", day=2)
+        ev = eng.declare_blackout("B")
+        self.assertTrue(ev["ok"], ev)
+        rooms = {"A": "书房", "B": "监控室", "C": "C的卧室", "D": "D的卧室", "E": "E的卧室", "F": "F的卧室"}
+        self.assertTrue(eng.enter_rooms(rooms)["ok"])
+        self.assertEqual(eng.state["rooms_entered"], "第2天自由活动")
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        eng2 = Engine(mk_state(players=players))
+        goto(eng2, "自由活动", day=2)
+        self.assertTrue(eng2.enter_rooms(rooms)["ok"])
+        self.assertFalse(eng2.declare_blackout("B")["ok"])
+
+    def test_night_assigned_marker(self):
+        eng = Engine(mk_state())
+        self.assertIsNone(eng.state["night_assigned"])
+        goto(eng, "晚间休息", day=1)
+        eng.night_assign({})
+        self.assertEqual(eng.state["night_assigned"], "第1天晚间休息")
 
     def test_see_through(self):
         players = default_players()

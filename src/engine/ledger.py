@@ -18,6 +18,7 @@ from .state import (
     consume_item_entry,
     consume_skill,
     consume_unlock_means,
+    current_period,
     get_player,
     grant_item,
     held_item,
@@ -176,13 +177,18 @@ def use_flashlight(state: dict, user: str) -> dict:
 def declare_blackout(state: dict, user: str) -> dict:
     """【暴力破解】/「螺丝起子」：自由活动阶段开始前秘密声明，当天自由活动停电。
 
+    声明窗口：公共发言/投票阶段，或自由活动阶段内选房结算之前（进入房间后才向众人公布）。
     停电期间除卧室外所有房间黑暗；若发电机未修复，停电延续到次日。
     """
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
         return reject("declare_blackout", "玩家不存在或已死亡")
-    if s["phase"]["stage"] not in ("公共发言", "投票"):
+    stage = s["phase"]["stage"]
+    in_window = stage in ("公共发言", "投票") or (
+        stage == "自由活动" and s["rooms_entered"] != current_period(s)
+    )
+    if not in_window:
         return reject("declare_blackout", "只能在自由活动阶段开始前声明停电")
     if s["power_out"]:
         return reject("declare_blackout", "已经处于停电中")
