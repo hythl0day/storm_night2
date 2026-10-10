@@ -3,48 +3,66 @@
 # 安全约定：api_key 不落盘，这里只填【环境变量名】，程序运行时读取真实 key。
 
 [settings]
-temperature = 1.0   # 六席统一采样温度，保证公平
+temperature = 0.8   # 六席统一采样温度，保证公平
 
-# ---- 中转站 4 家：base_url 指向你的中转站，key 用同一个环境变量 ----
+# ---- 国外中转站 4 家 ----
 
 # api_type 可选 "openai"（默认）或 "anthropic"（Claude 原生 /v1/messages 协议）
 
 [[player]]
-name = "查特"       # ChatGPT
-model = "gpt-5.2"           # TODO: 改成你中转站里的实际模型名
-base_url = "https://your-relay.example.com/v1"
-api_key_env = "RELAY_API_KEY"
+name = "索尔·杰普特"       # ChatGPT
+model = "gpt-6.1-sol"           # TODO: 改成你中转站里的实际模型名
+base_url = "https://apinebula.ai/v1"
+api_key_env = "RELAY_API_KEY_GPT"
 api_type = "openai"
 
 [[player]]
-name = "桑娜"       # Claude
-model = "claude-opus-4-6"   # TODO
-base_url = "https://api.anthropic.com/v1"   # 走原生协议；若中转站支持 anthropic 转发则改成中转站地址
-api_key_env = "ANTHROPIC_API_KEY"
+name = "桑娜·克劳德"       # Claude
+model = "claude-sonnet-5-5"   # TODO
+base_url = "https://apinebula.ai"   # 走原生协议；若中转站支持 anthropic 转发则改成中转站地址
+api_key_env = "RELAY_API_KEY_CLAUDE"
 api_type = "anthropic"
 
 [[player]]
 name = "杰米娜"     # Gemini
-model = "gemini-3-pro"      # TODO
-base_url = "https://your-relay.example.com/v1"
-api_key_env = "RELAY_API_KEY"
+model = "gemini-3.8-flash"      # TODO
+base_url = "https://apinebula.ai/v1"
+api_key_env = "RELAY_API_KEY_GEMINI"
+api_type = "openai"
 
 [[player]]
-name = "智谱"       # GLM
-model = "glm-4.7"           # TODO
-base_url = "https://your-relay.example.com/v1"
-api_key_env = "RELAY_API_KEY"
+name = "格罗克"     # Grok
+model = "grok-4.7"      # TODO
+base_url = "https://apinebula.ai"
+api_key_env = "RELAY_API_KEY_GROK"
+api_type = "anthropic"
 
-# ---- 官方直连 2 家 ----
+# ---- 国内中转站 4 家 ----
 
 [[player]]
 name = "狄西"       # DeepSeek
-model = "deepseek-chat"
-base_url = "https://api.deepseek.com/v1"
-api_key_env = "DEEPSEEK_API_KEY"
+model = "deepseek-v4.1-flash"
+base_url = "https://ark.cn-beijing.volces.com/api/plan"
+api_key_env = "RELAY_API_KEY_CN"
+api_type = "anthropic"
 
 [[player]]
 name = "奇米"       # Kimi
-model = "kimi-k2.5"
-base_url = "https://api.moonshot.cn/v1"
-api_key_env = "MOONSHOT_API_KEY"
+model = "kimi-k3"
+base_url = "https://ark.cn-beijing.volces.com/api/plan"
+api_key_env = "RELAY_API_KEY_CN"
+api_type = "anthropic"
+
+[[player]]
+name = "豆包"       # Doubao
+model = "doubao-seed-2.1-pro"           # TODO
+base_url = "https://ark.cn-beijing.volces.com/api/plan"
+api_key_env = "RELAY_API_KEY_CN"
+api_type = "anthropic"
+
+[[player]]
+name = "智谱"       # GLM
+model = "glm-5.3"           # TODO
+base_url = "https://ark.cn-beijing.volces.com/api/plan"
+api_key_env = "RELAY_API_KEY_CN"
+api_type = "anthropic"

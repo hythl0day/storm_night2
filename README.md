@@ -1,1 +1,8 @@
 # storm_night2
+
+《暴风夜》重制工程：多家顶尖 AI 参与的暴风雪山庄身份推理游戏——自动化跑局管线 + 节目素材生产。
+
+- 脚本使用说明（环境准备、席位配置、连通性测试）：[docs/usage.md](docs/usage.md)
+- 节目规划（两季 + 特别单集）：[v2/show-bible.md](v2/show-bible.md)
+- 规则书 v2：[v2/rules-6.md](v2/rules-6.md)（6 人局）/ [v2/rules-8.md](v2/rules-8.md)（8 人局）
+- 工程计划与里程碑：[v2/dev-plan.md](v2/dev-plan.md)
