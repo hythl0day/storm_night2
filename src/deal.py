@@ -91,7 +91,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
     for p in seats:
         persona = personas.get(p.name)
         if not persona:
-            raise SystemExit(f"人设卡中找不到 {p.name!r}（src/personas.toml 的键需与 players.toml 的 name 一致）")
+            raise SystemExit(f"人设卡中找不到 {p.name!r}（personas.toml 的键需与 players.toml 的 name 一致）")
         roster.append({
             "id": p.id,
             "name": p.name,
@@ -232,8 +232,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=None, help="随机种子（缺省随机生成）")
     ap.add_argument("--players", type=int, default=6, help="局人数（当前仅支持 6）")
     ap.add_argument("--seats", default=None, help="手动指定席位：id 或名字，逗号分隔")
-    ap.add_argument("--config", default="src/players.toml")
-    ap.add_argument("--personas", default="src/personas.toml")
+    ap.add_argument("--config", default="players.toml")
+    ap.add_argument("--personas", default="personas.toml")
     ap.add_argument("--rules", default="rules/rules-6.md")
     ap.add_argument("--out", default=None, help="输出目录（缺省 game/<seed>/）")
     args = ap.parse_args()

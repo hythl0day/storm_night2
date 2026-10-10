@@ -12,15 +12,19 @@ src/          Python 代码（跑局管线）
   gamedata.py     游戏静态数据（职业/道具/体格映射，与规则书对齐）
   deal.py         开局生成器（M1）→ game/<seed>/
   engine/         规则裁决引擎（M3）：state / murder / vote / ledger / core
-  orchestrator.py 编排器主循环（M4，半成品待实测）
+  orchestrator.py 编排器主循环（M4）：run_day() + 观察者钩子；无头模式与 console 共用
+  viewer.py       视图层（M4.5）：读存档渲染 status/log/peek/inner/host，与跑局解耦
+  view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host/follow 子命令
+  console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；M7/M8 的载体
   smoke.py        连通性测试（席位选择/随机/真人席位）
   ping.py         单席位连通性诊断
   prompts.py      prompt 模板加载器（__file__ 锚定项目根）
-  personas.toml   角色人设卡（性别/体格/国籍/性格）——角色属性的唯一权威来源
-  players.toml    席位配置（无密钥，随仓库跟踪；api_key 只填环境变量名）
-prompt/       prompt 模板（md，{占位符} 渲染）
+players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key 只填环境变量名）
+personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
+prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
 rules/        规则书 rules-6.md（6人局）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + show-bible.md 节目计划
-docs/         usage.md（脚本用法）/ engine.md（引擎参考）/ handoff.md（交接与进度）
+docs/         usage.md（脚本用法）/ engine.md（引擎参考）/ perf-console-plan.md（M4.5 性能与交互改进计划）
+tools/        bench.py（API 速度诊断：流式 TTFT/吞吐）
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
 ```
@@ -37,9 +41,9 @@ tests/        unittest（python -m unittest discover -s tests）
 
 - 环境：Windows + Git Bash，Python 3.11+（tomllib），依赖只有 httpx。
 - 所有脚本入口头部 reconfigure stdout/stdin 为 UTF-8（GBK 控制台会炸）。
-- API 请求**不发送 temperature**（apinebula 的 Claude 上游只接受默认温度，全席统一不传）；`max_tokens` 由 `[settings]` 统一定义，席位可覆盖。
+- API 请求**不发送 temperature**（apinebula 的 Claude 上游只接受默认温度，全席统一不传）；`max_tokens` 由 `[settings]` 统一定义，席位可覆盖。`reasoning_effort` 同理全席统一（当前 low），claude 因上游限制例外不发（见 players.toml 注释）。
 - 席位以 `id` 为主键（gpt/claude/gemini/grok/deepseek/kimi/doubao/glm）；存档目录一律用 id，不用中文名。
-- 角色的性别/体格/国籍只写在 `src/personas.toml`；规则书不含固定角色表（开局由 deal.py 生成并全员公布）；**体格数值绝不注入 prompt**——注入时转成文字（魁梧/健壮/普通/瘦弱），prompt 里禁止角色说数值。
+- 角色的性别/体格/国籍只写在 `personas.toml`（项目根）；规则书不含固定角色表（开局由 deal.py 生成并全员公布）；**体格数值绝不注入 prompt**——注入时转成文字（魁梧/健壮/普通/瘦弱），prompt 里禁止角色说数值。
 - 人设只写性格底色（失忆设定，无传记无职业）；prompt 要求"靠言行流露、禁止自我介绍性格、人设不影响推理"。
 - 随机选席为**中美 3+3 对称**（两家 API 渠道均衡）；手动 `--seats` 不对称仅提示。
 - deal.py 的随机调用顺序固定（见其 docstring），改顺序 = 改变 seed 语义。
@@ -48,11 +52,12 @@ tests/        unittest（python -m unittest discover -s tests）
 ## 测试与自检
 
 ```bash
-python -m unittest discover -s tests   # 引擎 66 用例
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/000042/
+python -m unittest discover -s tests   # 引擎 66 用例
 ```
 
 ## 当前进度与待办
 
-见 `docs/handoff.md`（交接文档，含里程碑状态、待拍板决策、换机清单）。里程碑总表在 `rules/dev-plan.md` §4。
+里程碑总表在 `rules/dev-plan.md` §4。当前焦点：M4.5 交互层（方案与验收标准见 `docs/perf-console-plan.md`）代码已完成，待实测——`python -m src.console --game game/012345` 跑第 1 天全天（目标墙钟 ≤45 分钟），并中途 kill 一次验证 `--resume`。
+（handoff.md 已删除，用户要求需要总结时再生成。）

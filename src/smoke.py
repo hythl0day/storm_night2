@@ -6,7 +6,7 @@
     python -m src.smoke --random 6             # 随机抽 6 席
     python -m src.smoke --only deepseek,kimi   # 按 id 或名字指定席位
     python -m src.smoke --human 老陈            # 追加真人席位（回答从键盘输入）
-    python -m src.smoke --config src/players.toml --prompt "……"   # 一般不需要 --config，默认即此路径
+    python -m src.smoke --config players.toml --prompt "……"   # 一般不需要 --config，默认即此路径
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 if sys.stdin.encoding and sys.stdin.encoding.lower() != "utf-8":
     sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 
-PERSONAS_PATH = Path(__file__).parent / "personas.toml"
+PERSONAS_PATH = Path(__file__).resolve().parent.parent / "personas.toml"
 
 DEFAULT_PROMPT = (
     "你在古堡大厅的地板上醒来，头痛欲裂，想不起自己是谁、为什么会在这里。"
@@ -116,7 +116,7 @@ def pick_seats(players, args, personas):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="src/players.toml")
+    ap.add_argument("--config", default="players.toml")
     ap.add_argument("--prompt", default=DEFAULT_PROMPT)
     ap.add_argument("--all", action="store_true", help="全部席位，不询问")
     ap.add_argument("--random", type=int, metavar="N", help="随机抽 N 席")

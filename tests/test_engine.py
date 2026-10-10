@@ -17,6 +17,7 @@ from src.engine import Engine, load_state
 from src.gamedata import ITEM_USES
 
 ROOT = Path(__file__).resolve().parent.parent
+FIXTURE = ROOT / "tests" / "fixtures" / "state_sample.json"  # 冻结的 deal 样例（seed 42），与 game/ 解耦
 
 
 def P(name, identity, profession, item, gender="男", physique=2, nationality="中国"):
@@ -89,7 +90,7 @@ def player(eng, name):
 
 class TestSampleState(unittest.TestCase):
     def test_load_sample_and_extend(self):
-        st = load_state(ROOT / "game" / "000042" / "state.json")
+        st = load_state(FIXTURE)
         eng = Engine(st)
         self.assertEqual(st["phase"], {"day": 1, "stage": "开局准备"})
         self.assertTrue(st["locks"]["地下室"])
@@ -103,7 +104,7 @@ class TestSampleState(unittest.TestCase):
         self.assertIn(killer["items"][0]["name"], {"消音手枪", "刀", "棒球棍", "毒药"})
 
     def test_sample_day1_flow_and_rotation(self):
-        eng = Engine(load_state(ROOT / "game" / "000042" / "state.json"))
+        eng = Engine(load_state(FIXTURE))
         order0 = list(eng.state["order"])
         goto(eng, "案件调查", day=2)
         self.assertEqual(eng.state["order"], order0[1:] + order0[:1])

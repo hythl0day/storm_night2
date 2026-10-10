@@ -12,6 +12,8 @@
 
 消息结构：system = render(game_system.md)（人设+规则书+私密卡），user = 当次简报；
 对话不累积，每阶段独立调用，记忆靠 notes 通道 + 增量简报。全部顺序执行，不并发。
+观察者钩子（console 订阅；无头模式全为空操作）：on_call_start / on_token / on_call_end /
+on_stage / pause_gate（阶段边界阻塞）/ should_stop（阶段边界安全退出）。
 
 落盘（game/<id>/）：
   public/log.md                    公告/发言/交换/死亡公告（按阶段标题追加）
@@ -55,7 +57,7 @@ if sys.stdin.encoding and sys.stdin.encoding.lower() != "utf-8":
     sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
-PERSONAS_PATH = Path(__file__).parent / "personas.toml"
+PERSONAS_PATH = Path(__file__).resolve().parent.parent / "personas.toml"
 
 ROOM_CHOICES = PUBLIC_ROOMS  # 选房菜单中的公共房间；各人卧室单独列出
 
@@ -63,7 +65,7 @@ ROOM_CHOICES = PUBLIC_ROOMS  # 选房菜单中的公共房间；各人卧室单�
 class Orchestrator:
     """单局编排器：持引擎与席位配置，按阶段驱动六席 AI。"""
 
-    def __init__(self, game_dir: Path):
+    def __init__(self, game_dir: Path, hooks: dict | None = None):
         self.dir = game_dir
         self.state = json.loads((game_dir / "state.json").read_text(encoding="utf-8"))
         self.eng = Engine(self.state)
@@ -72,6 +74,13 @@ class Orchestrator:
         self.rules = (game_dir / "rules.md").read_text(encoding="utf-8")
         self.orch = self.state.setdefault("orch", {"feed": [], "cursor": {}, "private": {}})
         self._system_cache: dict[str, str] = {}
+        self.hooks = hooks or {}
+
+    def _fire(self, name: str, *args) -> None:
+        """触发观察者钩子（console 订阅；无头模式不注册即为空操作）。"""
+        cb = self.hooks.get(name)
+        if cb:
+            cb(*args)
 
     def seat(self, p: dict) -> str:
         return p["id"] or p["name"]
@@ -123,9 +132,9 @@ class Orchestrator:
             self.tell(name, msg)
 
     def save_state(self) -> None:
-        (self.dir / "state.json").write_text(
-            json.dumps(self.state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        tmp = self.dir / "state.json.tmp"
+        tmp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(self.dir / "state.json")  # 原子替换：中断也不会留下半个文件
 
     def host_log(self, player: str, stage: str, ok: bool, latency: float, usage: dict, error: str = "") -> None:
         entry = {
@@ -177,28 +186,37 @@ class Orchestrator:
             {"role": "system", "content": self.system_prompt(p)},
             {"role": "user", "content": briefing},
         ]
+        token_cb = self.hooks.get("on_token")  # 传给 providers 走流式；无头模式为 None
         payload = None
         last_err = ""
         for attempt in range(3):
-            result = chat(prov, messages)
+            self._fire("on_call_start", p["name"], label)
+            result = chat(prov, messages, on_token=token_cb, reasoning_effort=prov.reasoning_effort)
+            self._fire("on_call_end", p["name"], label, result)
             self.host_log(p["name"], label, result.ok, result.latency, result.usage, result.error)
             if not result.ok:
                 last_err = result.error
                 break
             (seat_dir_out / f"day{day}-{label}.md").write_text(result.content, encoding="utf-8")
-            try:
-                payload = self.extract_payload(result.content)
-                break
-            except Exception as e:
-                last_err = f"JSON 解析失败：{e}"
-                if attempt == 2:
-                    self.host_log(p["name"], label + "#parse", False, 0.0, {}, last_err)
-                    payload = {"speech": self.salvage_speech(result.content), "inner": "", "notes": "", "actions": []}
-                else:
-                    messages = [
-                        {"role": "system", "content": self.system_prompt(p)},
-                        {"role": "user", "content": briefing + f"\n\n【主持人】你的上次回复无法解析（{e}）。请严格只输出一个 ```json 代码块，字段：speech/inner/notes/actions。"},
-                    ]
+            err = ""
+            if result.finish_reason == "length":
+                err = "你的上次回复过长被 max_tokens 截断，请大幅压缩 speech/inner/notes 的篇幅"
+            else:
+                try:
+                    payload = self.extract_payload(result.content)
+                    break
+                except Exception as e:
+                    err = (f"你的上次回复无法解析（{e}）。"
+                           "请严格只输出一个 ```json 代码块，字段：speech/inner/notes/actions")
+            last_err = err
+            if attempt == 2:
+                self.host_log(p["name"], label + "#parse", False, 0.0, {}, last_err)
+                payload = {"speech": self.salvage_speech(result.content), "inner": "", "notes": "", "actions": []}
+            else:
+                messages = [
+                    {"role": "system", "content": self.system_prompt(p)},
+                    {"role": "user", "content": briefing + f"\n\n【主持人】{err}。"},
+                ]
         if payload is None:
             print(f"  【{p['name']}】调用失败：{last_err}（记为放弃行动）")
             payload = {"speech": "", "inner": "", "notes": "", "actions": []}
@@ -207,6 +225,7 @@ class Orchestrator:
         payload.setdefault("notes", "")
         actions = payload.get("actions")
         payload["actions"] = actions if isinstance(actions, list) else []
+        self._fire("on_payload", p["name"], label, payload)
         self.archive_private(p, label, payload)
         return payload
 
@@ -327,6 +346,7 @@ class Orchestrator:
         self.save_state()
         ph = self.state["phase"]
         print(f"== 进入 第{ph['day']}天 · {ph['stage']} ==")
+        self._fire("on_stage", title)
         return ev
 
     def run_prep(self) -> None:
@@ -582,6 +602,7 @@ class Orchestrator:
                 '- 不回卧室，夜间前往书房/监控室/地下室执行一项行动：{"type": "night_room", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock"}',
             ]
             extra = "夜间行动互相不可见。每个夜间房间只能进入 1 人（顺序靠后冲突者失败，默认回自己卧室）。"
+            extra += "\n注意：上面「当前局面」里的位置是你自由活动结束时的实际位置；本环节决定的是**今晚去哪过夜**——不回卧室就选 night_room，什么都不做默认回自己卧室。"
             if later:
                 extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
             if name in pending_invite:
@@ -619,6 +640,41 @@ class Orchestrator:
             self.dispatch(p, {"type": do, "room": assignments[name]})
 
 
+    def run_day(self) -> None:
+        """主循环：从当前 state.phase 推进到第 2 天清晨或游戏结束（每阶段落盘，可 --resume）。
+
+        无头模式由 main() 直接调用；console 在工作线程里调用并提供 hooks。
+        """
+        while True:
+            day, stage = self.state["phase"]["day"], self.state["phase"]["stage"]
+            if day >= 2 or self.state["winner"]:
+                break
+            gate = self.hooks.get("pause_gate")
+            if gate:
+                gate()  # 阶段边界检查点：console 暂停时阻塞在此
+            stop = self.hooks.get("should_stop")
+            if stop and stop():
+                print("收到退出指令，已在阶段边界安全停止（可用 --resume 续跑）")
+                break
+            if stage == "开局准备":
+                self.run_prep()
+                self.advance(f"第{day}天 · 公共发言")
+            elif stage == "公共发言":
+                self.run_speeches()
+                self.run_exchange()
+                self.advance(f"第{day}天 · 自由活动")
+            elif stage == "自由活动":
+                self.run_free_activity()
+                self.advance(f"第{day}天 · 晚间休息")
+            elif stage == "晚间休息":
+                self.run_night()
+                self.advance(f"第{day + 1}天 · 清晨")
+            else:
+                self.advance(f"第{day}天 · {stage}")
+            self.save_state()
+        self.save_state()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True, help="对局目录（deal.py 产物，如 game/012345）")
@@ -633,32 +689,13 @@ def main() -> None:
     print(f"对局 {game_dir}：从 第{ph['day']}天 · {ph['stage']} 开始{'（续跑）' if args.resume else ''}")
     if not args.resume:
         orch.log_header(f"第{ph['day']}天 · 开局")
-
-    while True:
-        day, stage = orch.state["phase"]["day"], orch.state["phase"]["stage"]
-        if day >= 2 or orch.state["winner"]:
-            break
-        if stage == "开局准备":
-            orch.run_prep()
-            orch.advance(f"第{day}天 · 公共发言")
-        elif stage == "公共发言":
-            orch.run_speeches()
-            orch.run_exchange()
-            orch.advance(f"第{day}天 · 自由活动")
-        elif stage == "自由活动":
-            orch.run_free_activity()
-            orch.advance(f"第{day}天 · 晚间休息")
-        elif stage == "晚间休息":
-            orch.run_night()
-            orch.advance(f"第{day + 1}天 · 清晨")
-        else:
-            orch.advance(f"第{day}天 · {stage}")
-        orch.save_state()
-
-    orch.save_state()
+    try:
+        orch.run_day()
+    except KeyboardInterrupt:
+        print("\n已中断（Ctrl+C）。进度已保存至最近阶段边界，可用 --resume 续跑。")
+        raise SystemExit(130)
     ph = orch.state["phase"]
     print(f"第 1 天结束：state.phase = 第{ph['day']}天 · {ph['stage']}；winner = {orch.state['winner']}")
-
 
 if __name__ == "__main__":
     main()

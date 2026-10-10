@@ -5,7 +5,7 @@
     python -m src.ping 狄西                 # 按席位名点名
     python -m src.ping gpt --timeout 120    # 调整超时（默认 60s）
     python -m src.ping gpt --insecure       # 跳过 TLS 证书校验（仅调试用）
-    python -m src.ping kimi --config src/players.toml   # 一般不需要 --config，默认即此路径
+    python -m src.ping kimi --config players.toml   # 一般不需要 --config，默认即此路径
 """
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def probe(player, timeout: float, insecure: bool = False) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("seat", help="players.toml 中的席位 id 或名字")
-    ap.add_argument("--config", default="src/players.toml")
+    ap.add_argument("--config", default="players.toml")
     ap.add_argument("--timeout", type=float, default=60.0)
     ap.add_argument("--insecure", action="store_true", help="跳过 TLS 证书校验（仅调试）")
     args = ap.parse_args()

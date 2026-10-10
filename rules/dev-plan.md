@@ -65,8 +65,8 @@ game/<id>/
 | `prompts/` | 模板：规则书注入、私密卡、阶段简报、合法动作菜单、发言/独白要求 |
 | `archive/` | 落盘协议：`game/<id>/` 目录结构（见 revision-plan §8.2） |
 | `batch.py` | 抽卡批量跑：N 局队列、失败续跑、评分卡粗筛 |
-| `cli.py` | 命令行工具：① `status`/`log`/`peek`/`follow` 只读查看任意对局（与跑局解耦）；② `watch` 上帝视角实时观战（看海模式，供彩蛋单集录制）；③ `play` 人机对局入口（搭 `hostseat.py`） |
-| `hostseat.py` | 人类席位适配器：终端渲染阶段简报，接收自由文本发言 + 菜单化动作，输出与 AI 相同的三通道 JSON，作为特殊 provider 接入 orchestrator |
+| `viewer.py` / `view.py` | 视图层 + 只读查看器薄壳（M4.5）：`status`/`log`/`peek`/`inner`/`host`/`follow` 读 `game/<id>/` 存档渲染，与跑局解耦 |
+| `console.py` | 交互驾驶舱（M4.5）：进程内驱动 orchestrator 跑局 + 流式渲染 + 随时命令（pause/save/peek 等）；M7 `play`、M8 `watch` 的载体 |
 
 ## 3. 关键接口
 
@@ -104,11 +104,11 @@ temperature = 1.0
 | M2 ✅（由 M0 覆盖） | providers 适配层 + `players.toml` | 六家各完成一次最小对话；失败重试可用 |
 | M3 ✅ | 引擎核心：房间/移动/谋杀/投票/道具台账 | 单测覆盖 §7 各分支（黑暗、自卫、延时装置、舞台魔术、记忆植入等）——64 用例全绿 |
 | M4 | orchestrator 主循环 + 落盘协议 | 跑通"第 1 天全天"；`game/<id>/` 目录结构完整 |
-| M4.5 | `cli.py` 查看器 | `status`（存活/身份台账/当前阶段/技能道具次数）、`log`（公开日志）、`peek <玩家>`（私密视角+内心独白）、`follow`（轮询刷新，实时追局）四个子命令可用 |
+| M4.5 | 交互层：`viewer.py`/`view.py`/`console.py` + providers 流式化 + 输出篇幅约束（方案：`docs/perf-console-plan.md`） | view 只读子命令（status/log/peek/inner/host/follow）对已落盘对局可用；console 驾驶舱：顶栏状态+spinner、流式输出、随时命令、阶段边界暂停/退出；单次调用中位延迟 ≤90s |
 | M5 | 完整对局 | 全自动跑完一整局，日志无人工干预；并回归两个平衡场景：平民扎堆（3 人恒同室）与卧室蹲守，确认反制路径（停电/舞台魔术/延时装置/开锁夜袭）均可触发 |
 | M6 | batch.py + 评分卡 | 连跑 10 局，产出粗筛报告（局时长、谋杀数、技能使用率、反转点、主角弧线候选） |
-| M7 | `hostseat.py` + `cli.py play` 人机模式 | 你 + 5 AI 在终端完整打完一局 6 人局：人类发言自由文本、动作菜单化；该局正常归档。兼作开发期规则 QA 工具，可做简易版提前介入 |
-| M8 | `cli.py watch` 看海模式 | 跑局/批量跑局时上帝视角实时观战：公开事件 + 全部私密视角与内心独白同屏刷新，供彩蛋单集录制 |
+| M7 | `hostseat.py` + console 人机模式 | 你 + 5 AI 在终端完整打完一局 6 人局：人类发言自由文本、动作菜单化；该局正常归档。兼作开发期规则 QA 工具，可做简易版提前介入 |
+| M8 | watch 看海模式（viewer 轮询或 console 钩子广播，届时二选一） | 跑局/批量跑局时上帝视角实时观战：公开事件 + 全部私密视角与内心独白同屏刷新，供彩蛋单集录制 |
 
 > 第二季前置（待排期）：8 人局规则已修订（`rules/rules-8.md`，文末附修订记录），待实测验证平衡；8 人局引擎支持（主谋/指认阶段/游戏室/暴力开锁）、真人 8 人局。见 `rules/show-bible.md`。
 
@@ -124,4 +124,4 @@ temperature = 1.0
 
 - 前置：`rules/rules-6.md` 定稿（引擎按它编码）。
 - 六家 API key 到位（中转站 4 家 + DeepSeek + Kimi 官方）。
-- Python 3.11+；依赖尽量只用 `httpx` / `pydantic` / `toml` / `rich`（CLI 渲染），不引重型框架。
+- Python 3.11+；依赖只用 `httpx`（CLI 渲染手写 ANSI，未引 rich 等 TUI 库）。

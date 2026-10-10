@@ -1,0 +1,106 @@
+{
+  "seed": 42,
+  "ruleset": "rules-6.md",
+  "mode": "6人局",
+  "phase": {
+    "day": 1,
+    "stage": "开局准备"
+  },
+  "order": [
+    "豆包",
+    "奇米",
+    "狄西",
+    "索尔·杰普特",
+    "格罗克",
+    "桑娜·克劳德"
+  ],
+  "safe_item": "棒球棍",
+  "unused_professions": [
+    "运动员",
+    "心理医生",
+    "机械师"
+  ],
+  "unused_items": [
+    "急救箱",
+    "万能钥匙",
+    "测谎仪",
+    "螺丝起子",
+    "可疑的粉末",
+    "裹尸袋",
+    "病毒U盘"
+  ],
+  "players": [
+    {
+      "id": "kimi",
+      "name": "奇米",
+      "gender": "女",
+      "physique": 1,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "魔术师",
+      "item": "消音手枪",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "grok",
+      "name": "格罗克",
+      "gender": "男",
+      "physique": 3,
+      "nationality": "美国",
+      "identity": "平民",
+      "profession": "医师",
+      "item": "手电筒",
+      "item_uses_left": 2,
+      "alive": true
+    },
+    {
+      "id": "claude",
+      "name": "桑娜·克劳德",
+      "gender": "女",
+      "physique": 3,
+      "nationality": "美国",
+      "identity": "平民",
+      "profession": "犯罪侧写师",
+      "item": "窃听器",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "deepseek",
+      "name": "狄西",
+      "gender": "男",
+      "physique": 3,
+      "nationality": "中国",
+      "identity": "帮凶",
+      "profession": "化学家",
+      "item": "毒药",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "gpt",
+      "name": "索尔·杰普特",
+      "gender": "男",
+      "physique": 4,
+      "nationality": "美国",
+      "identity": "杀手",
+      "profession": "建筑师",
+      "item": "刀",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "doubao",
+      "name": "豆包",
+      "gender": "女",
+      "physique": 2,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "黑客",
+      "item": "鲁米诺试剂",
+      "item_uses_left": 1,
+      "alive": true
+    }
+  ]
+}

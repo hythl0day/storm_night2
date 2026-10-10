@@ -13,7 +13,7 @@ pip install -r src/requirements.txt
 
 ## 2. 配置玩家席位
 
-`src/players.toml` 随仓库跟踪分发（只含接口地址与环境变量名，无任何密钥），换机器克隆即用；按需修改各席位的 `model` / `base_url` / `api_key_env`。
+`players.toml` 随仓库跟踪分发（只含接口地址与环境变量名，无任何密钥），换机器克隆即用；按需修改各席位的 `model` / `base_url` / `api_key_env`。
 
 **安全约定：api_key 不落盘。** 配置里只填环境变量名（`api_key_env`），真实 key 在运行前注入环境变量。Git Bash 当前会话：
 
@@ -33,12 +33,12 @@ python -m src.smoke --all                               # 全部席位，不询�
 python -m src.smoke --random 6                          # 随机抽 6 席
 python -m src.smoke --only deepseek,kimi               # 按 id 或名字指定席位
 python -m src.smoke --human 老陈 --random 5              # 追加真人席位，可与以上组合
-python -m src.smoke --prompt "你为什么被困在古堡里？"    # 自定义提问（--config 默认即 src/players.toml）
+python -m src.smoke --prompt "你为什么被困在古堡里？"    # 自定义提问（--config 默认即 players.toml）
 ```
 
 **席位选择**：不带 `--all/--random/--only` 时进入交互模式——先打印席位列表（含人设摘要），输入 `all` / `r N`（随机 N 席）/ 逗号分隔序号（如 `1,3,5`）；随后可输入一个名字追加真人席位（直接回车跳过）。真人席位不调用 API：脚本打印问题，由你在终端键入回答，同样计入汇总。
 
-**人设卡**：每个角色的性别 / 体格 / 国籍 / 性格人设写在 `src/personas.toml`（键名须与 `players.toml` 的 `name` 一致，未命中的席位按"普通人"处理）。人设只写性格不写职业（失忆设定；职业每局临时分配），且 prompt 中已声明"人设不影响推理能力""性格靠言行流露、禁止自我介绍"。性别/体格/国籍是游戏机制属性（空手谋杀判定、犯罪侧写会用到）——规则书不含固定角色表，每局开局以此文件为准生成角色表并全员公布；体格数值仅供主持人判定，注入 prompt 时会转成文字描述，角色不会得知数值。
+**人设卡**：每个角色的性别 / 体格 / 国籍 / 性格人设写在 `personas.toml`（键名须与 `players.toml` 的 `name` 一致，未命中的席位按"普通人"处理）。人设只写性格不写职业（失忆设定；职业每局临时分配），且 prompt 中已声明"人设不影响推理能力""性格靠言行流露、禁止自我介绍"。性别/体格/国籍是游戏机制属性（空手谋杀判定、犯罪侧写会用到）——规则书不含固定角色表，每局开局以此文件为准生成角色表并全员公布；体格数值仅供主持人判定，注入 prompt 时会转成文字描述，角色不会得知数值。
 
 行为：所有 AI 席位**并发**收到同一个问题，按各自人设回答，最后输出汇总：
 
@@ -59,7 +59,7 @@ python -m src.ping deepseek                 # 按席位 id 点名
 python -m src.ping 狄西                     # 按席位名点名
 python -m src.ping 杰米娜 --timeout 120     # 调整超时（默认 60s）
 python -m src.ping 格罗克 --insecure        # 跳过 TLS 证书校验（仅调试用，会打印警告）
-python -m src.ping kimi                                # 指定配置文件用 --config（默认即 src/players.toml）
+python -m src.ping kimi                                # 指定配置文件用 --config（默认即 players.toml）
 ```
 
 输出内容：席位配置回显（api_type / base_url / model / key 是否设置及长度，**不显示 key 本身**）、实际请求的完整 URL、HTTP 状态码、响应内容或错误详情。三类典型结果：
@@ -128,13 +128,51 @@ inbox/<id>/day{N}-*.md   # 每环节简报存档；outbox/<id>/ 原始回复存�
 host_log.jsonl           # 每次 API 调用 {ts, player, stage, ok, latency, total_tokens, error}
 ```
 
+### 3.4 只读查看器：view.py（M4.5）
+
+读 `game/<id>/` 存档渲染，与跑局完全解耦——复盘已结束的局、批量跑局时旁路查看都用它：
+
+```bash
+python -m src.view status --game game/012345        # 阶段/存活/身份台账/道具技能次数
+python -m src.view log --game game/012345 -n 30     # 公开日志末尾 30 行
+python -m src.view peek 杰米娜 --game game/012345   # 私密卡 + 私人笔记 + 内心独白
+python -m src.view inner 杰米娜 --game game/012345  # 仅内心独白
+python -m src.view host --game game/012345          # API 调用台账（耗时/成败）
+python -m src.view follow --game game/012345 --interval 5   # 轮询刷新追局，Ctrl+C 退出
+```
+
+### 3.5 交互驾驶舱：console.py（M4.5）
+
+进程内驱动跑局：底部"状态+输入"瞬时行（阶段/当前席位/spinner/耗时/字数）、思考内容灰色流式滚动、JSON 解析完成后渲染人读卡片（名字突出/内心灰色/行动黄色/分割线）、全部历史可滚轮回看、随时可输入命令：
+
+```bash
+python -m src.console --game game/012345 [--resume]
+```
+
+命令（跑局进行中随时可敲，不打断进行中的调用）：`help` / `status` / `log [n]` / `peek <席位>` / `inner <席位>` / `host [n]` / `follow [席位]` / `pause` / `resume` / `save` / `quit`。`pause` 在阶段边界暂停；`quit` 与第一次 Ctrl+C 都会等当前调用结束、在阶段边界安全退出（进度可 `--resume` 恢复）；第二次 Ctrl+C 立即强制退出。
+
+中断安全性：state.json 为原子写（临时文件 + 替换），强杀不会留下半个文件；被中断的那次 API 调用结果丢弃，但上游可能已计费。注意断点是**阶段粒度**：发言类环节中途强杀后 `--resume` 会从头重跑该环节（public/log.md 里已写入的发言不会自动去重，强杀尽量用在阶段初期）。
+
+流式说明：console 跑局走 SSE 流式（推理内容淡色显示）；超时分层为连接 10s / 停滞看门狗 90s / 单次总墙钟 600s；上游不支持流式时自动回退非流式。无头模式（`python -m src.orchestrator`，供 M6 批量跑局）行为不变，与 console 共用同一个 `Orchestrator.run_day()`。
+
+### 3.6 速度诊断：tools/bench.py
+
+```bash
+python tools/bench.py                      # 全部席位 ×（短/长）两种请求，串行
+python tools/bench.py --seats kimi,deepseek
+python tools/bench.py --skip-long
+```
+
+逐席位输出 TTFT / 总时长 / 生成速度（字/s）/ token 用量。注意：会产生真实 API 调用（每席位至多 2 次，长请求约 500 字输出）。
+
 ## 4. 配置字段参考
 
 `[settings]` 段：
 
 | 字段 | 说明 |
 | ---- | ---- |
-| `max_tokens` | 全席统一单次输出 token 上限（默认 256000）。注意这是**输出预算**，不是上下文窗口——上下文长度由模型侧决定，客户端无需设置。若某渠道报"max_tokens 超限"错误，在该席位单独调低 |
+| `max_tokens` | 失控安全网（当前 16384）：正常回复 1-2K token 远触不到；篇幅约束在 `prompt/game_system.md` 的"输出篇幅纪律"。若某渠道报"max_tokens 超限"错误，在该席位单独调低 |
+| `reasoning_effort` | 全席统一思考强度（当前 `low`，压隐藏思考耗时）；席位可同名覆盖，填 `"none"` 表示不发该参数（claude 席位因上游只支持 adaptive 模式而例外）。启用前用 `python tools/bench.py --effort` 验证渠道兼容性 |
 
 注意：**temperature 不发送**——所有席位统一走渠道默认值（部分中转站上游只接受默认温度，发送会报 400），配置里不要再写 `temperature`。
 
@@ -157,7 +195,7 @@ host_log.jsonl           # 每次 API 调用 {ts, player, stage, ok, latency, to
 - **`环境变量 XXX 未设置`**：当前终端没读到 key。`export` 只对当前会话有效；检查变量名拼写是否与配置里的 `api_key_env` 完全一致。
 - **HTTP 401/403**：key 无效或渠道不对（比如把中转站 key 配到了官方 base_url）。
 - **HTTP 404 / 模型不存在**：`model` 字段与渠道方模型名不一致。
-- **超时/偶发失败**：内置超时 120 秒、最多重试 2 次（间隔 2s/4s），仍失败会输出错误原因；中转站高峰期可稍候重跑。
+- **超时/偶发失败**：超时分层——连接 10s、停滞看门狗 90s（任意两块数据的最长间隔）、单次总墙钟 600s；4xx（除 429）不重试，429/5xx/网络错误最多重试 3 次（429 尊重 Retry-After）。仍失败会输出错误原因；中转站高峰期可稍候重跑。
 - **Windows 中文乱码**：脚本已强制 UTF-8 输出；若仍乱码，确认终端为 Git Bash 或 Windows Terminal。
 
 ## 6. 模块现状
@@ -167,7 +205,7 @@ host_log.jsonl           # 每次 API 调用 {ts, player, stage, ok, latency, to
 | `src/providers.py` | ✅ 可用 | 多协议 API 客户端与配置加载（`load_config` / `chat` / `find_player`），被其他模块复用 |
 | `src/prompts.py` | ✅ 可用 | prompt 模板加载器：读取根目录 `prompt/` 下的 md 模板，支持占位符渲染（`__file__` 锚定，任意目录运行皆可） |
 | `prompt/` | ✅ 可用 | prompt 模板目录（如 `smoke_system.md` 系统提示），与代码分离、可直接编辑 |
-| `src/personas.toml` | ✅ 可用 | 角色人设卡（性别/体格/国籍/性格人设），smoke 与后续 prompt 模板共用 |
+| `personas.toml` | ✅ 可用 | 角色人设卡（性别/体格/国籍/性格人设），smoke 与后续 prompt 模板共用 |
 | `src/smoke.py` | ✅ 可用 | 连通性测试（席位选择 / 随机抽取 / 真人席位） |
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
 | `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
@@ -175,4 +213,7 @@ host_log.jsonl           # 每次 API 调用 {ts, player, stage, ok, latency, to
 | `tests/test_engine.py` | ✅ 可用 | 引擎单测（66 用例）：`python -m unittest discover -s tests` |
 | `prompt/game_system.md` | ✅ 可用 | 对局系统提示模板（扮演设定 + 输出契约 + 规则书 + 私密卡），占位符 {name}/{profile}/{card}/{rules} |
 | `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4）：阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
-| `src/cli.py` 等 | 待开发 | CLI 查看器（M4.5 起）——见 `rules/dev-plan.md` |
+| `src/viewer.py` | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py 与 console.py 共用 |
+| `src/view.py` | ✅ 可用 | 只读查看器（M4.5）：`status`/`log`/`peek`/`inner`/`host`/`follow` 子命令，与跑局解耦，见 §3.4 |
+| `src/console.py` | ✅ 可用 | 交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令，见 §3.5 |
+| `tools/bench.py` | ✅ 可用 | API 速度诊断（流式 TTFT/吞吐），见 §3.6 |

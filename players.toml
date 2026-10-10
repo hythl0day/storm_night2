@@ -4,7 +4,9 @@
 
 [settings]
 # temperature 不发送：全席统一走渠道默认值（部分上游只接受默认温度），不要在此配置
-max_tokens = 131072 # 全席统一单次输出上限（输出预算，不是上下文窗口）；可在单个席位里同名覆盖
+max_tokens = 16384 # 失控安全网（正常回复 1-2K token，远触不到；篇幅约束在 prompt/game_system.md）；可在单个席位里同名覆盖
+# 全席统一思考强度 low（压隐藏思考耗时；bench --effort 实测 7/8 渠道兼容）。席位可覆盖；填 "none" = 不发该参数
+reasoning_effort = "low"
 
 # ---- 国外中转站 4 家 ----
 
@@ -24,6 +26,7 @@ model = "claude-sonnet-5-5"
 base_url = "https://apinebula.ai/v1"   # 该站 Claude 兼容 openai 格式，统一走 /v1/chat/completions
 api_key_env = "RELAY_API_KEY_CLAUDE"
 api_type = "openai"
+reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模式，budget/effort 一律 400；实测 anthropic 协议 + adaptive 被断连，故例外不设档
 
 [[player]]
 id = 'gemini'
@@ -51,20 +54,20 @@ api_key_env = "RELAY_API_KEY_CN"
 [[player]]
 id = 'kimi'
 name = "奇米"       # Kimi
-model = "kimi-k3"
+model = "kimi-k2.8-preview"
 base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
 
 [[player]]
 id = 'doubao'
 name = "豆包"       # Doubao
-model = "doubao-seed-2.1-pro"
+model = "doubao-seed-2.1-lite"
 base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
 
 [[player]]
 id = 'glm'
 name = "智谱"       # GLM
-model = "glm-5.3"
+model = "glm-5.3-flash"
 base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
