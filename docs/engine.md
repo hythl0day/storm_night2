@@ -1,0 +1,92 @@
+# 引擎文档（src/engine/）
+
+规则裁决引擎（M3）。**纯逻辑库**：不调用 AI、不做网络请求、不打印；输入是 `state` 字典 + 玩家声明的动作，输出是结构化事件。编排器（M4）负责收集 AI 输出、调用引擎裁决、按"公开/私密"分发结果。
+
+## 1. 模块划分
+
+| 模块 | 职责 |
+| ---- | ---- |
+| `state.py` | 状态装载与扩展字段（`ensure()` 幂等初始化）、房间/黑暗/门锁/监控/台账等共享助手、`load_state`/`save_state` |
+| `murder.py` | 谋杀判定（§7.6/§7.7）：条件校验、自卫矩阵、延时装置设置与触发、舞台魔术 |
+| `vote.py` | 投票结算、记忆植入、帮凶继任、武装指认、封存道具分配 |
+| `ledger.py` | 开锁/保险箱/赠送/停电/发电机/监控/调查/伪造/移尸/侧写/看破伪装/封闭空间/密道/窃听器 |
+| `core.py` | `Engine` 类：阶段流转（翻日轮转、清晨公告、倒计时与主神判定）、`enter_rooms`/`night_assign` 归宿结算 |
+
+## 2. 事件契约
+
+所有裁决方法返回统一结构：
+
+```python
+{"ok": bool, "type": "murder" | "vote" | ...,   # ok=False = 非法动作被驳回，状态不变、不公开
+ "public": ...,      # 所有人可见的公告内容
+ "private": {...}}   # 仅特定玩家可见的信息（供编排器按席位分发）
+```
+
+非法动作（次数耗尽、条件不满足、阶段不符）被驳回时**不改变任何状态**且驳回事实不公开（对应规则书 §9.7）。
+
+## 3. 公共 API（Engine 方法）
+
+阶段与流转：
+- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序并任命侦探、第 4 天门锁全开、清晨公告（死亡/职业/监控宣读/封存道具）、无杀倒计时与主神胜利判定
+- `engine.winner` — `None` / `"平民"` / `"反派"` / `"主神"`
+- `enter_rooms(assignments, invited=None)` — 自由活动选房间结算（容量、自动开锁付费、封闭空间、装置触发）
+- `night_assign(assignments=None, invited=None)` — 晚间归宿（留宿邀请、夜间房间行动、杀手夜袭、按顺序冲突处理）
+
+谋杀：
+- `murder(killer, target, weapon=None, savior=None)` — 空手/凶器/环境凶器裁决；`savior` = 同房用急救箱施救者
+- `set_device(user, room)` — 机械师【延时装置】设置（第 1 天禁止）
+- `stage_magic(user, target)` — 魔术师【舞台魔术】（占用当阶段谋杀机会）
+
+投票：
+- `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；`implant={"user":..,"victim":..,"target":..}` 为记忆植入改票
+- `armed_accusation(accuser, suspect)` — 武装指认（第 4 天起、未产生出局者的投票后、持武器平民）
+- `assign_sealed(mapping)` — 封存道具分配（`{道具: 新主人|None(销毁)}`，次日可用）
+
+房间与道具台账：
+- `unlock(user, room)` / `open_safe(user)` / `transfer(giver, receiver, item, accept=True)` / `use_flashlight(user)`
+- `declare_blackout(user)` / `fix_generator(user)`
+- `place_bug(user, room)` / `bug_listen(user)`
+- `seal_room(user, allowed=None)`（建筑师【封闭空间】）、`set_passage(user, room)` / `use_passage(user)`（密道）
+
+监控与调查：
+- `view_monitoring(user, period=None, room=None)` — 查看公开监控（篡改后的口径）
+- `detective_monitoring(user, period, rooms)` — 侦探额外监控查询
+- `tamper_monitoring(user, period, room, op, name, new_name=None)` — 【信号干扰】/「病毒U盘」，`op` ∈ `add`/`remove`/`replace`
+- `investigate(user, case_id, choice)` — 【现场调查】/「鲁米诺试剂」，`choice` ∈ `武器伤痕`/`死亡时间`/`尸体转移`
+- `falsify(user, case_id, kind)` — 伪造类反派技能（`kind` 区分伪造痕迹/销毁证物/伪造证物）
+- `move_body(user, case_id, to_room)` — 【转移尸体】/「裹尸袋」
+- `profile(user, case_id, aspect)` — 【犯罪侧写】，`aspect` ∈ `性别`/`国籍`/`体格`
+- `see_through(user, target, claims)` — 【看破伪装】/「测谎仪」，以**真实**监控记录验证行踪声明
+
+## 4. 状态扩展字段
+
+引擎在 deal.py 产出的 state 上扩展（完整注释见 `state.py` 模块 docstring）：
+
+`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
+
+玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、分配次日可用、转手不改变次数。
+
+## 5. 裁决细则备忘（规则书未明说处的实现裁定）
+
+1. 舞台魔术占用当阶段谋杀机会（它"就是一次谋杀"）。
+2. 自卫武器不消耗次数；急救箱/敏捷闪避触发即消耗（目标同时持有两者时优先耗箱）。**待拍板**：如需"自卫也耗武器"改 `_defense` 一处即可。
+3. 第 1 天禁止设置延时装置（与全天禁杀一致）。
+4. 持枪者被枪击时不能以枪自卫（"枪←无效"）。
+5. 犯罪侧写体格：≥3 报「强壮」，否则「普通」。
+6. 伪造类技能的假结果取确定性值（伤痕取下一项、死亡时间取另一时段、移尸取反）；每起案件只生效一次伪造。
+7. 武装指认错误出局后，同样复查"只剩 1 平民反派胜"。
+8. 记忆植入直接改写选票，公告只说"票数被更改过"。
+9. 延时装置的"拆除"规则书未定义动作，未实现（需要补规则后再加）。
+10. 夜间归宿由引擎按行动顺序自动结算：失败者回自己卧室且只知"无法进入"；夜袭已满 2 人的卧室记为谋杀失败一次（耗机会+重置倒计时）。
+
+## 6. 测试
+
+```bash
+python -m unittest discover -s tests -v   # 64 用例
+```
+
+覆盖：第 1 天禁杀、明暗人数条件、空手四条件与黑暗豁免、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改、锁规则、赠送次数保留、封存次日可用、驳回不改状态（deepcopy 对比）。
+
+## 7. 留给 M4 编排器的部分
+
+自由发言/交谈内容生成与分发、留宿邀请的交互收集、窃听器收听内容下发、道具分配的侦探平票裁决过程、动作菜单生成与三通道 JSON 解析。

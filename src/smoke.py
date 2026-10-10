@@ -17,6 +17,7 @@ import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from .gamedata import physique_desc
 from .prompts import render
 from .providers import ChatResult, chat, load_config
 
@@ -28,9 +29,6 @@ if sys.stdin.encoding and sys.stdin.encoding.lower() != "utf-8":
     sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 
 PERSONAS_PATH = Path(__file__).parent / "personas.toml"
-
-# 体格数值仅用于主持人判定与内部比较；角色只得到文字描述
-PHYSIQUE_DESC = {4: "魁梧", 3: "健壮", 2: "普通", 1: "瘦弱"}
 
 DEFAULT_PROMPT = (
     "你在古堡大厅的地板上醒来，头痛欲裂，想不起自己是谁、为什么会在这里。"
@@ -51,7 +49,7 @@ def describe(name: str, personas: dict) -> str:
     p = personas.get(name)
     if not p:
         return "普通人"
-    physique = PHYSIQUE_DESC.get(p.get("physique"), "普通")
+    physique = physique_desc(p.get("physique"))
     return (
         f"{p.get('gender', '?')}，{p.get('nationality', '?')}人，"
         f"体格{physique}。{p.get('persona', '')}"

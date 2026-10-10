@@ -1,6 +1,6 @@
 # 脚本使用说明（src/ 跑局工具）
 
-本文档说明 `src/` 目录下 Python 脚本的使用方法。当前已完成 M0（配置 + 多协议接入层 + 连通性测试），后续里程碑（开局生成、引擎、编排器、CLI 等）落地后会在本文档追加对应用法，总体计划见 `v2/dev-plan.md`。
+本文档说明 `src/` 目录下 Python 脚本的使用方法。当前已完成 M0（配置 + 多协议接入层 + 连通性测试），后续里程碑（开局生成、引擎、编排器、CLI 等）落地后会在本文档追加对应用法，总体计划见 `rules/dev-plan.md`。
 
 ## 1. 环境准备
 
@@ -77,6 +77,36 @@ python -m src.ping kimi --config src/players.example.toml   # 指定配置文件
 
 注意：ping 发送真实请求，会产生少量 token 计费。
 
+### 3.2 开局生成：deal.py（M1）
+
+从阵容池（`players.toml` + `personas.toml`）抽取席位，随机分配身份/职业/道具/首日行动顺序/保险箱，输出完整对局目录：
+
+```bash
+python -m src.deal                     # 随机种子，输出 game/<seed>/
+python -m src.deal --seed 42           # 指定种子（同 seed 两次生成逐字节一致）
+python -m src.deal --seed 42 --seats gpt,claude,gemini,deepseek,kimi,glm   # 手动指定 6 席（id 或名字）
+python -m src.deal --seed 42 --out games/test   # 自定义输出目录
+```
+
+生成的 `game/<seed>/` 结构：
+
+```
+seed.txt               # 种子（复现与"对局未被操纵"凭证）
+state.json             # 主状态（主持人侧，含身份等全部秘密）
+rules.md               # 本局规则书快照
+players.toml           # 阵容与参数快照
+public/roster.md       # 全员公布角色表（体格为文字描述，不含数值）
+public/announcement.md # 开局公告（主人字条）
+private/<id>/card.md   # 每席私密卡：身份/同伙/职业技能/道具次数/开局准备义务
+inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
+```
+
+内心独白等私密素材（M4 起）按席位归档到 `private/<id>/`（如 `inner.md` 内心独白、私聊记录、个人调查结果），与私密卡并列。
+
+分配约束（生成即校验，违反会报错退出）：身份 4 平民/1 帮凶/1 杀手；职业 9 选 6 不重复；道具 14 选 6 不重复，杀手与帮凶各得一件互不相同的凶器；平民从剩余道具池抽取（可能拿到仅供自卫的武器或无权的反派道具）；保险箱固定 1 件凶器（开局全员公告"主人字条"，但不公布具体哪件）。
+
+控制台输出是**主持人视角**（含身份分配），不要外发。
+
 ## 4. 配置字段参考
 
 `[settings]` 段：
@@ -119,4 +149,7 @@ python -m src.ping kimi --config src/players.example.toml   # 指定配置文件
 | `src/personas.toml` | ✅ 可用 | 角色人设卡（性别/体格/国籍/性格人设），smoke 与后续 prompt 模板共用 |
 | `src/smoke.py` | ✅ 可用 | 连通性测试（席位选择 / 随机抽取 / 真人席位） |
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
-| `src/deal.py` 等 | 待开发 | 开局生成器（M1）、引擎（M3）、编排器（M4）、CLI（M4.5 起）——见 `v2/dev-plan.md` |
+| `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
+| `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](engine.md) |
+| `tests/test_engine.py` | ✅ 可用 | 引擎单测（64 用例）：`python -m unittest discover -s tests` |
+| `src/orchestrator.py` 等 | 待开发 | 编排器主循环（M4）、CLI（M4.5 起）——见 `rules/dev-plan.md` |
