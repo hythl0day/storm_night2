@@ -3,13 +3,15 @@
 # 安全约定：api_key 不落盘，这里只填【环境变量名】，程序运行时读取真实 key。
 
 [settings]
-temperature = 0.8   # 六席统一采样温度，保证公平
+# temperature 不发送：全席统一走渠道默认值（部分上游只接受默认温度），不要在此配置
+max_tokens = 131072 # 全席统一单次输出上限（输出预算，不是上下文窗口）；可在单个席位里同名覆盖
 
 # ---- 国外中转站 4 家 ----
 
 # api_type 可选 "openai"（默认）或 "anthropic"（Claude 原生 /v1/messages 协议）
 
 [[player]]
+id = 'gpt'
 name = "索尔·杰普特"       # ChatGPT
 model = "gpt-6.1-sol"           # TODO: 改成你中转站里的实际模型名
 base_url = "https://apinebula.ai/v1"
@@ -17,13 +19,15 @@ api_key_env = "RELAY_API_KEY_GPT"
 api_type = "openai"
 
 [[player]]
+id = 'claude'
 name = "桑娜·克劳德"       # Claude
 model = "claude-sonnet-5-5"   # TODO
-base_url = "https://apinebula.ai"   # 走原生协议；若中转站支持 anthropic 转发则改成中转站地址
+base_url = "https://apinebula.ai/v1"   # 该站 Claude 兼容 openai 格式，统一走 /v1/chat/completions
 api_key_env = "RELAY_API_KEY_CLAUDE"
-api_type = "anthropic"
+api_type = "openai"
 
 [[player]]
+id = 'gemini'
 name = "杰米娜"     # Gemini
 model = "gemini-3.8-flash"      # TODO
 base_url = "https://apinebula.ai/v1"
@@ -31,38 +35,38 @@ api_key_env = "RELAY_API_KEY_GEMINI"
 api_type = "openai"
 
 [[player]]
+id = 'grok'
 name = "格罗克"     # Grok
 model = "grok-4.7"      # TODO
-base_url = "https://apinebula.ai"
+base_url = "https://apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GROK"
-api_type = "anthropic"
 
 # ---- 国内中转站 4 家 ----
 
 [[player]]
+id = 'deepseek'
 name = "狄西"       # DeepSeek
 model = "deepseek-v4.1-flash"
-base_url = "https://ark.cn-beijing.volces.com/api/plan"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
-api_type = "anthropic"
 
 [[player]]
+id = 'kimi'
 name = "奇米"       # Kimi
 model = "kimi-k3"
-base_url = "https://ark.cn-beijing.volces.com/api/plan"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
-api_type = "anthropic"
 
 [[player]]
+id = 'doubao'
 name = "豆包"       # Doubao
 model = "doubao-seed-2.1-pro"           # TODO
-base_url = "https://ark.cn-beijing.volces.com/api/plan"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
-api_type = "anthropic"
 
 [[player]]
+id = 'glm'
 name = "智谱"       # GLM
 model = "glm-5.3"           # TODO
-base_url = "https://ark.cn-beijing.volces.com/api/plan"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
-api_type = "anthropic"

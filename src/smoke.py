@@ -1,12 +1,12 @@
-"""连通性测试：选定若干席位，各用角色口吻回答同一个问题，并汇总结果。
+"""连通性测试：选定若干席位，各用角色口吻对同一场景做出反应，并汇总结果。
 
 用法：
-    python -m host.smoke                        # 交互式选择席位（可追加真人席位）
-    python -m host.smoke --all                  # 全部席位，不询问
-    python -m host.smoke --random 6             # 随机抽 6 席
-    python -m host.smoke --only 狄西,奇米        # 按名字指定席位
-    python -m host.smoke --human 老陈            # 追加真人席位（回答从键盘输入）
-    python -m host.smoke --config host/players.example.toml --prompt "你为什么被困在古堡里？"
+    python -m src.smoke                        # 交互式选择席位（可追加真人席位）
+    python -m src.smoke --all                  # 全部席位，不询问
+    python -m src.smoke --random 6             # 随机抽 6 席
+    python -m src.smoke --only deepseek,kimi   # 按 id 或名字指定席位
+    python -m src.smoke --human 老陈            # 追加真人席位（回答从键盘输入）
+    python -m src.smoke --config src/players.example.toml --prompt "……"
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from .prompts import render
 from .providers import ChatResult, chat, load_config
 
 # Windows 控制台默认 GBK，强制 UTF-8 输入输出（errors=replace 防止畸形字节崩溃）
@@ -28,7 +29,14 @@ if sys.stdin.encoding and sys.stdin.encoding.lower() != "utf-8":
 
 PERSONAS_PATH = Path(__file__).parent / "personas.toml"
 
-DEFAULT_PROMPT = "用一到两句话做自我介绍，要符合你的角色气质。"
+# 体格数值仅用于主持人判定与内部比较；角色只得到文字描述
+PHYSIQUE_DESC = {4: "魁梧", 3: "健壮", 2: "普通", 1: "瘦弱"}
+
+DEFAULT_PROMPT = (
+    "你在古堡大厅的地板上醒来，头痛欲裂，想不起自己是谁、为什么会在这里。"
+    "壁炉里的火快要熄灭，窗外雷雨交加，大门纹丝不动。周围的沙发上，其他人也陆续醒了过来。"
+    "给出你此刻的反应——可以说话，也可以先行动。"
+)
 
 
 def load_personas(path: Path) -> dict:
@@ -43,27 +51,26 @@ def describe(name: str, personas: dict) -> str:
     p = personas.get(name)
     if not p:
         return "普通人"
+    physique = PHYSIQUE_DESC.get(p.get("physique"), "普通")
     return (
-        f"{p.get('gender', '?')}，{p.get('ethnicity', '?')}裔，"
-        f"体格 {p.get('physique', '?')}。{p.get('persona', '')}"
+        f"{p.get('gender', '?')}，{p.get('nationality', '?')}人，"
+        f"体格{physique}。{p.get('persona', '')}"
     )
 
 
-def ask(player, prompt: str, temperature: float, personas: dict) -> ChatResult:
+def ask(player, prompt: str, personas: dict) -> ChatResult:
     messages = [
         {
             "role": "system",
-            "content": (
-                f"你在身份推理游戏《暴风夜》中扮演{player.name}。"
-                f"角色设定：{describe(player.name, personas)}。"
-                "全程用中文、第一人称说话，保持角色气质。"
-                "注意：以上人设只用于塑造台词风格与人物形象，不涉及你的推理能力——"
-                "分析、判断与策略请完全发挥你的真实水平。"
+            "content": render(
+                "smoke_system.md",
+                name=player.name,
+                profile=describe(player.name, personas),
             ),
         },
         {"role": "user", "content": prompt},
     ]
-    return chat(player, messages, temperature=temperature)
+    return chat(player, messages)
 
 
 def ask_human(name: str, prompt: str) -> ChatResult:
@@ -81,8 +88,8 @@ def pick_seats(players, args, personas):
         return random.sample(players, n), args.human
     if args.only:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}
-        chosen = [p for p in players if p.name in wanted]
-        missing = wanted - {p.name for p in chosen}
+        chosen = [p for p in players if p.name in wanted or p.id in wanted]
+        missing = wanted - {p.name for p in chosen} - {p.id for p in chosen}
         if missing:
             print(f"警告：配置中未找到席位 {sorted(missing)}")
         return chosen, args.human
@@ -90,7 +97,7 @@ def pick_seats(players, args, personas):
     # 交互式选择
     print("可用席位：")
     for i, p in enumerate(players, 1):
-        print(f"  {i}. {p.name}（{describe(p.name, personas)}）")
+        print(f"  {i}. [{p.id or '-'}] {p.name}（{describe(p.name, personas)}）")
     raw = input("选择：all = 全部；r N = 随机 N 席；逗号分隔序号（如 1,3,5）：").strip().lower()
     if raw == "all":
         chosen = players
@@ -111,17 +118,16 @@ def pick_seats(players, args, personas):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="host/players.toml")
+    ap.add_argument("--config", default="src/players.toml")
     ap.add_argument("--prompt", default=DEFAULT_PROMPT)
     ap.add_argument("--all", action="store_true", help="全部席位，不询问")
     ap.add_argument("--random", type=int, metavar="N", help="随机抽 N 席")
-    ap.add_argument("--only", metavar="名字1,名字2", help="按名字指定席位")
+    ap.add_argument("--only", metavar="id1,id2", help="按 id 或名字指定席位")
     ap.add_argument("--human", metavar="名字", help="追加真人席位（可与以上组合）")
     args = ap.parse_args()
 
-    players, settings = load_config(args.config)
+    players, _settings = load_config(args.config)
     personas = load_personas(PERSONAS_PATH)
-    temperature = float(settings.get("temperature", 1.0))
 
     chosen, human_name = pick_seats(players, args, personas)
 
@@ -130,7 +136,7 @@ def main() -> None:
         results.append(ask_human(human_name, args.prompt))
 
     with ThreadPoolExecutor(max_workers=max(1, len(chosen))) as pool:
-        results += list(pool.map(lambda p: ask(p, args.prompt, temperature, personas), chosen))
+        results += list(pool.map(lambda p: ask(p, args.prompt, personas), chosen))
 
     ok = 0
     for r in results:

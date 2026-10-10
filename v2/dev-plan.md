@@ -43,7 +43,7 @@ game-<id>/
 - **配置文件驱动**：`players.toml` 逐席位声明 `{名字, base_url, api_key 环境变量, model, temperature}`，换阵容只改配置。
 - **不依赖原生 tool calling**：结构化动作通过"纯文本 JSON 输出 + 编排器解析校验"实现，避免中转站对 function calling 支持不一的坑；解析失败自动打回重试。
 - **鲁棒性**：中转站稳定性参差，编排器内置超时、重试、断点续跑（每阶段落盘后可从 state.json 恢复）；逐席位记录 token 用量与原始响应存档。
-- **公平性**：温度等采样参数六席统一；每局的 `players.toml` 快照随 `game-<id>/` 归档，阵容与参数可追溯。
+- **公平性**：全席统一不发送 temperature（部分中转站上游只接受默认温度，干脆统一口径）、max_tokens 全席统一；每局的 `players.toml` 快照随 `game-<id>/` 归档，阵容与参数可追溯。
 
 
 ## 1. 设计原则
@@ -58,7 +58,7 @@ game-<id>/
 
 | 模块 | 职责 |
 | ---- | ---- |
-| `deal.py` | 开局生成：角色表（从 `personas.toml`/`players.toml` 选取席位及其性别/体格/人种，全员公布）+ 身份/职业/道具/行动顺序/保险箱/（建筑师密道、窃听器位置在游戏开始后由 AI 声明） |
+| `deal.py` | 开局生成：角色表（从 `personas.toml`/`players.toml` 选取席位及其性别/体格/国籍，全员公布）+ 身份/职业/道具/行动顺序/保险箱/（建筑师密道、窃听器位置在游戏开始后由 AI 声明） |
 | `engine/` | 规则状态机：阶段流转、谋杀判定、投票结算、技能/道具次数台账、胜负判定 |
 | `providers/` | API 适配层：OpenAI 兼容客户端 + Anthropic 原生协议（已实现，按席位 `api_type` 切换），覆盖中转站 4 家 + DeepSeek + Kimi |
 | `orchestrator.py` | 主循环：按阶段生成简报 → 收集各 AI 输出 → 校验动作 → 推状态 → 落盘 |
@@ -99,7 +99,7 @@ temperature = 1.0
 
 | # | 内容 | 验收 |
 |---|------|------|
-| M0 ✅ | 脚手架：`players.toml` 配置 + providers 适配层 + 连通性测试（`python -m host.smoke`） | 你填入真实 provider 信息后，六席各回一句话并汇总 |
+| M0 ✅ | 脚手架：`players.toml` 配置 + providers 适配层 + 连通性测试（`python -m src.smoke`） | 你填入真实 provider 信息后，六席各回一句话并汇总 |
 | M1 | `deal.py` + `state.json` schema | 同 seed 两次生成完全一致；分配约束（杀手/帮凶必得凶器等）全部满足 |
 | M2 | providers 适配层 + `players.toml` | 六家各完成一次最小对话；失败重试可用 |
 | M3 | 引擎核心：房间/移动/谋杀/投票/道具台账 | 单测覆盖 §7 各分支（黑暗、自卫、延时装置、舞台魔术、记忆植入等） |
