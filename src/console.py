@@ -12,7 +12,11 @@
     解析完成后渲染人读卡片（发言亮白加粗 / 内心灰色 / 行动黄色）。
 
 命令：help / status / log [n] / peek <席位> / inner <席位> / host [n] /
-      follow [席位] / pause / resume / save / quit
+      follow [席位] / pause / continue / save / quit
+
+中断统一语义（席位行动粒度）：pause、Ctrl+C、API 调用失败三者等价——当前席位行动结束
+（API 失败则该席未完成）后落盘暂停；输入 continue 在进程内续跑，被中断/待行动的席位自动
+重新执行；quit 退出进程（同样已落盘，可 --resume 恢复）。
 """
 from __future__ import annotations
 
@@ -34,7 +38,7 @@ except ImportError:  # 非 Windows 无 msvcrt；本项目环境为 Windows
     msvcrt = None
 
 from . import viewer
-from .orchestrator import OPENING, Orchestrator
+from .orchestrator import OPENING, AbortRun, Orchestrator
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⦷⦯⦮⦿"
 SEPARATOR = "─" * 40
@@ -47,9 +51,10 @@ HELP = """命令：
   inner <席位>      仅内心独白
   host [n]          API 调用台账（耗时/成败，默认 10 条）
   follow [席位]     跟随某席思考流；不带参数 = 跟随当前调用席（默认）
-  pause / resume    在阶段边界暂停 / 继续
+  pause             在当前席位行动结束后暂停（Ctrl+C 等效；API 失败会自动暂停）
+  continue          暂停后继续跑局（resume 是别名；被中断/待行动席位自动重新执行）
   save              立即落盘 state.json
-  quit              在当前调用结束后退出（进度可 --resume 恢复）"""
+  quit              退出进程（进度已按席位粒度落盘，可 --resume 恢复）"""
 
 
 class Display:
@@ -235,9 +240,10 @@ class Ctx:
     def __init__(self, orch: Orchestrator, display: Display):
         self.orch = orch
         self.display = display
-        self.resume_ev = threading.Event()
-        self.resume_ev.set()
-        self.stop = False
+        self.halt = False                    # 暂停请求（pause/Ctrl+C）：在席位断点生效
+        self.quit_app = False                # 退出进程
+        self.paused = False                  # worker 已停在断点，等待 continue
+        self.continue_ev = threading.Event() # continue 命令置位，唤醒 worker 续跑
         self.done = threading.Event()
         self.follow: str | None = None      # None = 跟随当前调用席
         self.current_seat = ""
@@ -314,8 +320,7 @@ def make_hooks(ctx: Ctx) -> dict:
         "on_payload": on_payload,
         "on_call_end": on_call_end,
         "on_stage": on_stage,
-        "pause_gate": ctx.resume_ev.wait,
-        "should_stop": lambda: ctx.stop,
+        "should_stop": lambda: ctx.halt or ctx.quit_app,
     }
 
 
@@ -342,10 +347,20 @@ def handle_command(line: str, ctx: Ctx) -> None:
             ctx.follow = args[0] if args else None
             print(f"已切换 follow：{ctx.follow or '当前调用席'}")
         elif cmd == "pause":
-            ctx.resume_ev.clear()
-            print("将在当前阶段结束后暂停（resume 继续）")
-        elif cmd == "resume":
-            ctx.resume_ev.set()
+            if ctx.paused:
+                print("已处于暂停状态（continue 继续，quit 退出）")
+            elif ctx.done.is_set():
+                print("跑局已结束，无需暂停")
+            else:
+                ctx.halt = True
+                print("将在当前席位行动结束后暂停并保存（continue 继续）")
+        elif cmd in ("continue", "resume"):
+            if ctx.paused:
+                ctx.continue_ev.set()
+            elif ctx.done.is_set():
+                print("跑局已结束，没有可继续的进度（开新局或 --resume 另一个存档）")
+            else:
+                print("跑局进行中（pause 暂停后才需要 continue）")
         elif cmd == "save":
             try:
                 ctx.orch.save_state()
@@ -353,9 +368,13 @@ def handle_command(line: str, ctx: Ctx) -> None:
             except RuntimeError:
                 print("状态正在变动，落盘失败，请重试")
         elif cmd == "quit":
-            ctx.stop = True
-            ctx.resume_ev.set()     # 解除暂停让 worker 走到边界检查点
-            print("等待当前调用结束后退出…（强制退出请 Ctrl+C，进度可从 --resume 恢复）")
+            ctx.quit_app = True
+            ctx.halt = True
+            ctx.continue_ev.set()   # 若 worker 正暂停等待 continue，唤醒来走退出分支
+            if ctx.paused:
+                print("退出中…")
+            else:
+                print("等待当前席位行动结束后退出…（再按 Ctrl+C 立即强制退出，进度可从 --resume 恢复）")
         else:
             print(f"未知命令 {cmd!r}，输入 help 查看")
     except Exception as e:
@@ -365,7 +384,7 @@ def handle_command(line: str, ctx: Ctx) -> None:
 def status_bar(ctx: Ctx) -> str:
     ph = ctx.orch.state["phase"]
     parts = [f"第{ph['day']}天·{ph['stage']}"]
-    if not ctx.resume_ev.is_set():
+    if ctx.paused:
         parts.append("⏸已暂停")
     if ctx.current_seat:
         el = time.monotonic() - ctx.call_start
@@ -385,27 +404,45 @@ def ticker(ctx: Ctx) -> None:
 
 
 def worker(ctx: Ctx) -> None:
-    try:
-        ctx.orch.run_game()
-        if ctx.stop:
-            print("\n== 已在阶段边界停止，可用 --resume 续跑 ==")
-        elif ctx.orch.state["winner"]:
-            w = ctx.orch.state
-            print(f"\n== 对局结束：{w['winner']}获胜——{w.get('win_reason', '')} ==")
-            print("（可继续用命令查看，quit 退出）")
-        else:
-            ph = ctx.orch.state["phase"]
-            print(f"\n== 跑局结束：第{ph['day']}天 · {ph['stage']} ==")
-            print("（可继续用命令查看，quit 退出）")
-    except Exception as e:
-        print(f"\n[编排器异常] {type(e).__name__}: {e}")
-    finally:
-        ctx.done.set()
+    """跑局工作线程：pause/Ctrl+C（halt → SoftStop）与 API 失败（AbortRun）统一在此收束为
+    "暂停等待"状态——进度已按席位粒度落盘；continue 命令置位 continue_ev 后在进程内续跑，
+    被中断/待行动的席位自动重新执行；quit 随时可退出进程。"""
+    orch = ctx.orch
+    while True:
+        try:
+            orch.run_game()
+            if orch.state["winner"]:
+                w = orch.state
+                print(f"\n== 对局结束：{w['winner']}获胜——{w.get('win_reason', '')} ==")
+                print("（可继续用命令查看，quit 退出）")
+                break
+            # run_game 未分胜负即返回 = halt 请求在席位断点生效（pause / Ctrl+C / quit）
+        except AbortRun as e:
+            print(f"\n[跑局中断] API 调用失败：{e}")
+        except Exception as e:
+            print(f"\n[编排器异常] {type(e).__name__}: {e}（进度已保存）")
+        if ctx.quit_app:
+            print("\n== 已退出跑局（进度已保存，可用 --resume 续跑） ==")
+            break
+        ctx.halt = False
+        ctx.paused = True
+        print("\n== 已暂停，进度已保存（席位行动粒度）==")
+        print("continue 继续（被中断/待行动的席位自动重新执行）；quit 退出（可 --resume 续跑）")
+        while not ctx.continue_ev.wait(0.2):
+            if ctx.quit_app:
+                break
+        ctx.paused = False
+        ctx.continue_ev.clear()
+        if ctx.quit_app:
+            print("\n== 已退出（进度已保存，可用 --resume 续跑） ==")
+            break
+        print("== 继续跑局 ==")
+    ctx.done.set()
 
 
 def input_loop(ctx: Ctx) -> None:
     buf = ""
-    while not ctx.stop:
+    while not ctx.quit_app:
         if msvcrt is not None and msvcrt.kbhit():
             ch = msvcrt.getwch()
             if ch in ("\r", "\n"):
@@ -417,7 +454,8 @@ def input_loop(ctx: Ctx) -> None:
                 buf = buf[:-1]
                 ctx.display.set_input(buf)
             elif ch == "\x03":
-                handle_command("quit", ctx)
+                # Ctrl+C 与 pause 同语义；已暂停/已结束时再按 = 退出
+                handle_command("quit" if (ctx.paused or ctx.done.is_set()) else "pause", ctx)
             elif ch in ("\xe0", "\x00"):
                 msvcrt.getwch()     # 丢弃功能键第二字节
             elif ch >= " ":
@@ -468,13 +506,26 @@ def main() -> None:
         t_tick.start()
 
         try:
-            input_loop(ctx)
-        except KeyboardInterrupt:
-            ctx.stop = True
-            ctx.resume_ev.set()
+            while not ctx.quit_app:
+                try:
+                    input_loop(ctx)
+                except KeyboardInterrupt:
+                    # Ctrl+C 与 pause 同语义；已暂停/已结束时再按 = 退出
+                    if ctx.paused or ctx.done.is_set():
+                        ctx.quit_app = True
+                        ctx.continue_ev.set()
+                    else:
+                        ctx.halt = True
+                        print("\n[Ctrl+C] 将在当前席位行动结束后暂停并保存"
+                              "（continue 继续；暂停后再按 Ctrl+C 或输入 quit 退出）")
+        except Exception as e:
+            print(f"输入循环异常：{type(e).__name__}: {e}")
+            ctx.quit_app = True
+            ctx.halt = True
+            ctx.continue_ev.set()
 
         if t_work.is_alive():
-            print("等待当前调用结束、在阶段边界安全退出…（再按 Ctrl+C 立即强制退出）")
+            print("等待当前席位行动结束后安全退出…（再按 Ctrl+C 立即强制退出）")
             try:
                 while t_work.is_alive():
                     t_work.join(timeout=0.5)

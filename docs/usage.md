@@ -106,17 +106,17 @@ inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
 
 ```bash
 python -m src.orchestrator --game game/012345            # 从当前阶段跑到对局结束
-python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（阶段粒度）
+python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（席位行动粒度）
 ```
 
 全天流程：开局准备（仅第 1 天；仅反派建筑师/窃听器持有者有义务，其余跳过）→ 案件调查（第 2 天起：清晨公告由引擎自动路由，调查自荐现场调查/犯罪侧写，侦探额外监控特权）→ 公共发言（侦探最后发言）→ 交换环节（先问赠送者，再单独问接收者）→ 投票（第 2 天起：逐席收票、反派心理医生可夹带记忆植入、遗言先于身份公布、封存道具逐件多数决且平票取侦探票、第 4 天起无人出局时持武器平民可武装指认——每次投票至多一次指认）→ 自由活动（停电声明并入选房菜单；秘密选房+同入邀请；引擎结算；≥2 人且非黑暗房间一轮房间内交谈；逐人房间行动菜单；阶段末毁证窗口）→ 晚间休息（留宿邀请、夜间房间行动、杀手夜袭与夜间谋杀窗口，选择互相不可见）→ 次日清晨。任一胜负条件满足即收束，结局写入 public/log.md。
 
 行为约定：
 
-- **消息结构**：system = `prompt/game_system.md` 渲染（人设 + 规则书快照 + 私密卡），user = 当次简报；对话不累积，记忆靠 notes 通道（每阶段原样返还）+ 增量简报。全部顺序执行，不并发。
+- **消息结构**：system = `prompt/game_system.md` 渲染（人设 + 规则书快照 + 私密卡），user = 当次简报；对话不累积。简报 = 增量公告 + 增量私密事件 + 当前局面 + **关键记录**（主持人档案：公开事实流水剔除发言 + 该席私密事件历史，含投票/房间/谋杀回执等）+ notes 回放 + 合法动作菜单。全部顺序执行，不并发。
 - **JSON 解析**：从回复提取 ```json 代码块；失败重试 ≤2 次；仍失败记"放弃行动"（能抢救出 speech 仍采用）。非法动作逐条驳回（私下告知本人），其余动作正常执行。
-- **断点续跑**：每阶段结束 state.json 落盘；`--resume` 从当前阶段重跑该阶段（选房/晚间归宿已完成则由引擎标记跳过，发言类环节会重新调用）。
-- **席位失败**：某席 API 连续失败记 log 并按"放弃行动"继续，不中断整局。
+- **断点续跑（席位行动粒度）**：每个席位行动完成后即落盘 state.json（`orch.wip` 按"天：阶段：子环节"记录 done 名单与中间累计，如选票/选房结果）；`--resume` 重入当前环节并跳过已完成席位，被中断席位用相同简报重问（feed 游标与私密队列只在调用成功后提交）。
+- **席位失败即中断**：某席 API 请求失败（providers 内部重试耗尽后仍失败）不再记"放弃行动"继续，而是落盘并中断整局（退出码 2）；排除故障后 `--resume` 续跑，被中断席位会重新行动。Ctrl+C 同样先落盘再退出（退出码 130）。
 
 落盘产物（`game/<id>/`）：
 
@@ -150,9 +150,11 @@ python -m src.view follow --game game/012345 --interval 5   # 轮询刷新追局
 python -m src.console --game game/012345 [--resume]
 ```
 
-命令（跑局进行中随时可敲，不打断进行中的调用）：`help` / `status` / `log [n]` / `peek <席位>` / `inner <席位>` / `host [n]` / `follow [席位]` / `pause` / `resume` / `save` / `quit`。`pause` 在阶段边界暂停；`quit` 与第一次 Ctrl+C 都会等当前调用结束、在阶段边界安全退出（进度可 `--resume` 恢复）；第二次 Ctrl+C 立即强制退出。
+命令（跑局进行中随时可敲，不打断进行中的调用）：`help` / `status` / `log [n]` / `peek <席位>` / `inner <席位>` / `host [n]` / `follow [席位]` / `pause` / `continue` / `save` / `quit`。
 
-中断安全性：state.json 为原子写（临时文件 + 替换），强杀不会留下半个文件；被中断的那次 API 调用结果丢弃，但上游可能已计费。注意断点是**阶段粒度**：发言类环节中途强杀后 `--resume` 会从头重跑该环节（public/log.md 里已写入的发言不会自动去重，强杀尽量用在阶段初期）。
+中断统一语义（`pause`、Ctrl+C、API 调用失败三者等价）：当前席位行动结束（API 失败则该席未完成）后立即落盘并暂停；输入 `continue`（别名 `resume`）在进程内续跑——被中断/待行动的席位自动重新执行，已完成席位不会重复。`quit` 退出进程（同样已落盘，可 `--resume` 恢复）；暂停或结束后仍可用 `status`/`log`/`peek` 等查看；暂停态/结束态下再按 Ctrl+C 直接退出。
+
+中断安全性：state.json 为原子写（临时文件 + 替换），强杀不会留下半个文件；断点是**席位行动粒度**——每个席位行动完成后即落盘，任何时刻中断，续跑都从中断席位继续，已完成的席位不会重复行动（其发言/动作已落盘）。被中断的那次 API 调用结果丢弃，但上游可能已计费。无头模式（`python -m src.orchestrator`）下 API 失败则打印错误并以退出码 2 退出，`--resume` 续跑。
 
 流式说明：console 跑局走 SSE 流式（推理内容淡色显示）；超时分层为连接 10s / 停滞看门狗 90s / 单次总墙钟 600s；上游不支持流式时自动回退非流式。无头模式（`python -m src.orchestrator`，供 M6 批量跑局）行为不变，与 console 共用同一个 `Orchestrator.run_game()`。
 
@@ -211,7 +213,7 @@ python tools/bench.py --skip-long
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
 | `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
 | `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](engine.md) |
-| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归（test_balance）+ 编排 mock 全流程（test_orchestrator_game）共 85 用例：`python -m unittest discover -s tests` |
+| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归（test_balance）+ 编排 mock 全流程（test_orchestrator_game，含中断续跑/API 失败/关键记录）共 89 用例：`python -m unittest discover -s tests` |
 | `prompt/game_system.md` | ✅ 可用 | 对局系统提示模板（扮演设定 + 输出契约 + 规则书 + 私密卡），占位符 {name}/{profile}/{card}/{rules} |
 | `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
 | `src/viewer.py` | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py 与 console.py 共用 |

@@ -117,9 +117,12 @@ class MockGameTestBase(unittest.TestCase):
         self.root = Path(self.tmp.name)
 
     def run_game(self, game_dir: Path, killer_script: bool, hooks: dict | None = None):
+        return self.run_game_with(game_dir, make_fake_chat(killer_script), hooks=hooks)
+
+    def run_game_with(self, game_dir: Path, chat_fn, hooks: dict | None = None):
         orch = Orchestrator(game_dir, hooks=hooks)
         orig = orchestrator.chat
-        orchestrator.chat = make_fake_chat(killer_script)
+        orchestrator.chat = chat_fn
         try:
             orch.run_game()
         finally:
@@ -221,6 +224,117 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("- 投票明细：", script)
         self.assertIn("封存道具分配结果：万能钥匙→D", script)
         self.assertIn("游戏结束：平民获胜", script)
+
+    def test_briefing_key_records(self):
+        """简报含"截至目前的关键记录"：公共事实流水 + 该席私密历史；不含发言与内心独白。"""
+        d = write_game_dir(self.root, self.players())
+        self.run_game(d, killer_script=True)
+        b = (d / "inbox" / "C" / "day3-投票.md").read_text(encoding="utf-8")
+        self.assertIn("## 截至目前的关键记录", b)
+        self.assertIn("### 公共记录", b)
+        self.assertIn("### 与你相关的私密记录", b)
+        self.assertIn("投票结果", b)              # 公共记录含第 2 天投票结果
+        self.assertIn("第2天投票记录：你弃权", b)  # 私密记录含本人历史投票
+        section = b.split("## 截至目前的关键记录", 1)[1].split("## 你的私人笔记", 1)[0]
+        self.assertNotIn("**", section)   # 发言行（**名字**：…）不进关键记录
+        self.assertNotIn("……", section)   # mock 的 inner 固定为 "……"：内心独白不进简报
+
+
+class TestInterruptAndResume(MockGameTestBase):
+    """席位粒度断点：API 失败 / Ctrl+C / 席位间隙停止都会落盘，续跑跳过已完成席位、重问被中断席位。
+
+    默认阵容 order=A..F；侦探次日才设立（第 1 天 detective=None），故第 1 天发言顺序即 A,B,C,D,E,F。
+    """
+
+    @staticmethod
+    def _flaky_once(pred, fail):
+        """包装健康策略：第一次命中 pred(name, title) 的调用按 fail 方式失败一次。"""
+        base = make_fake_chat(False)
+        state = {"fired": False}
+
+        def wrapper(player, messages, *, on_token=None, reasoning_effort=None):
+            title = messages[-1]["content"].splitlines()[0]
+            if not state["fired"] and pred(player.name, title):
+                state["fired"] = True
+                return fail(player)
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        return wrapper
+
+    def _run_expecting(self, d, chat_fn, exc_type):
+        orch = Orchestrator(d)
+        orig = orchestrator.chat
+        orchestrator.chat = chat_fn
+        try:
+            with self.assertRaises(exc_type):
+                orch.run_game()
+        finally:
+            orchestrator.chat = orig
+
+    def test_api_failure_aborts_and_resume_recovers(self):
+        d = write_game_dir(self.root, default_players())
+        chat = self._flaky_once(
+            lambda name, title: name == "C" and title.startswith("# 第1天 · 公共发言"),
+            lambda player: ChatResult(player.name, ok=False, error="模拟 API 故障", latency=0.01),
+        )
+        self._run_expecting(d, chat, orchestrator.AbortRun)
+        saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["phase"], {"day": 1, "stage": "公共发言"})
+        self.assertEqual(saved["orch"]["wip"]["1:公共发言:发言"]["done"], ["A", "B"])  # C 被中断时 A/B 已完成
+        self.assertNotIn("C", saved["orch"]["cursor"])         # 被中断席位的 feed 游标未提交
+        self.assertIn("模拟 API 故障", (d / "host_log.jsonl").read_text(encoding="utf-8"))
+        orch2 = self.run_game(d, killer_script=False)  # 健康续跑直达结局
+        self.assertEqual(orch2.state["winner"], "主神")
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertEqual(log.count("**A**：A 的第1天发言"), 1)  # 已完成席位不重问
+        self.assertEqual(log.count("**C**：C 的第1天发言"), 1)  # 被中断席位重问且只成功一次
+
+    def test_keyboard_interrupt_saves_and_resume(self):
+        d = write_game_dir(self.root, default_players())
+
+        def ki(player):
+            raise KeyboardInterrupt
+
+        chat = self._flaky_once(
+            lambda name, title: name == "D" and title.startswith("# 第1天 · 公共发言"), ki)
+        self._run_expecting(d, chat, KeyboardInterrupt)
+        saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["phase"], {"day": 1, "stage": "公共发言"})
+        self.assertEqual(saved["orch"]["wip"]["1:公共发言:发言"]["done"], ["A", "B", "C"])  # D 被中断
+        orch2 = self.run_game(d, killer_script=False)
+        self.assertEqual(orch2.state["winner"], "主神")
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        for n in "ACD":
+            self.assertEqual(log.count(f"**{n}**：{n} 的第1天发言"), 1)
+
+    def test_soft_stop_mid_stage(self):
+        """console pause/Ctrl+C 语义：当前席位行动完成后停下；continue = 同一实例再跑 run_game。"""
+        d = write_game_dir(self.root, default_players())
+        calls = {"n": 0}
+        base = make_fake_chat(False)
+
+        def counting(player, messages, *, on_token=None, reasoning_effort=None):
+            calls["n"] += 1
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        # 第 1 天调用序：F 开局准备(1) → 发言 A,B,C,D,E,F(2-7) → 交换 A(8)：第 8 次后停 = 交换环节中途
+        orch = Orchestrator(d, hooks={"should_stop": lambda: calls["n"] >= 8})
+        orig = orchestrator.chat
+        orchestrator.chat = counting
+        try:
+            orch.run_game()
+            self.assertIsNone(orch.state["winner"])
+            saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
+            self.assertIsNone(saved["winner"])
+            self.assertEqual(saved["phase"]["day"], 1)  # 第 1 天尚未跑完
+            orch.hooks = {}   # console continue：清掉停止标记，同一实例直接再跑（进程内续跑）
+            orch.run_game()
+            self.assertEqual(orch.state["winner"], "主神")
+        finally:
+            orchestrator.chat = orig
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        for n in "ABCDEF":
+            self.assertEqual(log.count(f"**{n}**：{n} 的第1天发言"), 1)  # 断点续跑无重复发言
 
 
 if __name__ == "__main__":

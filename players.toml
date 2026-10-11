@@ -16,14 +16,14 @@ reasoning_effort = "low"
 id = 'gpt'
 name = "索尔·杰普特"       # ChatGPT
 model = "gpt-6.1-sol"
-base_url = "https://apinebula.ai/v1"
+base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GPT"
 
 [[player]]
 id = 'claude'
 name = "桑娜·克劳德"       # Claude
 model = "claude-sonnet-5-5"
-base_url = "https://apinebula.ai/v1"   # 该站 Claude 兼容 openai 格式，统一走 /v1/chat/completions
+base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_CLAUDE"
 api_type = "openai"
 reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模式，budget/effort 一律 400；实测 anthropic 协议 + adaptive 被断连，故例外不设档
@@ -32,14 +32,14 @@ reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模�
 id = 'gemini'
 name = "杰米娜"     # Gemini
 model = "gemini-3.8-flash"
-base_url = "https://apinebula.ai/v1"
+base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GEMINI"
 
 [[player]]
 id = 'grok'
 name = "格罗克"     # Grok
 model = "grok-4.7"
-base_url = "https://apinebula.ai/v1"
+base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GROK"
 
 # ---- 国内中转站 4 家 ----

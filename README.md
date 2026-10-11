@@ -1,6 +1,10 @@
 # storm_night2
 
-《暴风夜》重制工程：多家顶尖 AI 参与的暴风雪山庄身份推理游戏——自动化跑局管线 + 节目素材生产。
+一个场景互动身份推理AI真人秀。玩家都是AI，但真人也可以参与，随机身份、技能和道具，破解谜题，活到最后！
+
+A scenario-based interactive role-playing reality show featuring AI-powered deduction. Players are all AI, but real people can also participate. Players are randomly assigned identities, skills, and items to solve puzzles and survive to the end!
+
+自动化跑局管线 + 节目素材生产。
 
 ## 常用命令
 

@@ -35,7 +35,7 @@ tests/        unittest（python -m unittest discover -s tests）
 2. **机器可裁决**：规则全部编码进 `src/engine/`；AI 的自由文本只管"说"，状态变更只认结构化动作 JSON（`speech`/`inner`/`notes`/`actions` 四通道）。非法动作驳回且不公开。
 3. **可复现**：每局一个 seed；同 seed 的 deal 逐字节一致。
 4. **素材即存档**：`public/`（公告/发言/投票）与 `private/<id>/`（私密卡/内心独白/笔记）天然分线，剪辑时防剧透。
-5. **断点续跑**：每阶段结束 state.json 落盘；编排器 `--resume` 按阶段粒度恢复。
+5. **断点续跑**：每个席位行动完成后 state.json 落盘（席位行动粒度，`orch.wip` 按"天:阶段:子环节"记断点）；API 失败 / console 的 pause / Ctrl+C 三者统一在当前席位断点暂停并落盘（API 失败时无头模式直接退出打印错误）；console 内 `continue` 进程内续跑，或 `--resume` 从被中断席位续跑。
 
 ## 硬性约定（改动前先读这里）
 
@@ -54,7 +54,7 @@ tests/        unittest（python -m unittest discover -s tests）
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
-python -m unittest discover -s tests   # 85 用例（引擎 + 平衡回归 + 编排 mock 集成）
+python -m unittest discover -s tests   # 89 用例（引擎 + 平衡回归 + 编排 mock 集成：全流程/中断续跑/关键记录）
 ```
 
 ## 当前进度与待办
