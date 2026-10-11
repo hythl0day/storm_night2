@@ -96,7 +96,7 @@ def make_fake_chat(killer_script: bool):
         elif "房间行动" in title or "夜袭" in title:
             if killer_script and '"type": "murder"' in briefing and name in ("A", "B"):
                 t = re.search(r'"target": "([^"|]+)"', briefing)
-                acts = [{"type": "murder", "target": t.group(1), "weapon": "刀" if name == "A" else "毒药"}]
+                acts = [{"type": "murder", "target": t.group(1), "weapon": "刀" if name == "A" else "不明药剂"}]
         elif "晚间休息" in title or "毁证机会" in title or "交换环节" in title:
             pass
         return ChatResult(
@@ -216,7 +216,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         # 受害者 E/F 均无自卫手段（C 的急救箱、D 的侧写都挡不了谋杀，故不选他们做目标）。
         return [
             P("A", "杀手", "黑客", "刀", gender="男", physique=4),
-            P("B", "帮凶", "机械师", "毒药", gender="女", physique=2),
+            P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2),
             P("C", "平民", "医师", "急救箱", gender="女", physique=3),
             P("D", "平民", "犯罪侧写师", "手电筒", gender="男", physique=3),
             P("E", "平民", "建筑师", "万能钥匙", gender="男", physique=2),
@@ -249,7 +249,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         # script.md 全记录：秘密谋杀行动、房间内交谈、投票明细、道具分配结果均可见
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn('- A 声明 {"type": "murder", "target": "E", "weapon": "刀"} → 成功', script)
-        self.assertIn('- B 声明 {"type": "murder", "target": "F", "weapon": "毒药"} → 成功', script)
+        self.assertIn('- B 声明 {"type": "murder", "target": "F", "weapon": "不明药剂"} → 成功', script)
         self.assertIn("书房内交谈", script)  # v3：案发前的同房交谈（书房）
         self.assertIn("- 投票明细：", script)
         self.assertIn("封存道具分配结果：万能钥匙→D", script)
@@ -272,7 +272,7 @@ class TestCivilianWinEnding(MockGameTestBase):
     def test_night_features_v3(self):
         """v3 夜间特性端到端：密道（建筑师帮凶夜用）、窃听器内容真实下发、守夜密谈、清晨状态行/状态表。"""
         players = self.players()
-        players[1] = P("B", "帮凶", "建筑师", "毒药", gender="女", physique=2)  # 密道持有者
+        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)  # 密道持有者
         d = write_game_dir(self.root, players)
         base = make_fake_chat(True)
 

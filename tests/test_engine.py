@@ -39,7 +39,7 @@ def P(name, identity, profession, item, gender="男", physique=2, nationality="�
 def default_players():
     return [
         P("A", "杀手", "魔术师", "刀", gender="男", physique=4),
-        P("B", "帮凶", "机械师", "毒药", gender="女", physique=2),
+        P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2),
         P("C", "平民", "医师", "急救箱", gender="女", physique=3),
         P("D", "平民", "运动员", "手电筒", gender="男", physique=3),
         P("E", "平民", "黑客", "万能钥匙", gender="男", physique=2),
@@ -102,7 +102,7 @@ class TestSampleState(unittest.TestCase):
             self.assertTrue(skills, f"{p['name']} 缺少技能台账")
             self.assertTrue(all(n > 0 for n in skills.values()))
         killer = next(p for p in st["players"] if p["identity"] == "杀手")
-        self.assertIn(killer["items"][0]["name"], {"消音手枪", "刀", "棒球棍", "毒药"})
+        self.assertIn(killer["items"][0]["name"], {"消音手枪", "刀", "棒球棍", "不明药剂"})
 
     def test_sample_day1_flow_and_rotation(self):
         eng = Engine(load_state(FIXTURE))
@@ -239,7 +239,7 @@ class TestMurderConditions(unittest.TestCase):
 
     def test_dark_presence_two_civilians_allowed_via_blackout(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "投票", day=2)
         self.assertTrue(eng.declare_blackout("B")["ok"])
@@ -308,9 +308,9 @@ class TestSelfDefense(unittest.TestCase):
             players = default_players()
             players[0] = P("A", "杀手", "魔术师", weapon, gender="男", physique=4)
             players[4] = P("E", "平民", "黑客", defender, gender="男", physique=2)
-            safe = "毒药" if weapon != "毒药" and defender != "毒药" else "消音手枪"
+            safe = "不明药剂" if weapon != "不明药剂" and defender != "不明药剂" else "消音手枪"
             if defender == "消音手枪" or weapon == "消音手枪":
-                safe = "毒药"
+                safe = "不明药剂"
             eng = Engine(mk_state(players=players, safe_item=safe))
             self.rooms_for(eng)
             ev = eng.murder("A", "E", weapon=weapon)
@@ -327,41 +327,41 @@ class TestSelfDefense(unittest.TestCase):
         self.assertEqual(ev["type"], "murder", ev)
 
     def test_poison_as_medicine_self_defense(self):
-        """毒药药用：持有者遇袭时自动当作急救药（防一切袭击，用后消耗）。"""
+        """不明药剂药用：持有者遇袭时自动当作急救药（防一切袭击，用后消耗）。"""
         players = default_players()
-        players[4] = P("E", "平民", "黑客", "毒药", gender="男", physique=2)
+        players[4] = P("E", "平民", "黑客", "不明药剂", gender="男", physique=2)
         eng = Engine(mk_state(players=players, safe_item="棒球棍"))
         self.rooms_for(eng)
         ev = eng.murder("A", "E", weapon="刀")
         self.assertEqual(ev["type"], "murder_attempt", ev)
-        self.assertNotIn("毒药", items_of(eng, "E"))
+        self.assertNotIn("不明药剂", items_of(eng, "E"))
 
     def test_poison_as_medicine_saves_roommate(self):
-        """毒药药用：可救治同房被袭者（等同急救箱救他人）；黑暗房 ≤2 平民条件在地下室满足。"""
+        """不明药剂药用：可救治同房被袭者（等同急救箱救他人）；黑暗房 ≤2 平民条件在地下室满足。"""
         players = default_players()
-        players[3] = P("D", "平民", "运动员", "毒药", gender="男", physique=3)
+        players[3] = P("D", "平民", "运动员", "不明药剂", gender="男", physique=3)
         eng = Engine(mk_state(players=players, safe_item="棒球棍"))
         free2(eng, {"A": "地下室", "E": "地下室", "D": "地下室", "B": "监控室", "C": "会客室", "F": "会客室"})
         ev = eng.murder("A", "E", weapon="刀", savior="D")
         self.assertEqual(ev["type"], "murder_attempt", ev)
-        self.assertNotIn("毒药", items_of(eng, "D"))
+        self.assertNotIn("不明药剂", items_of(eng, "D"))
         self.assertFalse(eng.state["cases"])  # 无人死亡
 
     def test_poison_only_defended_by_kit_or_dodge(self):
         eng = Engine(mk_state())
         goto(eng, "公共发言", day=2)
-        ev = eng.transfer("B", "A", "毒药")
+        ev = eng.transfer("B", "A", "不明药剂")
         self.assertTrue(ev["ok"], ev)
         players_rooms = {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"}
         free2(eng, players_rooms)
-        ev = eng.murder("A", "E", weapon="毒药")
+        ev = eng.murder("A", "E", weapon="不明药剂")
         self.assertEqual(ev["type"], "murder", ev)
 
         eng = Engine(mk_state())
         goto(eng, "公共发言", day=2)
-        eng.transfer("B", "A", "毒药")
+        eng.transfer("B", "A", "不明药剂")
         free2(eng, {"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
-        ev = eng.murder("A", "D", weapon="毒药")
+        ev = eng.murder("A", "D", weapon="不明药剂")
         self.assertEqual(ev["type"], "murder_attempt", ev)
         self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 0)
 
@@ -525,7 +525,7 @@ class TestVote(unittest.TestCase):
 
     def test_memory_implant(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "心理医生", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "心理医生", "不明药剂", gender="女", physique=2)
         votes = {"A": "C", "B": "C", "C": "A", "D": "A", "E": "A", "F": None}
         eng = Engine(mk_state(players=players))
         goto(eng, "投票", day=2)
@@ -584,9 +584,9 @@ class TestVote(unittest.TestCase):
         self.assertFalse(ev["ok"])
 
     def test_armed_accusation_poison_not_a_weapon(self):
-        """毒药不能用于武装指认（rules-6 §7.3：仅消音手枪/刀/棒球棍可威慑指认）。"""
+        """不明药剂不能用于武装指认（rules-6 §7.3：仅消音手枪/刀/棒球棍可威慑指认）。"""
         players = default_players()
-        players[4] = P("E", "平民", "黑客", "毒药", gender="男", physique=2)
+        players[4] = P("E", "平民", "黑客", "不明药剂", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "B", "F": "B"})  # 平票无人出局
@@ -726,7 +726,7 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
 
     def test_investigate_truth_and_falsify(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "医师", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         self.kill_e_day2(eng)
         ev = eng.falsify("B", 1, "伪造痕迹")
@@ -750,7 +750,7 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
 
     def test_falsify_rejected_when_witnessed(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "医师", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         free2(eng, {"A": "地下室", "C": "地下室", "E": "地下室", "B": "监控室", "D": "会客室", "F": "会客室"})
         eng.murder("A", "E")
@@ -759,7 +759,7 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
 
     def test_move_body(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "运动员", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "运动员", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         self.kill_e_day2(eng)
         ev = eng.move_body("B", 1, "地下室")
@@ -813,7 +813,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
 
     def test_tamper_monitoring(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=1)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "书房", "D": "会客室", "E": "会客室", "F": "会客室"})
@@ -827,7 +827,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertFalse(eng.tamper_monitoring("B", "第1天自由活动", "书房", "add", "B")["ok"])
 
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=1)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
@@ -902,7 +902,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
 
     def test_flashlight_and_blackout(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"D": "地下室", "E": "地下室", "A": "书房", "B": "监控室", "C": "会客室", "F": "会客室"})
@@ -933,7 +933,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
 
     def test_blackout_window_until_rooms_entered(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         ev = eng.declare_blackout("B")
@@ -942,7 +942,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertTrue(eng.enter_rooms(rooms)["ok"])
         self.assertEqual(eng.state["rooms_entered"], "第2天自由活动")
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng2 = Engine(mk_state(players=players))
         goto(eng2, "自由活动", day=2)
         self.assertTrue(eng2.enter_rooms(rooms)["ok"])
@@ -984,7 +984,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         """v3 密道：开局确认不绑出口；仅晚间可用；出口三功能房任选；人数条件不满足当晚失败但保留；
         成功一次后损毁；监控无痕（记录上此人当晚在卧室）。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "建筑师", "毒药", gender="女", physique=2)
+        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         ev = eng.set_passage("B")
         self.assertTrue(ev["ok"], ev)

@@ -33,13 +33,13 @@
 - `night_assign(assignments=None, invited=None)` — 晚间归宿（守夜邀请、夜间房间行动、杀手夜袭、按顺序冲突处理；会客室夜间不开放）
 
 谋杀：
-- `murder(killer, target, weapon=None, savior=None)` — 空手/凶器/环境凶器裁决；`savior` = 同房用急救箱/毒药（药用）施救者
+- `murder(killer, target, weapon=None, savior=None)` — 空手/凶器/环境凶器裁决；`savior` = 同房用急救箱/不明药剂（药用）施救者
 - `set_device(user, room)` — 机械师【延时装置】设置（第 1 天禁止）
 - `stage_magic(user, target)` — 魔术师【舞台魔术】（占用当阶段谋杀机会）
 
 投票：
 - `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；`implant={"user":..,"victim":..,"target":..}` 为记忆植入改票
-- `armed_accusation(accuser, suspect)` — 武装指认（v3：第 2 天首次投票起、未产生出局者的投票后、持武器平民；武器口径 = 枪/刀/棍，不含毒药）
+- `armed_accusation(accuser, suspect)` — 武装指认（v3：第 2 天首次投票起、未产生出局者的投票后、持武器平民；武器口径 = 枪/刀/棍，不含不明药剂）
 - `assign_sealed(mapping)` — 封存道具分配（`{道具: 新主人|None(销毁)}`，次日可用）
 
 房间与道具台账：
@@ -69,7 +69,7 @@
 ## 5. 裁决细则备忘（规则书未明说处的实现裁定）
 
 1. 舞台魔术占用当阶段谋杀机会（它"就是一次谋杀"）。
-2. 自卫武器不消耗次数；急救箱/毒药（药用）/敏捷闪避触发即消耗（目标同时持有急救箱与毒药时优先耗箱）。**待拍板**：如需"自卫也耗武器"改 `_defense` 一处即可。
+2. 自卫武器不消耗次数；急救箱/不明药剂（药用）/敏捷闪避触发即消耗（目标同时持有急救箱与不明药剂时优先耗箱）。**待拍板**：如需"自卫也耗武器"改 `_defense` 一处即可。
 3. 第 1 天禁止设置延时装置（与全天禁杀一致）。
 4. 持枪者被枪击时不能以枪自卫（"枪←无效"）。
 5. 犯罪侧写体格：≥3 报「强壮」，否则「普通」。

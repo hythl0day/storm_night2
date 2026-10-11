@@ -51,7 +51,7 @@ class TestCivilianStacking(unittest.TestCase):
     def test_a3_counter_blackout(self):
         """反制·停电：帮凶声明停电后书房变黑暗，谋杀人数限制放宽到 ≤2，两人扎堆被撕开。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "运动员", "毒药", gender="女", physique=2)  # 运动员反派技能含【暴力破解】
+        players[1] = P("B", "帮凶", "运动员", "不明药剂", gender="女", physique=2)  # 运动员反派技能含【暴力破解】
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         ev = eng.declare_blackout("B")
