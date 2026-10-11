@@ -583,7 +583,7 @@ class Orchestrator:
             if is_villain(p) and p["profession"] == "建筑师" and skill_left(self.state, p["name"], "建造密道") > 0:
                 menu.append('- 确认密道（无需指定出口；晚间休息时可经密道前往书房/监控室/地下室）：{"type": "set_passage"}')
             if held_item(p, "窃听器", 1) is not None and self.state["bug_room"] is None:
-                menu.append('- 放置窃听器：{"type": "place_bug", "room": "书房|监控室|地下室"}')
+                menu.append('- 放置窃听器（含会客室——它无监控，窃听器是唯一能监视它的手段）：{"type": "place_bug", "room": "会客室|书房|监控室|地下室"}')
             if not menu:
                 continue
             briefing = self.build_briefing(p, "开局准备 · 秘密布置", menu,
@@ -832,8 +832,10 @@ class Orchestrator:
         name = p["name"]
         room = s["positions"].get(name)
         menu: list[str] = []
-        if not room or room == "会客室":
+        if not room:
             return menu
+        # 会客室按普通亮房处理：无设施项（监控/保险箱/发电机均不在此），
+        # 但谋杀/舞台魔术/延时装置合法——永不黑暗、不可封闭由下方各项自身条件保证。
         if room == "监控室":
             menu.append('- 查看监控（返回全部已有记录，无需参数）：{"type": "view_monitoring"}')
             if is_villain(p) and (skill_left(s, name, "信号干扰") > 0 or held_item(p, "病毒U盘", day) is not None):
@@ -1341,7 +1343,7 @@ class Orchestrator:
             if skill_left(s, p["name"], "伪造证物") > 0 or held_item(p, "可疑的粉末", day) is not None:
                 menu.append('- 伪造证物（该案件除尸体转移外的调查结果全部出错）：{"type": "falsify", "case_id": 案件编号, "kind": "伪造证物"}')
             if skill_left(s, p["name"], "转移尸体") > 0 or held_item(p, "裹尸袋", day) is not None:
-                menu.append('- 转移尸体到另一房间：{"type": "move_body", "case_id": 案件编号, "to_room": "房间名"}')
+                menu.append('- 转移尸体到另一房间：{"type": "move_body", "case_id": 案件编号, "to_room": "会客室|书房|监控室|地下室|某人的卧室"}')
             extra = ("以下案件的现场没有其他非反派角色，你可以动手毁证（也可以不动）：\n" + "\n".join(case_lines))
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)
             payload = self.call_ai(p, "毁证机会", briefing)

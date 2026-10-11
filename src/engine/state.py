@@ -174,7 +174,7 @@ def current_period(state: dict) -> str:
 
 
 def is_dark(state: dict, room: str) -> bool:
-    """黑暗判定：地下室永久黑暗；停电期间除卧室外全部黑暗；手电筒照亮的房间本次除外。"""
+    """黑暗判定：地下室永久黑暗；会客室永不黑暗；停电期间除卧室与会客室外全部黑暗；手电筒照亮的房间本次除外。"""
     if room in state["flashlight_lit"]:
         return False
     if is_bedroom(room) or room == "会客室":

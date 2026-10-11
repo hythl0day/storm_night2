@@ -209,9 +209,9 @@ def write_card(player: dict, players: list) -> str:
         "道具效果见规则书 §4。",
     ]
     if p["profession"] == "建筑师" and p["identity"] in ("杀手", "帮凶"):
-        lines += ["", "## 开局准备", "你是反派建筑师：需在开局准备阶段秘密选定一个非卧室房间设置密道。"]
+        lines += ["", "## 开局准备", "你是反派建筑师：开局准备阶段确认密道网即可（无需选定出口）；晚间休息时可经密道前往书房/监控室/地下室之一。"]
     if p["item"] == "窃听器":
-        lines += ["", "## 开局准备", "你持有窃听器：需在开局准备阶段秘密选定一个非卧室房间放置。"]
+        lines += ["", "## 开局准备", "你持有窃听器：需在开局准备阶段秘密选定一个非卧室房间放置（含会客室——它是唯一能监视会客室的手段）。"]
     return "\n".join(lines) + "\n"
 
 
@@ -234,7 +234,7 @@ def main() -> None:
     ap.add_argument("--seats", default=None, help="手动指定席位：id 或名字，逗号分隔")
     ap.add_argument("--config", default="players.toml")
     ap.add_argument("--personas", default="personas.toml")
-    ap.add_argument("--rules", default="rules/rules-6.md")
+    ap.add_argument("--rules", default="docs/rules-6.md")
     ap.add_argument("--out", default=None, help="输出目录（缺省 game/<seed>/）")
     args = ap.parse_args()
 

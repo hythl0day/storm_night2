@@ -231,7 +231,7 @@ def view_monitoring(state: dict, user: str) -> dict:
     """身处监控室查看监控记录：恒返回全部已有记录（公开口径，即可能被篡改过的记录）。
 
     v3 起不再支持按时段/房间过滤——AI 玩家发明过滤格式会拿到误导性空结果，
-    全量直读零格式摩擦（见 docs/rules-v3-plan.md A6）。
+    全量直读零格式摩擦。
     """
     s = state
     p = get_player(s, user)
@@ -388,6 +388,11 @@ def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
         return reject("move_body", "现场有其他非反派角色，不能转移尸体")
     if case["body_moved"]:
         return reject("move_body", "尸体已被移动过")
+    legal_rooms = FREE_ROOMS + [bedroom_of(q["name"]) for q in s["players"]]
+    if to_room not in legal_rooms:
+        return reject("move_body", f"非法房间：{to_room}")
+    if to_room == case["room"]:
+        return reject("move_body", "尸体已在该房间，需转移到另一个房间")
     if skill_left(s, user, "转移尸体") > 0:
         consume_skill(s, user, "转移尸体")
     elif held_item(p, "裹尸袋", s["phase"]["day"]) is not None:

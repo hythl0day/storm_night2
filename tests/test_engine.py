@@ -1,4 +1,4 @@
-"""M3 规则引擎单元测试（对照 rules/rules-6.md §7/§8/§9 逐分支）。
+"""M3 规则引擎单元测试（对照 docs/rules-6.md §7/§8/§9 逐分支）。
 
 运行：python -m unittest discover -s tests -v
 """

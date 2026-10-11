@@ -2,7 +2,7 @@
 
 ## 这是什么项目
 
-《暴风夜》：多家顶尖 AI 参与的"暴风雪山庄"身份推理游戏节目工程。核心是一条**自动化跑局管线**：自研编排器直连各家 AI 的 API，让它们扮演失忆后被困古堡的角色互相推理、欺骗、谋杀，产出结构化、防剧透、可直接用于剪辑的对局素材。节目规划（两季 + 彩蛋单集）见 `rules/show-bible.md`。
+《暴风夜》：多家顶尖 AI 参与的"暴风雪山庄"身份推理游戏节目工程。核心是一条**自动化跑局管线**：自研编排器直连各家 AI 的 API，让它们扮演失忆后被困古堡的角色互相推理、欺骗、谋杀，产出结构化、防剧透、可直接用于剪辑的对局素材。节目规划（两季 + 彩蛋单集）见 `screenwriting/show-bible.md`。
 
 ## 目录结构
 
@@ -22,8 +22,8 @@ src/          Python 代码（跑局管线）
 players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key 只填环境变量名）
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
-rules/        规则书 rules-6.md（6人局）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + show-bible.md 节目计划
-docs/         usage.md（脚本用法）/ engine.md（引擎参考）/ rules-v3-plan.md（规则 v3 实施计划与验收）
+screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md
+docs/         规则书 rules-6.md（6人局）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + usage.md（脚本用法）/ engine.md（引擎参考）
 tools/        bench.py（API 速度诊断：流式 TTFT/吞吐）
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
@@ -59,5 +59,5 @@ python -m unittest discover -s tests   # 92 用例（引擎 + 平衡回归 + 编
 
 ## 当前进度与待办
 
-里程碑总表在 `rules/dev-plan.md` §4。M4/M4.5/M5 已完成（M5 经 game/42 真实对局实测）。当前：**规则 v3 已实施**——会客室成为自由活动合法去向（不限容/无监控/永不黑暗/夜间关闭）、白天卧室清场、密道夜间化（可借道谋杀、失败不损毁）、窃听器夜间收听×2 且内容真实下发、同宿密谈、武装指认首次投票起可用、侦探仅在有案件日指定、监控室查看恒全量返回、清晨公告含状态行、script.md 每日清晨全剧透状态表（规则定稿 `rules/rules-6.md` v3，实施计划与验收见 `docs/rules-v3-plan.md`，92 用例全绿）。待办：真实对局验收 v3 行为；下一里程碑 M6 batch.py + 评分卡。
+里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成（M5 经 game/42 真实对局实测）。当前：**规则 v3 已实施**——会客室成为自由活动合法去向（不限容/无监控/永不黑暗/夜间关闭）、白天卧室清场、密道夜间化（可借道谋杀、失败不损毁）、窃听器夜间收听×2 且内容真实下发、同宿密谈、武装指认首次投票起可用、侦探仅在有案件日指定、监控室查看恒全量返回、清晨公告含状态行、script.md 每日清晨全剧透状态表（规则定稿 `docs/rules-6.md` v3，92 用例全绿）。待办：真实对局验收 v3 行为；下一里程碑 M6 batch.py + 评分卡。
 （handoff.md 已删除，用户要求需要总结时再生成。）

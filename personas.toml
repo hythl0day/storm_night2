@@ -1,4 +1,4 @@
-# 《暴风夜》角色人设卡（预设草案，正式版随 M3 prompts 定稿，见 rules/dev-plan.md）
+# 《暴风夜》角色人设卡（预设草案，正式版随 M3 prompts 定稿，见 docs/dev-plan.md）
 # 键 = players.toml 中对应席位的 name，改名后两边要同步。
 #
 # 设定：所有角色失去记忆、被传送到暴风雨夜的古堡——因此人设只写【性格底色】，

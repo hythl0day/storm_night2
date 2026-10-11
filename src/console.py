@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -224,6 +225,19 @@ def fmt_action(a: dict) -> str:
     return json.dumps(a, ensure_ascii=False)
 
 
+def alive_roster(state: dict) -> str:
+    """存活人员一览：职业 / 技能剩余 / 道具（console 每天开始时的宿主侧显示，不进 prompt、不落盘）。"""
+    lines = []
+    for p in state["players"]:
+        if not p["alive"]:
+            continue
+        skills = "、".join(f"{k}×{v}" for k, v in state.get("skill_uses", {}).get(p["name"], {}).items() if v > 0) or "无"
+        entries = p.get("items") or [{"name": p.get("item", ""), "uses_left": p.get("item_uses_left", 0)}]
+        items = "、".join(f"{e['name']}×{e['uses_left']}" for e in entries if e["uses_left"] > 0) or "无"
+        lines.append(f"  {p['name']}｜{p['profession']}｜技能：{skills}｜道具：{items}")
+    return "\n".join(lines)
+
+
 # 阶段环境描写（宿主侧氛围渲染，不进 prompt、不落盘）
 STAGE_FLAVOR = {
     "开局准备": "众人从昏迷中醒来，发现自己身处一座陌生的古堡……",
@@ -251,6 +265,7 @@ class Ctx:
         self.call_start = 0.0
         self.tokens = 0
         self.reason_buf = ""                # 思考流按行批量吐出的缓冲
+        self.day_shown = 0                  # 已显示"天亮一览"的天数（每天开始只显示一次）
 
 
 def make_hooks(ctx: Ctx) -> dict:
@@ -309,6 +324,12 @@ def make_hooks(ctx: Ctx) -> dict:
 
     def on_stage(title: str) -> None:
         print(f"\n\x1b[1;35m== {title} ==\x1b[0m")
+        m = re.search(r"第(\d+)天", title)
+        if m and int(m.group(1)) != ctx.day_shown:
+            ctx.day_shown = int(m.group(1))
+            alive = sum(1 for p in ctx.orch.state["players"] if p["alive"])
+            print(f"\x1b[1;33m—— 第{ctx.day_shown}天开始 · 存活 {alive} 人 ——\x1b[0m")
+            print(alive_roster(ctx.orch.state))
         for key, line in STAGE_FLAVOR.items():
             if key in title:
                 print(f"\x1b[3;90m{line}\x1b[0m")
@@ -499,6 +520,11 @@ def main() -> None:
                 if f.exists():
                     print(f"\n\x1b[90m{f.read_text(encoding='utf-8').strip()}\x1b[0m")
             orch.log_header(f"第{ph['day']}天 · 开局")
+
+        ctx.day_shown = ph["day"]
+        alive = sum(1 for p in orch.state["players"] if p["alive"])
+        print(f"\n\x1b[1;33m—— 第{ph['day']}天开始 · 存活 {alive} 人 ——\x1b[0m")
+        print(alive_roster(orch.state))
 
         t_work = threading.Thread(target=worker, args=(ctx,), daemon=True)
         t_tick = threading.Thread(target=ticker, args=(ctx,), daemon=True)

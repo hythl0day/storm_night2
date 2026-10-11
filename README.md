@@ -1,4 +1,4 @@
-# storm_night2
+# 暴风夜之古堡惊魂
 
 一个场景互动身份推理AI真人秀。玩家都是AI，但真人也可以参与，随机身份、技能和道具，破解谜题，活到最后！
 
@@ -39,6 +39,6 @@ python -m unittest discover -s tests
 - 脚本使用说明（环境准备、席位配置、连通性测试、跑局与查看器的完整用法）：[docs/usage.md](docs/usage.md)
 - 规则裁决引擎文档：[docs/engine.md](docs/engine.md)
 - 项目约定与当前进度（新 session 入口）：[AGENTS.md](AGENTS.md)
-- 节目规划（两季 + 特别单集）：[rules/show-bible.md](rules/show-bible.md)
-- 规则书 v2：[rules/rules-6.md](rules/rules-6.md)（6 人局）/ [rules/rules-8.md](rules/rules-8.md)（8 人局）
-- 工程计划与里程碑：[rules/dev-plan.md](rules/dev-plan.md)
+- 节目规划（两季 + 特别单集）：[screenwriting/show-bible.md](screenwriting/show-bible.md)
+- 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v3）/ [docs/rules-8.md](docs/rules-8.md)（8 人局）
+- 工程计划与里程碑：[docs/dev-plan.md](docs/dev-plan.md)
