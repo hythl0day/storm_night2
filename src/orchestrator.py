@@ -63,7 +63,7 @@ from .engine.state import (
     is_villain,
     skill_left,
 )
-from .gamedata import WEAPONS, physique_desc
+from .gamedata import ARMED_WEAPONS, physique_desc
 from .prompts import render
 from .providers import Player, chat, find_player, load_config
 from .smoke import describe, load_personas
@@ -1323,7 +1323,7 @@ class Orchestrator:
             p = self.player(name)
             if not p or not p["alive"] or p["identity"] != "平民":
                 continue
-            if not (held_item_names(p, day) & set(WEAPONS)):
+            if not (held_item_names(p, day) & set(ARMED_WEAPONS)):
                 continue
             others = [q["name"] for q in self.alive() if q["name"] != name]
             menu = [f'- 武装指认某人为杀手（指对平民立即获胜；指错你直接出局）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',

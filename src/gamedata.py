@@ -35,6 +35,12 @@ ITEMS = ITEMS_GENERAL + ITEMS_VILLAIN
 # 凶器（杀手/帮凶开局必得，互不重复）
 WEAPONS = ["消音手枪", "刀", "棒球棍", "毒药"]
 
+# 反派道具（帮凶固定配发其一；不进入平民道具池。毒药是凶器走凶器池，不在此列）
+VILLAIN_ITEMS = ["螺丝起子", "可疑的粉末", "裹尸袋", "病毒U盘"]
+
+# 武装指认可用的武器（rules-6 §7.3；毒药不能威慑，不可用于指认）
+ARMED_WEAPONS = ("消音手枪", "刀", "棒球棍")
+
 # 道具使用次数（默认 1 次）
 ITEM_USES = {item: 1 for item in ITEMS}
 ITEM_USES["手电筒"] = 2

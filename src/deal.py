@@ -7,8 +7,8 @@
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
 
 随机调用顺序（影响复现，勿随意调整）：
-    席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器 → 保险箱 → 平民道具 → 行动顺序
-    （反派两条平衡保证为无随机的确定性后处理，插在职业抽取与反派凶器之间，不改变上述调用流）
+    席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器 → 帮凶反派道具 → 保险箱 → 平民道具 → 行动顺序
+    （反派宽域职业保证为无随机的确定性后处理，插在职业抽取与反派凶器之间；万能钥匙预留无随机消耗）
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from .gamedata import (
     PROFESSION_SKILLS_GENERAL,
     PROFESSION_SKILLS_VILLAIN,
     PROFESSIONS,
+    VILLAIN_ITEMS,
     WEAPONS,
     physique_desc,
 )
@@ -38,11 +39,10 @@ ROOT = Path(__file__).resolve().parent.parent
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
 
-# 反派平衡保证（host 侧，不写入规则书，见 docs/dev-plan.md §0.3）：
-# ① 反派两人至少一人为宽域职业（含黑客——其反派技能【暴力破解】可停电）；
-# ② 凶手必持开锁手段（职业自带【破门而入】，否则从道具池预留「万能钥匙」额外配发）。
+# 反派平衡保证（见 docs/dev-plan.md §0.3）：
+# ① 反派两人至少一人为宽域职业（含黑客——其反派技能【暴力破解】可停电；host 侧保密，不写入规则书）；
+# ② 凶手固定持有「万能钥匙」（公开规则，rules-6 §2；从道具池预留，平民池不再有万能钥匙）。
 VALVE_PROFESSIONS = ("魔术师", "机械师", "建筑师", "运动员", "黑客")
-UNLOCK_PROFESSIONS = ("黑客", "机械师")  # 职业技能含【破门而入】
 
 IDENTITY_BRIEF = {
     "平民": "你是平民。找出杀手与帮凶，把他们送上投票席；活下去。",
@@ -120,17 +120,16 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
         donor = next(i for i, pr in enumerate(professions) if pr in VALVE_PROFESSIONS)
         professions[donor], professions[killer_idx] = professions[killer_idx], professions[donor]
     villain_weapons = rng.sample(WEAPONS, 2)
+    accom_gear = rng.choice(VILLAIN_ITEMS)  # 帮凶固定配发的反派道具（rules-6 §2 三车道分配）
     # 5. 保险箱（固定一件凶器：从未分配的两件中随机；开局全员公告但不公布具体）
     unused_weapons = [w for w in WEAPONS if w not in villain_weapons]
     safe_item = rng.choice(unused_weapons)
-    # 6. 平民道具（从剩余道具池，可能拿到仅剩的一件凶器用于自卫）
-    civilian_pool = [i for i in ITEMS if i not in villain_weapons and i != safe_item]
-    # 反派保证②（无随机后处理）：凶手职业无【破门而入】时，从池中预留「万能钥匙」额外配发
-    grant_key = professions[killer_idx] not in UNLOCK_PROFESSIONS
-    if grant_key:
-        civilian_pool.remove("万能钥匙")
+    # 6. 平民道具（纯通用池：剩余凶器 + 通用道具；万能钥匙与反派道具不进平民池）
+    civilian_pool = [i for i in ITEMS if i not in villain_weapons and i != safe_item
+                     and i != "万能钥匙" and i not in VILLAIN_ITEMS]
     civilian_items = rng.sample(civilian_pool, len(seats) - 2)
-    unused_items = [i for i in civilian_pool if i not in civilian_items]
+    unused_items = ([i for i in civilian_pool if i not in civilian_items]
+                    + [i for i in VILLAIN_ITEMS if i != accom_gear])
     # 7. 首日行动顺序
     order = [r["name"] for r in roster]
     rng.shuffle(order)
@@ -154,8 +153,8 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
             "item_uses_left": ITEM_USES[item],
             "alive": True,
         })
-    if grant_key:
-        players_state[killer_idx]["extra_items"] = ["万能钥匙"]
+    players_state[killer_idx]["extra_items"] = ["万能钥匙"]
+    players_state[accom_idx]["extra_items"] = [accom_gear]
 
     return {
         "seed": seed,
@@ -191,8 +190,17 @@ def validate(state: dict) -> list[str]:
     if not any(pr in VALVE_PROFESSIONS for pr in villain_profs):
         problems.append("反派队伍无宽域职业（魔术师/机械师/建筑师/运动员/黑客）")
     kp = next(p for p in players if p["identity"] == "杀手")
-    if kp["profession"] not in UNLOCK_PROFESSIONS and "万能钥匙" not in kp.get("extra_items", []):
-        problems.append("杀手无开锁手段（职业【破门而入】或额外「万能钥匙」）")
+    if "万能钥匙" not in kp.get("extra_items", []):
+        problems.append("杀手未固定持有「万能钥匙」")
+    if any(p["item"] == "万能钥匙" or "万能钥匙" in p.get("extra_items", [])
+           for p in players if p["identity"] != "杀手"):
+        problems.append("「万能钥匙」只能由杀手持有（不进平民道具池）")
+    ap = next(p for p in players if p["identity"] == "帮凶")
+    if len(ap.get("extra_items", [])) != 1 or ap["extra_items"][0] not in VILLAIN_ITEMS:
+        problems.append("帮凶未固定持有 1 件反派道具")
+    for p in players:
+        if p["identity"] == "平民" and (p["item"] == "万能钥匙" or p["item"] in VILLAIN_ITEMS):
+            problems.append(f"{p['name']}（平民）持有禁入平民池的道具：{p['item']}")
     if state["safe_item"] in items:
         problems.append("保险箱道具与玩家道具冲突")
     if state["safe_item"] not in WEAPONS:

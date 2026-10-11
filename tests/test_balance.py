@@ -15,8 +15,9 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import unittest
 
-from src.deal import ROOT, UNLOCK_PROFESSIONS, VALVE_PROFESSIONS, deal, load_personas, validate
+from src.deal import ROOT, VALVE_PROFESSIONS, deal, load_personas, validate
 from src.engine import Engine
+from src.gamedata import VILLAIN_ITEMS
 from src.providers import load_config
 from test_engine import P, default_players, goto, mk_state, player
 
@@ -140,7 +141,7 @@ class TestHallCamping(unittest.TestCase):
 
 
 class TestDealVillainGuarantees(unittest.TestCase):
-    """deal 反派平衡保证（host 侧，不写入规则书）：凶手必有开锁手段；反派队必有宽域职业（含黑客）。"""
+    """deal 反派平衡保证：凶手固定持有「万能钥匙」（公开规则）；反派队必有宽域职业（含黑客，保密）。"""
 
     @classmethod
     def setUpClass(cls):
@@ -152,9 +153,14 @@ class TestDealVillainGuarantees(unittest.TestCase):
             st = deal(seed, self.players, self.personas, None)
             self.assertEqual(validate(st), [], f"seed={seed} 分配校验失败")
             killer = next(p for p in st["players"] if p["identity"] == "杀手")
-            self.assertTrue(
-                killer["profession"] in UNLOCK_PROFESSIONS or "万能钥匙" in killer.get("extra_items", []),
-                f"seed={seed} 杀手无开锁手段")
+            accom = next(p for p in st["players"] if p["identity"] == "帮凶")
+            self.assertIn("万能钥匙", killer.get("extra_items", []), f"seed={seed} 杀手未固定持有万能钥匙")
+            self.assertEqual(len(accom.get("extra_items", [])), 1, f"seed={seed} 帮凶反派道具数错误")
+            self.assertIn(accom["extra_items"][0], VILLAIN_ITEMS, f"seed={seed} 帮凶反派道具非法")
+            for p in st["players"]:
+                if p["identity"] == "平民":
+                    self.assertNotIn(p["item"], ["万能钥匙"] + VILLAIN_ITEMS,
+                                     f"seed={seed} 平民 {p['name']} 抽到 {p['item']}（禁入平民池）")
             profs = {p["profession"] for p in st["players"] if p["identity"] in ("杀手", "帮凶")}
             self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无宽域职业")
 

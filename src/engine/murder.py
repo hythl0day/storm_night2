@@ -6,9 +6,9 @@
 - 空手附加条件（满足其一）：①帮凶在场 ②本人体格≥目标 ③本人男且目标女
   ④夜间限定：在目标自己卧室偷袭，体格门槛放宽为 ≥目标−1。黑暗房间空手无任何附加条件。
 - 凶器谋杀无条件（用一次即消耗，无论成败）；环境凶器（雕像/电线）无条件且不限次数。
-- 自卫自动触发：武器克制仅覆盖 刀↔棍 与 枪防刀棍；急救箱/敏捷闪避防一切
+- 自卫自动触发：武器克制仅覆盖 刀↔棍 与 枪防刀棍；急救箱/毒药（药用）/敏捷闪避防一切
   （含毒药、环境凶器、空手）；延时装置与舞台魔术不可被任何方式防御。
-- 自卫用的武器不消耗；急救箱与【敏捷闪避】触发即消耗（优先消耗急救箱）。
+- 自卫用的武器不消耗；急救箱/毒药（药用）与【敏捷闪避】触发即消耗（优先消耗急救箱）。
 - 现场无其他非反派角色时杀手缴获尸体全部未使用道具，且案件证物可被毁证。
 """
 from __future__ import annotations
@@ -52,6 +52,10 @@ def _defense(state: dict, target: dict, method: str, room: str, day: int, savior
     if kit is not None:
         consume_item_entry(target, kit)
         return True, "急救箱"
+    med = held_item(target, "毒药", day)
+    if med is not None:
+        consume_item_entry(target, med)
+        return True, "毒药（药用）"
     if skill_left(state, target["name"], "敏捷闪避") > 0:
         consume_skill(state, target["name"], "敏捷闪避")
         return True, "敏捷闪避"
@@ -62,6 +66,10 @@ def _defense(state: dict, target: dict, method: str, room: str, day: int, savior
             if skit is not None:
                 consume_item_entry(sp, skit)
                 return True, "急救箱(他人)"
+            smed = held_item(sp, "毒药", day)
+            if smed is not None:
+                consume_item_entry(sp, smed)
+                return True, "毒药（药用·他人）"
     return False, None
 
 
@@ -114,7 +122,7 @@ def _winner_tail(state: dict, ev: dict) -> dict:
 def murder(state: dict, killer: str, target: str, weapon: str | None = None, savior: str | None = None) -> dict:
     """杀手谋杀裁决。weapon 为 None 表示空手，否则为凶器名或环境凶器（雕像/电线）。
 
-    savior：同房持有「急救箱」者可选择救治目标（§4 急救箱"也可用于同在现场的其他人"，
+    savior：同房持有「急救箱」或「毒药」（药用）者可选择救治目标（§4 急救箱/毒药"也可用于同在现场的其他人"，
     属主动选择而非自动触发，故由编排器询问后传入）。
     失败时杀手只得知"失败"，无法分辨原因；目标与在场者得知"有人遇袭"。
     """
@@ -174,7 +182,7 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
         s["attempts"].append({
             "target": target, "day": day, "stage": stage, "room": room, "period": current_period(s),
         })
-        private = {killer: "谋杀失败（你无法分辨是武器、急救箱还是技能所致）", target: "你遭遇了袭击，但侥幸幸存"}
+        private = {killer: "谋杀失败（你无法分辨是武器、药品还是技能所致）", target: "你遭遇了袭击，但侥幸幸存"}
         for w in witnesses:
             private[w] = "有人遇袭，但你不知道袭击者是谁"
         ev = {"ok": True, "type": "murder_attempt", "public": None, "private": private, "defended": True}

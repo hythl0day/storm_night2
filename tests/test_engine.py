@@ -326,6 +326,27 @@ class TestSelfDefense(unittest.TestCase):
         ev = eng.murder("A", "E", weapon="消音手枪")
         self.assertEqual(ev["type"], "murder", ev)
 
+    def test_poison_as_medicine_self_defense(self):
+        """毒药药用：持有者遇袭时自动当作急救药（防一切袭击，用后消耗）。"""
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "毒药", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="棒球棍"))
+        self.rooms_for(eng)
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertEqual(ev["type"], "murder_attempt", ev)
+        self.assertNotIn("毒药", items_of(eng, "E"))
+
+    def test_poison_as_medicine_saves_roommate(self):
+        """毒药药用：可救治同房被袭者（等同急救箱救他人）；黑暗房 ≤2 平民条件在地下室满足。"""
+        players = default_players()
+        players[3] = P("D", "平民", "运动员", "毒药", gender="男", physique=3)
+        eng = Engine(mk_state(players=players, safe_item="棒球棍"))
+        free2(eng, {"A": "地下室", "E": "地下室", "D": "地下室", "B": "监控室", "C": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E", weapon="刀", savior="D")
+        self.assertEqual(ev["type"], "murder_attempt", ev)
+        self.assertNotIn("毒药", items_of(eng, "D"))
+        self.assertFalse(eng.state["cases"])  # 无人死亡
+
     def test_poison_only_defended_by_kit_or_dodge(self):
         eng = Engine(mk_state())
         goto(eng, "公共发言", day=2)
@@ -561,6 +582,17 @@ class TestVote(unittest.TestCase):
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
         ev = eng.armed_accusation("E", "B")
         self.assertFalse(ev["ok"])
+
+    def test_armed_accusation_poison_not_a_weapon(self):
+        """毒药不能用于武装指认（rules-6 §7.3：仅消音手枪/刀/棒球棍可威慑指认）。"""
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "毒药", gender="男", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "A", "E": "B", "F": "B"})  # 平票无人出局
+        ev = eng.armed_accusation("E", "A")
+        self.assertFalse(ev["ok"])
+        self.assertIn("武器", ev["error"])
 
     def test_assign_sealed_next_day_available(self):
         eng = Engine(mk_state())

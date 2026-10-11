@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from ..gamedata import WEAPONS
+from ..gamedata import ARMED_WEAPONS
 from .state import (
     check_winner,
     consume_skill,
@@ -120,8 +120,8 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
     ap = get_player(s, accuser)
     if ap is None or not ap["alive"] or ap["identity"] != "平民":
         return reject("armed_accusation", "只有存活平民能武装指认")
-    if not (held_item_names(ap, day) & set(WEAPONS)):
-        return reject("armed_accusation", "指认者必须持有武器")
+    if not (held_item_names(ap, day) & set(ARMED_WEAPONS)):
+        return reject("armed_accusation", "指认者必须持有武器（消音手枪/刀/棒球棍）")
     sp = get_player(s, suspect)
     if sp is None or not sp["alive"]:
         return reject("armed_accusation", "指认对象必须是存活玩家")

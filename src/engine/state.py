@@ -31,6 +31,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 
 玩家道具从 deal 的 item/item_uses_left 扩展为列表：
   player["items"] = [{"name", "uses_left", "available_day"}]
+  deal 还可用 extra_items 额外配发（如杀手固定持有的「万能钥匙」，rules-6 §2），ensure 时并入。
   杀手可缴获多件道具；available_day 之前不可用（投票分配次日可用）；转手不改变剩余次数。
 """
 from __future__ import annotations
