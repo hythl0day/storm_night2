@@ -84,11 +84,11 @@ def make_fake_chat(killer_script: bool):
             else:
                 acts = [{"type": "abstain"}]
         elif "选房" in title:
-            room = f"{name}的卧室"
-            if killer_script and day == 2 and name == "A":
-                room = "E的卧室"
-            if killer_script and day >= 3 and name == "B":
-                room = "F的卧室"
+            room = "会客室"  # v3：白天卧室清场，默认苟大厅
+            if killer_script and day == 2 and name in ("A", "E"):
+                room = "书房"      # A 第 2 天在书房杀 E（E 无自卫手段）
+            if killer_script and day >= 3 and name in ("B", "F"):
+                room = "监控室"    # B 继任后第 3 天在监控室杀 F
             acts = [{"type": "choose_room", "room": room}]
         elif "内交谈" in title:
             pass  # 只发言
@@ -220,7 +220,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn('- A 声明 {"type": "murder", "target": "E", "weapon": "刀"} → 成功', script)
         self.assertIn('- B 声明 {"type": "murder", "target": "F", "weapon": "毒药"} → 成功', script)
-        self.assertIn("E的卧室内交谈", script)
+        self.assertIn("书房内交谈", script)  # v3：案发前的同房交谈（书房）
         self.assertIn("- 投票明细：", script)
         self.assertIn("封存道具分配结果：万能钥匙→D", script)
         self.assertIn("游戏结束：平民获胜", script)
@@ -238,6 +238,61 @@ class TestCivilianWinEnding(MockGameTestBase):
         section = b.split("## 截至目前的关键记录", 1)[1].split("## 你的私人笔记", 1)[0]
         self.assertNotIn("**", section)   # 发言行（**名字**：…）不进关键记录
         self.assertNotIn("……", section)   # mock 的 inner 固定为 "……"：内心独白不进简报
+
+    def test_night_features_v3(self):
+        """v3 夜间特性端到端：密道（建筑师帮凶夜用）、窃听器内容真实下发、同宿密谈、清晨状态行/状态表。"""
+        players = self.players()
+        players[1] = P("B", "帮凶", "建筑师", "毒药", gender="女", physique=2)  # 密道持有者
+        d = write_game_dir(self.root, players)
+        base = make_fake_chat(True)
+
+        def chat_v3(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "开局准备" in title:
+                acts = []
+                if name == "B" and '"type": "set_passage"' in briefing:
+                    acts = [{"type": "set_passage"}]
+                if name == "F" and '"type": "place_bug"' in briefing:
+                    acts = [{"type": "place_bug", "room": "书房"}]
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "晚间休息" in title and "夜袭" not in title and "密谈" not in title:
+                acts = []
+                if name == "C" and day == 1:
+                    acts = [{"type": "invite", "target": "D"}]
+                elif name == "D" and day == 1:
+                    acts = [{"type": "accept_invite"}]
+                elif name == "F" and day == 1:
+                    acts = [{"type": "bug_listen"}]
+                elif name == "B" and day == 2 and '"type": "use_passage"' in briefing:
+                    acts = [{"type": "use_passage", "room": "书房"}]
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "密谈" in title:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech=f"{name} 的密谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_v3)
+        s = orch.state
+        self.assertEqual(s["winner"], "平民")  # 主线剧本不受影响
+        self.assertTrue(s["passage"]["used"])  # 密道第 2 夜成功使用
+        self.assertNotIn("B", s["monitoring_true"]["第2天晚间休息"].get("书房", []))  # 监控无痕
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("密谈", script)
+        self.assertIn("C 的密谈内容", script)
+        self.assertIn("窃听器录音下发给 F（书房）", script)  # 内容真实下发（不再是空头支票）
+        self.assertIn("状态一览（全剧透）", script)          # 每日清晨状态表
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("目前存活", log)                       # 清晨状态行
+        self.assertIn("无杀倒计时：", log)
+        self.assertIn("今日不设侦探", log)                   # 第 2 天尚无案件
+        self.assertTrue(any("窃听器录音" in m for m in s["orch"]["hist"]["F"]))  # 私密历史留痕
 
 
 class TestInterruptAndResume(MockGameTestBase):

@@ -4,7 +4,7 @@
 - 出局者公布身份与职业；出局者是杀手时帮凶私下继任杀手。
 - 投票后存活平民只剩 1 人 → 反派立即获胜；反派全部出局 → 平民获胜。
 - 【记忆植入】：反派心理医生强迫一名玩家改投指定对象；公告只说"票数被更改过"。
-- 武装指认（第 4 天起）：持武器平民在一次未产生出局者的投票后指认杀手；
+- 武装指认（第 2 天首次投票起）：持武器平民在一次未产生出局者的投票后指认杀手；
   正确→平民立即获胜；指认为帮凶/平民→指认者出局（揭示身份职业，并复査平民人数）。
 """
 from __future__ import annotations
@@ -107,13 +107,11 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
 
 
 def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
-    """武装指认（第 4 天起）：持武器平民在一次未产生出局者的投票后指认杀手。"""
+    """武装指认（v3：第 2 天首次投票起）：持武器平民在一次未产生出局者的投票后指认杀手。"""
     s = state
     if s["winner"]:
         return reject("armed_accusation", "游戏已结束")
     day = s["phase"]["day"]
-    if day < 4:
-        return reject("armed_accusation", "第 4 天起才能武装指认")
     if s["phase"]["stage"] != "投票":
         return reject("armed_accusation", "只能在投票后指认")
     lv = s["last_vote"]

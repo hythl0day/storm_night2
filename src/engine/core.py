@@ -1,11 +1,13 @@
 """引擎主体：阶段流转、房间分配结算与行动入口（M3）。
 
 阶段流：开局准备 → 公共发言 →（第 2 天起）投票 → 自由活动 → 晚间休息 → 次日清晨案件调查 → …
-- 第 1 天没有投票、没有侦探，全天禁止谋杀。
-- 每天翻页时行动顺序首位移到最后，新顺序首位成为次日侦探（第 2 天起）。
+- 第 1 天没有投票，全天禁止谋杀；侦探只在已有谋杀案件的日子指定（新顺序首位）。
+- 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
 - 无杀倒计时：首起谋杀行为（含未遂）起算，连续两个完整天无谋杀行为则第三天清晨平民胜。
 - 第 5 天晚间休息结束仍无结果 → 主神获胜（全员失败）。
+- 自由活动合法去向 = 会客室/书房/监控室/地下室（白天卧室清场）；会客室不限人数、
+  不设监控、永不黑暗、夜间不开放。
 """
 from __future__ import annotations
 
@@ -13,6 +15,8 @@ from . import ledger, murder as murder_mod, vote as vote_mod
 from .state import (
     ACTION_STAGES,
     BEDROOM_CAPACITY,
+    FREE_ROOMS,
+    HALL,
     MEETING_STAGES,
     PUBLIC_ROOMS,
     ROOM_CAPACITY,
@@ -81,8 +85,8 @@ class Engine:
     def fix_generator(self, user: str) -> dict:
         return ledger.fix_generator(self.state, user)
 
-    def view_monitoring(self, user: str, period: str | None = None, room: str | None = None) -> dict:
-        return ledger.view_monitoring(self.state, user, period, room)
+    def view_monitoring(self, user: str) -> dict:
+        return ledger.view_monitoring(self.state, user)
 
     def detective_monitoring(self, user: str, period: str, rooms: list[str]) -> dict:
         return ledger.detective_monitoring(self.state, user, period, rooms)
@@ -108,11 +112,11 @@ class Engine:
     def seal_room(self, user: str, allowed: list[str] | None = None) -> dict:
         return ledger.seal_room(self.state, user, allowed)
 
-    def set_passage(self, user: str, room: str) -> dict:
-        return ledger.set_passage(self.state, user, room)
+    def set_passage(self, user: str) -> dict:
+        return ledger.set_passage(self.state, user)
 
-    def use_passage(self, user: str) -> dict:
-        return ledger.use_passage(self.state, user)
+    def use_passage(self, user: str, room: str) -> dict:
+        return ledger.use_passage(self.state, user, room)
 
     def place_bug(self, user: str, room: str) -> dict:
         return ledger.place_bug(self.state, user, room)
@@ -162,9 +166,22 @@ class Engine:
                 }
             new_day, new_stage = day + 1, "案件调查"
             s["order"] = s["order"][1:] + s["order"][:1]
-            s["detective"] = s["order"][0]
+            s["detective"] = s["order"][0] if s["cases"] else None
             s["gifts_used"] = []
-            public["announcements"].append(f"第 {new_day} 天开始。今日行动顺序：{' → '.join(s['order'])}；侦探：{s['detective']}")
+            ann = f"第 {new_day} 天开始。今日行动顺序：{' → '.join(s['order'])}"
+            ann += f"；侦探：{s['detective']}" if s["detective"] else "（尚无谋杀案件，今日不设侦探）"
+            public["announcements"].append(ann)
+            # 清晨状态行：host 算好的全局状态，避免玩家自行推算规则状态出错（game/42 复盘项）
+            alive_n = sum(1 for p in s["players"] if p["alive"])
+            public["announcements"].append(f"目前存活 {alive_n} 人")
+            if s["last_murder_day"] is None:
+                public["announcements"].append("无杀倒计时：未启动（尚无谋杀行为）")
+            else:
+                quiet = new_day - 1 - s["last_murder_day"]
+                public["announcements"].append(
+                    f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个完整天则平民直接获胜）")
+            if s["sealed_items"]:
+                public["announcements"].append(f"封存道具待投票分配：{len(s['sealed_items'])} 件")
             if new_day == 4:
                 for r in PUBLIC_ROOMS:
                     s["locks"][r] = False
@@ -250,9 +267,11 @@ class Engine:
     def enter_rooms(self, assignments: dict[str, str], invited: dict[str, str] | None = None) -> dict:
         """自由活动选房间结算（原子：整体非法则驳回且不改状态，由编排器让违规者改选）。
 
-        assignments: {玩家: 房间}，须覆盖全体存活玩家。上锁房间可被有开锁手段者自动开锁进入
-        （顺序靠前者优先支付手段）；invited: {受邀者: 邀请者} 允许受邀者进入邀请者的卧室。
-        侦探选择的房间立即对所有人公开。结算后自动检查延时装置触发。
+        assignments: {玩家: 房间}，须覆盖全体存活玩家。合法去向 = 会客室/书房/监控室/地下室
+        （v3：白天卧室清场，一律不可选）；会客室不限人数、不设监控。上锁房间可被有开锁手段者
+        自动开锁进入（顺序靠前者优先支付手段）；invited 为邀请同入的配对记录（{受邀者: 邀请者}，
+        仅作编排器协调语义的存档，结算不设特权）。侦探选择的房间立即对所有人公开。
+        结算后自动检查延时装置触发。
         """
         s = self.state
         if s["winner"]:
@@ -262,16 +281,19 @@ class Engine:
         alive = [p["name"] for p in s["players"] if p["alive"]]
         if set(assignments) != set(alive):
             return reject("enter_rooms", "必须覆盖全体存活玩家")
-        valid_rooms = set(PUBLIC_ROOMS) | {bedroom_of(p["name"]) for p in s["players"]}
+        valid_rooms = set(FREE_ROOMS)
         for name, room in assignments.items():
             if room not in valid_rooms:
-                return reject("enter_rooms", f"无效房间：{room}")
+                hint = "（白天卧室清场，不开放）" if is_bedroom(room) else ""
+                return reject("enter_rooms", f"无效房间：{room}{hint}")
         invited = invited or {}
         counts: dict[str, int] = {}
         for room in assignments.values():
             counts[room] = counts.get(room, 0) + 1
         for room, n in counts.items():
-            cap = BEDROOM_CAPACITY if is_bedroom(room) else ROOM_CAPACITY[room]
+            if room == HALL:
+                continue  # 会客室不限人数
+            cap = ROOM_CAPACITY[room]
             if n > cap:
                 return reject("enter_rooms", f"{room} 人数超过上限（{cap}）")
         sealed = s["sealed_room"]
@@ -385,6 +407,8 @@ class Engine:
                         private[name] = f"你用{means}进入了{want}"
                 else:
                     placed = want
+            elif want == HALL:
+                note = "会客室夜间不开放"
             elif want in PUBLIC_ROOMS:
                 occupants = [n for n, r in positions.items() if r == want]
                 sealed = s["sealed_room"]

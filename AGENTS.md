@@ -23,7 +23,7 @@ players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key �
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
 rules/        规则书 rules-6.md（6人局）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + show-bible.md 节目计划
-docs/         usage.md（脚本用法）/ engine.md（引擎参考）/ perf-console-plan.md（M4.5 性能与交互改进计划）
+docs/         usage.md（脚本用法）/ engine.md（引擎参考）/ rules-v3-plan.md（规则 v3 实施计划与验收）
 tools/        bench.py（API 速度诊断：流式 TTFT/吞吐）
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
@@ -54,10 +54,10 @@ tests/        unittest（python -m unittest discover -s tests）
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
-python -m unittest discover -s tests   # 89 用例（引擎 + 平衡回归 + 编排 mock 集成：全流程/中断续跑/关键记录）
+python -m unittest discover -s tests   # 92 用例（引擎 + 平衡回归 + 编排 mock 集成：全流程/中断续跑/关键记录/v3 特性）
 ```
 
 ## 当前进度与待办
 
-里程碑总表在 `rules/dev-plan.md` §4。M4/M4.5 已实测完成；M5（完整对局）代码完成：`run_game()` 驱动全局（案件调查/投票含遗言与道具分配/夜袭/毁证/武装指认），并新增 `script.md` 主持人侧全记录（背景/阵容分配/全部发言与行动/裁决，不含内心独白，供整理剧本）；`tests/test_balance.py` 两个平衡场景回归 + `tests/test_orchestrator_game.py` mock 全流程（主神/平民胜/续跑）全绿；待用户实测一整局真实对局后勾掉 M5。下一里程碑：M6 batch.py + 评分卡。
+里程碑总表在 `rules/dev-plan.md` §4。M4/M4.5/M5 已完成（M5 经 game/42 真实对局实测）。当前：**规则 v3 已实施**——会客室成为自由活动合法去向（不限容/无监控/永不黑暗/夜间关闭）、白天卧室清场、密道夜间化（可借道谋杀、失败不损毁）、窃听器夜间收听×2 且内容真实下发、同宿密谈、武装指认首次投票起可用、侦探仅在有案件日指定、监控室查看恒全量返回、清晨公告含状态行、script.md 每日清晨全剧透状态表（规则定稿 `rules/rules-6.md` v3，实施计划与验收见 `docs/rules-v3-plan.md`，92 用例全绿）。待办：真实对局验收 v3 行为；下一里程碑 M6 batch.py + 评分卡。
 （handoff.md 已删除，用户要求需要总结时再生成。）

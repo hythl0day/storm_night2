@@ -13,6 +13,8 @@ from __future__ import annotations
 from ..gamedata import ITEM_USES
 from .state import (
     ACTION_STAGES,
+    FREE_ROOMS,
+    HALL,
     PUBLIC_ROOMS,
     bedroom_of,
     consume_item_entry,
@@ -225,8 +227,12 @@ def fix_generator(state: dict, user: str) -> dict:
     }
 
 
-def view_monitoring(state: dict, user: str, period: str | None = None, room: str | None = None) -> dict:
-    """身处监控室查看监控记录（公开口径，即可能被篡改过的记录）。"""
+def view_monitoring(state: dict, user: str) -> dict:
+    """身处监控室查看监控记录：恒返回全部已有记录（公开口径，即可能被篡改过的记录）。
+
+    v3 起不再支持按时段/房间过滤——AI 玩家发明过滤格式会拿到误导性空结果，
+    全量直读零格式摩擦（见 docs/rules-v3-plan.md A6）。
+    """
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
@@ -235,16 +241,14 @@ def view_monitoring(state: dict, user: str, period: str | None = None, room: str
         return reject("view_monitoring", "当前阶段不能查监控")
     if s["positions"].get(user) != "监控室":
         return reject("view_monitoring", "你不在监控室")
-    data = s["monitoring"]
-    if period is not None:
-        data = {period: data.get(period, {})}
-    if room is not None:
-        data = {k: {room: v.get(room, [])} for k, v in data.items()}
-    return {"ok": True, "type": "view_monitoring", "public": None, "private": {user: data}}
+    return {"ok": True, "type": "view_monitoring", "public": None, "private": {user: s["monitoring"]}}
 
 
 def detective_monitoring(state: dict, user: str, period: str, rooms: list[str]) -> dict:
-    """侦探特权：调查阶段额外指定一个时间段 × 至多两个场所查看监控（私下告知，由侦探转述）。"""
+    """侦探特权：调查阶段额外指定一个时间段 × 至多两个场所查看监控（私下告知，由侦探转述）。
+
+    非法时段驳回并列出当前已有记录的合法时段（AI 友好，避免静默空结果）。
+    """
     s = state
     if s["phase"]["stage"] != "案件调查":
         return reject("detective_monitoring", "只能在案件调查阶段使用")
@@ -252,7 +256,10 @@ def detective_monitoring(state: dict, user: str, period: str, rooms: list[str]) 
         return reject("detective_monitoring", "只有当日侦探能额外查询")
     if not rooms or len(rooms) > 2:
         return reject("detective_monitoring", "一次最多查询两个场所")
-    records = s["monitoring"].get(period, {})
+    if period not in s["monitoring"]:
+        valid = "、".join(s["monitoring"].keys()) or "（尚无记录）"
+        return reject("detective_monitoring", f"无此时段的记录；已有记录的时段：{valid}")
+    records = s["monitoring"][period]
     data = {r: records.get(r, []) for r in rooms}
     return {"ok": True, "type": "detective_monitoring", "public": None, "private": {user: data}}
 
@@ -490,64 +497,72 @@ def seal_room(state: dict, user: str, allowed: list[str] | None = None) -> dict:
     room = s["positions"].get(user)
     if room is None:
         return reject("seal_room", "你不在任何房间")
+    if room == HALL:
+        return reject("seal_room", "会客室是开放大厅，没有可锁的大门")
     consume_skill(s, user, "封闭空间")
     s["sealed_room"] = {"room": room, "owner": user, "allowed": list(allowed or [])}
     return {"ok": True, "type": "seal_room", "public": None, "private": {user: f"{room}已临时锁死至下一个自由活动时间"}}
 
 
-def set_passage(state: dict, user: str, room: str) -> dict:
-    """反派建筑师【建造密道】：开局准备阶段秘密选定一个非卧室房间。"""
+def set_passage(state: dict, user: str) -> dict:
+    """反派建筑师【建造密道】：开局准备阶段确认密道网存在（v3 起无需指定出口）。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
         return reject("set_passage", "玩家不存在或已死亡")
     if s["phase"]["stage"] != "开局准备":
-        return reject("set_passage", "只能在开局准备阶段设置密道")
+        return reject("set_passage", "只能在开局准备阶段确认密道")
     if not is_villain(p) or p["profession"] != "建筑师":
         return reject("set_passage", "只有反派建筑师能建造密道")
     if skill_left(s, user, "建造密道") <= 0:
         return reject("set_passage", "建造密道次数已用完")
-    if room not in PUBLIC_ROOMS:
-        return reject("set_passage", "密道出口必须是非卧室房间")
     consume_skill(s, user, "建造密道")
-    s["passage"] = {"room": room, "used": False, "broken": False}
-    return {"ok": True, "type": "set_passage", "public": None, "private": {user: f"密道已秘密连接你的卧室与{room}"}}
+    s["passage"] = {"used": False}
+    return {"ok": True, "type": "set_passage", "public": None,
+            "private": {user: "你确认了古堡的密道网：晚间休息时可经密道前往书房/监控室/地下室（监控不留记录；出口房间人数须满足谋杀人数条件，否则当晚无法使用；成功使用一次后密道损毁）"}}
 
 
-def use_passage(state: dict, user: str) -> dict:
-    """使用密道：从自己卧室往返密道房间一次，期间监控与众人视为你从未离开卧室。
+def use_passage(state: dict, user: str, room: str) -> dict:
+    """使用密道（v3）：晚间休息时从自己卧室经密道前往书房/监控室/地下室之一。
 
-    使用时刻出口房间内有非反派角色则失败：密道不被发现但永久失效；正常使用一次后即损坏。
+    - 进入条件与谋杀人数条件相同：出口房间在场非反派 ≤1（黑暗房间 ≤2）；
+      不满足则当晚无法使用——密道保留、不暴露（返回 ok=True, failed=True）；
+    - 成功：监控不留记录（当晚记录上你一直在卧室），密道损毁（整局至多成功一次）；
+    - 进入后可正常行动（含谋杀——杀手限定，由编排器的夜间谋杀窗口提供）。
     """
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
         return reject("use_passage", "玩家不存在或已死亡")
-    if s["phase"]["stage"] != "自由活动":
-        return reject("use_passage", "只能在自由活动时间使用密道")
+    if s["phase"]["stage"] != "晚间休息":
+        return reject("use_passage", "只能在晚间休息时间使用密道")
     passage = s["passage"]
-    if not passage or passage["used"] or passage["broken"]:
+    if not passage or passage["used"]:
         return reject("use_passage", "密道不可用")
     if not is_villain(p) or p["profession"] != "建筑师":
         return reject("use_passage", "只有反派建筑师能使用密道")
     if s["positions"].get(user) != bedroom_of(user):
         return reject("use_passage", "你必须在自己卧室才能使用密道")
-    room = passage["room"]
-    blocked = any(
-        q["alive"] and not is_villain(q) and s["positions"].get(q["name"]) == room
-        for q in s["players"]
-    )
-    if blocked:
-        passage["broken"] = True
-        return {"ok": True, "type": "use_passage", "public": None, "private": {user: "密道出口房间内有人——使用失败，密道永久失效（未暴露）"}, "failed": True}
+    if room not in PUBLIC_ROOMS:
+        return reject("use_passage", "密道只能通往书房/监控室/地下室")
+    non_villains = [
+        q for q in s["players"]
+        if q["alive"] and not is_villain(q) and s["positions"].get(q["name"]) == room
+    ]
+    limit = 2 if is_dark(s, room) else 1
+    if len(non_villains) > limit:
+        return {"ok": True, "type": "use_passage", "public": None,
+                "private": {user: f"密道出口（{room}）今晚人多眼杂，无法使用——密道保留，未被任何人察觉"},
+                "failed": True}
     passage["used"] = True
     s["positions"][user] = room
     s["passage_stealth"].append(user)
-    return {"ok": True, "type": "use_passage", "public": None, "private": {user: f"你经密道抵达{room}，监控视为你从未离开卧室"}}
+    return {"ok": True, "type": "use_passage", "public": None,
+            "private": {user: f"你经密道抵达{room}，监控与众人眼中你当晚一直在自己卧室；密道随后损毁"}}
 
 
 def place_bug(state: dict, user: str, room: str) -> dict:
-    """「窃听器」：开局前秘密放置于一个非卧室房间。"""
+    """「窃听器」：开局前秘密放置于一个非卧室房间（含会客室——唯一能监视会客室的手段）。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
@@ -558,20 +573,20 @@ def place_bug(state: dict, user: str, room: str) -> dict:
         return reject("place_bug", "窃听器已放置")
     if held_item(p, "窃听器", 1) is None:
         return reject("place_bug", "你未持有窃听器")
-    if room not in PUBLIC_ROOMS:
+    if room not in FREE_ROOMS:
         return reject("place_bug", "窃听器必须放置在非卧室房间")
     s["bug_room"] = room
     return {"ok": True, "type": "place_bug", "public": None, "private": {user: f"窃听器已放置于{room}"}}
 
 
 def bug_listen(state: dict, user: str) -> dict:
-    """收听窃听器：自由活动时间身处自己卧室时使用一次（交谈内容由编排器提供）。"""
+    """收听窃听器（v3）：晚间休息时间身处自己卧室时使用（交谈内容由编排器下发）。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
         return reject("bug_listen", "玩家不存在或已死亡")
-    if s["phase"]["stage"] != "自由活动":
-        return reject("bug_listen", "只能在自由活动时间收听")
+    if s["phase"]["stage"] != "晚间休息":
+        return reject("bug_listen", "只能在晚间休息时间收听")
     if s["bug_room"] is None:
         return reject("bug_listen", "窃听器尚未放置")
     if s["positions"].get(user) != bedroom_of(user):

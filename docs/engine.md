@@ -27,10 +27,10 @@
 ## 3. 公共 API（Engine 方法）
 
 阶段与流转：
-- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序并任命侦探、第 4 天门锁全开、清晨公告（死亡/职业/监控宣读/封存道具）、无杀倒计时与主神胜利判定
+- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序、**仅已有案件时**任命侦探、第 4 天门锁全开、清晨公告（死亡/职业/监控宣读/封存道具 + 状态行：存活数/无杀倒计时/封存数）、无杀倒计时与主神胜利判定
 - `engine.winner` — `None` / `"平民"` / `"反派"` / `"主神"`
-- `enter_rooms(assignments, invited=None)` — 自由活动选房间结算（容量、自动开锁付费、封闭空间、装置触发）
-- `night_assign(assignments=None, invited=None)` — 晚间归宿（留宿邀请、夜间房间行动、杀手夜袭、按顺序冲突处理）
+- `enter_rooms(assignments, invited=None)` — 自由活动选房结算（合法去向：会客室/书房/监控室/地下室，白天卧室清场；会客室不限容不设监控；容量/自动开锁付费/封闭空间/装置触发）
+- `night_assign(assignments=None, invited=None)` — 晚间归宿（留宿邀请、夜间房间行动、杀手夜袭、按顺序冲突处理；会客室夜间不开放）
 
 谋杀：
 - `murder(killer, target, weapon=None, savior=None)` — 空手/凶器/环境凶器裁决；`savior` = 同房用急救箱施救者
@@ -39,18 +39,18 @@
 
 投票：
 - `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；`implant={"user":..,"victim":..,"target":..}` 为记忆植入改票
-- `armed_accusation(accuser, suspect)` — 武装指认（第 4 天起、未产生出局者的投票后、持武器平民）
+- `armed_accusation(accuser, suspect)` — 武装指认（v3：第 2 天首次投票起、未产生出局者的投票后、持武器平民）
 - `assign_sealed(mapping)` — 封存道具分配（`{道具: 新主人|None(销毁)}`，次日可用）
 
 房间与道具台账：
 - `unlock(user, room)` / `open_safe(user)` / `transfer(giver, receiver, item, accept=True)` / `use_flashlight(user)`
 - `declare_blackout(user)` / `fix_generator(user)`
-- `place_bug(user, room)` / `bug_listen(user)`
-- `seal_room(user, allowed=None)`（建筑师【封闭空间】）、`set_passage(user, room)` / `use_passage(user)`（密道）
+- `place_bug(user, room)`（可放会客室）/ `bug_listen(user)`（v3：晚间休息在卧室收听，×2 次）
+- `seal_room(user, allowed=None)`（建筑师【封闭空间】，不能对会客室）、`set_passage(user)` / `use_passage(user, room)`（v3 密道：仅晚间休息，出口书房/监控室/地下室任选，进入条件=谋杀人数条件，失败不损毁，成功一次后损毁）
 
 监控与调查：
-- `view_monitoring(user, period=None, room=None)` — 查看公开监控（篡改后的口径）
-- `detective_monitoring(user, period, rooms)` — 侦探额外监控查询
+- `view_monitoring(user)` — 查看公开监控（篡改后的口径）；v3 起恒为全量返回（不接参数，杜绝格式幻觉）
+- `detective_monitoring(user, period, rooms)` — 侦探额外监控查询；非法时段驳回并列出合法时段
 - `tamper_monitoring(user, period, room, op, name, new_name=None)` — 【信号干扰】/「病毒U盘」，`op` ∈ `add`/`remove`/`replace`
 - `investigate(user, case_id, choice)` — 【现场调查】/「鲁米诺试剂」，`choice` ∈ `武器伤痕`/`死亡时间`/`尸体转移`
 - `falsify(user, case_id, kind)` — 伪造类反派技能（`kind` 区分伪造痕迹/销毁证物/伪造证物）
@@ -78,15 +78,17 @@
 8. 记忆植入直接改写选票，公告只说"票数被更改过"。
 9. 延时装置的"拆除"规则书未定义动作，未实现（需要补规则后再加）。
 10. 夜间归宿由引擎按行动顺序自动结算：失败者回自己卧室且只知"无法进入"；夜袭已满 2 人的卧室记为谋杀失败一次（耗机会+重置倒计时）。
+11. v3 密道：进入条件与谋杀人数条件同（亮房非反派 ≤1、暗房 ≤2），故密道永远不能撞进人堆；出口有人但不超条件时可进入（杀手可借道谋杀，由编排器夜间谋杀窗口提供）。
+12. v3 会客室无监控的裁定：保持位置账本永远对不齐（苟大厅 = 无不在场证明）；窃听器可放会客室，是唯一监视大厅的手段。
 
 ## 6. 测试
 
 ```bash
-python -m unittest discover -s tests -v   # 85 用例（引擎 + 平衡回归 + 编排集成）
+python -m unittest discover -s tests -v   # 92 用例（引擎 + 平衡回归 + 编排集成）
 ```
 
 覆盖：第 1 天禁杀、明暗人数条件、空手四条件与黑暗豁免、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改、锁规则、赠送次数保留、封存次日可用、驳回不改状态（deepcopy 对比）。
 
 ## 7. 编排器侧职责（已在 orchestrator.py 实现）
 
-自由发言/交谈内容生成与分发、留宿邀请的交互收集、窃听器收听内容下发、道具分配的多数决与侦探平票裁决、动作菜单生成与三通道 JSON 解析。其中两处编排侧裁定：封存道具分配不单设讨论轮（一次调用收齐归属票）；每次无人出局的投票至多接受一次武装指认。
+自由发言/交谈内容生成与分发、留宿邀请的交互收集、**同宿密谈**（v3：留宿两人睡前一轮）、窃听器收听内容下发（v3 起真实投递房内交谈存档）、密道夜间使用的收集与执行、道具分配的多数决与侦探平票裁决（无侦探日平票即销毁）、动作菜单生成与三通道 JSON 解析。其中两处编排侧裁定：封存道具分配不单设讨论轮（一次调用收齐归属票）；每次无人出局的投票至多接受一次武装指认。

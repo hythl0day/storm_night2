@@ -12,13 +12,13 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - attempts: [未遂]                      谋杀未遂（含"夜袭未能进入"，target 为 None）；供公告与无杀倒计时
 - last_murder_day: int|None             最近一次谋杀行为（含未遂）的日期；None=倒计时未启动
 - winner / win_reason                   胜负结果（"平民"/"反派"/"主神"）
-- detective: 名字|None                  当日侦探（第 2 天起存在）
+- detective: 名字|None                  当日侦探（仅已有谋杀案件的日子指定，见 rules-6 §7.4）
 - stage_murder_used: bool               杀手本阶段谋杀机会是否已用
 - power_out: bool                       停电中（修复发电机后恢复）
 - flashlight_lit: [房间]                本阶段被「手电筒」照亮的房间
 - bedroom_relock: [房间]                被他人开锁的卧室，进入下一时间阶段时恢复上锁
 - sealed_room: dict|None                【封闭空间】临时锁死（至下一个自由活动时间失效）
-- passage: dict|None                    反派建筑师密道 {room, used, broken}
+- passage: dict|None                    反派建筑师密道 {used}（夜间使用，出口三功能房任选）
 - passage_stealth: [名字]               本阶段经密道行动者（监控不留记录）
 - bug_room: 房间|None                   「窃听器」放置位置
 - devices: {房间: {setter, active}}     机械师【延时装置】
@@ -38,9 +38,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-PUBLIC_ROOMS = ["书房", "监控室", "地下室"]
+PUBLIC_ROOMS = ["书房", "监控室", "地下室"]  # 功能房：监控覆盖，夜间开放（每房限 1 人）
+HALL = "会客室"  # 大厅：白天会议场所，自由活动同样开放；永不黑暗、不设监控、不可封闭、不限人数；夜间不开放
+FREE_ROOMS = [HALL] + PUBLIC_ROOMS  # 自由活动合法去向（白天卧室清场，见 rules-6 §5）
 ENV_WEAPON = {"书房": "雕像", "地下室": "电线"}
-ROOM_CAPACITY = {"书房": 3, "监控室": 3, "地下室": 3}
+ROOM_CAPACITY = {"书房": 3, "监控室": 3, "地下室": 3}  # 会客室不限人数
 BEDROOM_CAPACITY = 2
 MEETING_STAGES = ("案件调查", "公共发言", "投票")
 ACTION_STAGES = ("自由活动", "晚间休息")
@@ -183,8 +185,8 @@ def is_dark(state: dict, room: str) -> bool:
 
 
 def record_entry(state: dict, name: str, room: str) -> None:
-    """监控只记录"某时间段谁进入了某场所"，不记离开；经密道者不留记录。"""
-    if name in state["passage_stealth"]:
+    """监控只记录"某时间段谁进入了某场所"，不记离开；经密道者不留记录；会客室不设监控。"""
+    if name in state["passage_stealth"] or room == HALL:
         return
     period = current_period(state)
     state["monitoring"].setdefault(period, {}).setdefault(room, []).append(name)
