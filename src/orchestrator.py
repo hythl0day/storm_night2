@@ -8,7 +8,7 @@
 （侦探最后发言；侦探仅在有案件的日子存在）→ 交换环节 → 投票（第 2 天起：收票/记忆植入/
 遗言先于身份公布/封存道具分配/无人出局时武装指认）→ 自由活动（会客室/书房/监控室/地下室
 四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；引擎结算；房间交谈；房间行动；
-阶段末毁证窗口）→ 晚间休息（留宿邀请与同宿密谈/夜间房间行动/密道/收听窃听器/杀手夜袭，
+阶段末毁证窗口）→ 晚间休息（守夜邀请与守夜密谈/夜间房间行动/密道/收听窃听器/杀手夜袭，
 互相不可见选择）→ advance() 进入次日案件调查（清晨公告含状态行/调查自荐/侦探监控特权）。
 终局（任一胜负条件满足）自动收束并落盘结局。
 
@@ -78,6 +78,50 @@ ROOT = Path(__file__).resolve().parent.parent
 PERSONAS_PATH = Path(__file__).resolve().parent.parent / "personas.toml"
 
 ROOM_CHOICES = FREE_ROOMS  # 选房菜单：会客室/书房/监控室/地下室（v3：白天卧室清场）
+
+
+def fmt_monitoring(data: dict, day: int | None = None) -> str:
+    """监控记录扁平化：今日新增置顶 + 历史平铺（替代嵌套 JSON，降低 AI 跨天扫行误读）。"""
+
+    def flat(items) -> str:
+        parts = []
+        for period, rooms in items:
+            seg = "；".join(f"{r}←{'、'.join(ns)}" for r, ns in rooms.items() if ns)
+            if seg:
+                parts.append(f"{period}[{seg}]")
+        return "；".join(parts) or "无"
+
+    entries = list(data.items())
+    if day is None:
+        return flat(entries)
+    today = [kv for kv in entries if kv[0].startswith(f"第{day}天")]
+    history = [kv for kv in entries if not kv[0].startswith(f"第{day}天")]
+    out = f"今日新增：{flat(today)}"
+    if history:
+        out += f"｜历史：{flat(history)}"
+    return out
+
+
+def morning_roster_rows(state: dict, out_day: dict) -> list[tuple[str, str, str, str, str, str]]:
+    """全剧透状态行（host 侧）：script.md 每日清晨状态表与 console 天亮一览共用。"""
+    deaths = {c["victim"]: (c["day"], c["room"]) for c in state["cases"]}
+    rows = []
+    for p in state["players"]:
+        n = p["name"]
+        if p["alive"]:
+            status = "存活"
+        elif n in deaths:
+            d, r = deaths[n]
+            status = f"死于第{d}天（{r}）"
+        elif n in out_day:
+            status = f"第{out_day[n]}天出局"
+        else:
+            status = "出局"
+        skills = "、".join(f"{k}×{v}" for k, v in state.get("skill_uses", {}).get(n, {}).items() if v > 0) or "无"
+        entries = p.get("items") or ([{"name": p["item"], "uses_left": p.get("item_uses_left", 0)}] if p.get("item") else [])
+        items = "、".join(f"{e['name']}×{e['uses_left']}" for e in entries if e["uses_left"] > 0) or "无"
+        rows.append((n, status, p["identity"], p["profession"], skills, items))
+    return rows
 
 COVERUP_SKILLS = ("伪造痕迹", "销毁证物", "伪造证物", "转移尸体")  # 毁证类反派技能（道具等价物：可疑的粉末/裹尸袋）
 
@@ -222,6 +266,7 @@ class Orchestrator:
         """公开事件：feed + public/log.md + script.md 三处同写。"""
         self.feed_line(line)
         self.script_line(line)
+        self._fire("on_public", line)
 
     def feed_line(self, line: str) -> None:
         """仅公开口径（feed + public/log.md），不进 script.md——供编排器已自记明细的事件去重。"""
@@ -250,7 +295,7 @@ class Orchestrator:
         for line in public.get("announcements", []):
             sink(f"- {line}")
         if "monitoring" in public:
-            sink(f"- 监控宣读：{json.dumps(public['monitoring'], ensure_ascii=False)}")
+            sink(f"- 监控宣读：{fmt_monitoring(public['monitoring'])}")
         if "granted" in public or "destroyed" in public:
             granted = public.get("granted") or {}
             parts = [f"{it}→{who}" for who, items in granted.items() for it in items]
@@ -471,6 +516,8 @@ class Orchestrator:
             ev = self.eng.see_through(name, str(act.get("target", "")), act.get("claims") or {})
         elif at == "view_monitoring":
             ev = self.eng.view_monitoring(name)
+            if ev.get("ok"):
+                ev["private"] = {name: "监控记录（公开口径，今日新增置顶）：" + fmt_monitoring(ev["private"][name], day)}
         elif at == "tamper":
             ev = self.eng.tamper_monitoring(
                 name, str(act.get("period", "")), str(act.get("room", "")),
@@ -532,26 +579,10 @@ class Orchestrator:
 
     def script_morning_status(self) -> None:
         """每天清晨在 script.md 写全剧透状态表（仅 host 侧，不进任何 prompt）。"""
-        s = self.state
-        day = s["phase"]["day"]
-        deaths = {c["victim"]: (c["day"], c["room"]) for c in s["cases"]}
-        outs = self.orch["out_day"]
+        day = self.state["phase"]["day"]
         lines = [f"### 第{day}天清晨 · 状态一览（全剧透）", "",
                  "| 角色 | 状态 | 身份 | 职业 | 技能剩余 | 道具 |", "| --- | --- | --- | --- | --- | --- |"]
-        for p in s["players"]:
-            n = p["name"]
-            if p["alive"]:
-                status = "存活"
-            elif n in deaths:
-                d, r = deaths[n]
-                status = f"死于第{d}天（{r}）"
-            elif n in outs:
-                status = f"第{outs[n]}天出局"
-            else:
-                status = "出局"
-            skills = "、".join(f"{k}×{v}" for k, v in s["skill_uses"].get(n, {}).items() if v > 0) or "无"
-            items = "、".join(f"{e['name']}×{e['uses_left']}" for e in p["items"] if e["uses_left"] > 0) or "无"
-            lines.append(f"| {n} | {status} | {p['identity']} | {p['profession']} | {skills} | {items} |")
+        lines += ["| " + " | ".join(r) + " |" for r in morning_roster_rows(self.state, self.orch["out_day"])]
         self.script_line("\n".join(lines))
 
     def wip(self, key: str, **defaults) -> dict:
@@ -862,7 +893,7 @@ class Orchestrator:
         return menu
 
     def run_night(self) -> None:
-        """晚间休息：留宿邀请/夜间房间行动/杀手夜袭（互相不可见选择），结算后执行夜间行动与夜间谋杀。"""
+        """晚间休息：守夜邀请/夜间房间行动/杀手夜袭（互相不可见选择），结算后执行夜间行动与夜间谋杀。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         w = self.wip(f"{day}:晚间休息:归宿", done=[], assignments={}, night_do={}, invites={},
@@ -885,12 +916,12 @@ class Orchestrator:
                 later = [n for n in self.state["order"][i + 1:] if n in alive_names]
                 menu = [
                     '- 回自己卧室过夜（默认）：{"type": "stay"}',
-                    '- 邀请一名顺序在你之后的玩家来你卧室过夜：{"type": "invite", "target": "玩家名"}',
+                    '- 守夜邀请：邀请一名顺序在你之后的玩家来你卧室一同守夜（即夜间的同入邀请）：{"type": "invite", "target": "玩家名"}',
                     '- 不回卧室，夜间前往书房/监控室/地下室执行一项行动：{"type": "night_room", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock"}',
                 ]
                 extra = "夜间行动互相不可见。每个夜间房间只能进入 1 人（顺序靠后冲突者失败，默认回自己卧室）。会客室夜间不开放。"
                 extra += "\n注意：上面「当前局面」里的位置是你自由活动结束时的实际位置；本环节决定的是**今晚去哪过夜**——不回卧室就选 night_room，什么都不做默认回自己卧室。"
-                extra += "\n留宿邀请成立且房内恰好你们两人时，睡前有一轮密谈（仅彼此可见）。"
+                extra += "\n守夜邀请成立且房内恰好你们两人时，睡前有一轮密谈（仅彼此可见）。"
                 if later:
                     extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
                 if p["identity"] == "杀手" and not self.state["stage_murder_used"]:
@@ -901,8 +932,8 @@ class Orchestrator:
                     menu.append('- 收听窃听器（仅当你今晚回自己卧室时生效）：{"type": "bug_listen"}')
                 if name in pending_invite:
                     v = pending_invite[name]
-                    menu.append(f'- 接受 {v} 的留宿邀请：{{"type": "accept_invite"}}')
-                    extra += f"\n{v} 邀请你今晚去 {bedroom_of(v)} 过夜。"
+                    menu.append(f'- 接受 {v} 的守夜邀请：{{"type": "accept_invite"}}')
+                    extra += f"\n{v} 邀请你今晚去 {bedroom_of(v)} 守夜。"
                 briefing = self.build_briefing(p, f"第{day}天 · 晚间休息", menu, extra)
                 payload = self.call_ai(p, "晚间休息", briefing)
                 for act in payload["actions"]:
@@ -949,7 +980,7 @@ class Orchestrator:
             self.route(ev)
             self.script_line("- 晚间归宿：" + "、".join(f"{n}→{r}" for n, r in ev["positions"].items()))
             if invited:
-                self.script_line("  留宿：" + "、".join(f"{t} 接受 {v} 的邀请" for t, v in invited.items()))
+                self.script_line("  守夜：" + "、".join(f"{t} 接受 {v} 的邀请" for t, v in invited.items()))
             self.script_private(ev)
             for v in ev.get("device_triggers", []):
                 self.script_line(f"  延时装置触发：{v}")
@@ -998,7 +1029,7 @@ class Orchestrator:
             self.save_state()
 
     def sleep_talks(self, day: int, invited: dict[str, str]) -> None:
-        """同宿密谈（v3）：留宿成立且房内恰好两人的卧室，睡前密谈一轮；夜袭进入的卧室不交谈。"""
+        """守夜密谈（v3）：守夜成立且房内恰好两人的卧室，睡前密谈一轮；夜袭进入的卧室不交谈。"""
         if not invited:
             return
         w = self.wip(f"{day}:晚间休息:密谈", done=[])
@@ -1016,7 +1047,7 @@ class Orchestrator:
             for occ_name in occ:
                 p = self.player(occ_name)
                 other = host if occ_name == guest else guest
-                menu = ["- 本环节是同宿密谈：speech 只有对方能听到；actions 为 []"]
+                menu = ["- 本环节是守夜密谈：speech 只有对方能听到；actions 为 []"]
                 extra = f"深夜，{room}，只有你和 {other} 两人。睡前可以密谈一轮。"
                 if transcript:
                     extra += "\n对方刚才说：\n" + "\n".join(transcript)
@@ -1154,6 +1185,8 @@ class Orchestrator:
                 self.check_stop()
             detail_votes = "、".join(f"{n}→{votes.get(n) or '弃权'}" for n in alive_names)
             self.script_line(f"- 投票明细：{detail_votes}")
+            self._fire("on_public", f"投票明细：{detail_votes}")
+            w["voters"] = len(alive_names)
             ev = self.eng.resolve_vote(votes, implant)
             if not ev["ok"] and implant is not None:
                 ev = self.eng.resolve_vote(votes, None)  # 植入声明非法（如目标已死）：作废植入，不影响投票本身
@@ -1187,7 +1220,12 @@ class Orchestrator:
             self.save_state()
         if not w["routed"]:
             detail = "、".join(f"{t} {c}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
-            self.log_line(f"投票结果：{detail or '无人得票'}")
+            voters = w.get("voters") or len(self.alive())
+            if out:
+                verdict = f"{out} 过半数出局（存活 {voters} 人，需 >{voters // 2} 票）"
+            else:
+                verdict = f"无人过半数（存活 {voters} 人，需 >{voters // 2} 票），本轮无人出局"
+            self.log_line(f"投票结果：{detail or '无人得票'}——{verdict}")
             self.route(ev)  # 出局公告与身份公布、帮凶继任私密通知（遗言之后）
             if out:
                 self.orch["out_day"][out] = day
@@ -1239,7 +1277,9 @@ class Orchestrator:
         if w["assigned"]:
             return
         if ballots:
-            detail = "；".join(f"{n}：{m}" for n, m in ballots.items())
+            def _fmt_ballot(m: dict) -> str:
+                return "、".join(f"{it}→{tgt or '销毁'}" for it, tgt in m.items())
+            detail = "；".join(f"{n}：{_fmt_ballot(m)}" for n, m in ballots.items())
             self.script_line(f"- 道具分配票明细：{detail}")
         mapping: dict[str, str | None] = {}
         for item in items:

@@ -162,7 +162,13 @@ class TestStageFlow(unittest.TestCase):
         self.assertFalse(eng3.murder("A", "E")["ok"])  # 大厅是亮房：C 在场目击即不可动手
 
     def test_maingod_on_day5_end(self):
+        """未遂重置倒计时后可拖至主神：第 3 天一次未遂，此后再无行为 → 第 5 天晚间主神胜。"""
         eng = Engine(mk_state())
+        goto(eng, "自由活动", day=3)
+        ev = eng.enter_rooms({"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
+        assert ev["ok"], ev
+        ev = eng.murder("A", "D", weapon="刀")
+        self.assertEqual(ev["type"], "murder_attempt")  # D【敏捷闪避】防御；未遂重置倒计时
         winner = None
         for _ in range(60):
             ev = eng.advance()
@@ -539,7 +545,7 @@ class TestVote(unittest.TestCase):
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
-        goto(eng, "投票", day=4)
+        goto(eng, "投票", day=3)
         eng.resolve_vote({"C": "A", "D": "A", "E": "B", "F": "B"})
         ev = eng.armed_accusation("E", "F")
         self.assertTrue(ev["ok"], ev)
@@ -551,7 +557,7 @@ class TestVote(unittest.TestCase):
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
-        goto(eng, "投票", day=4)
+        goto(eng, "投票", day=3)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
         ev = eng.armed_accusation("E", "B")
         self.assertFalse(ev["ok"])
@@ -591,6 +597,19 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertEqual(eng.winner, "平民")
         self.assertIn("无杀倒计时", winner_ev["win_reason"])
         self.assertEqual(eng.state["phase"], {"day": 5, "stage": "案件调查"})
+
+    def test_no_kill_countdown_from_day2_passive(self):
+        """倒计时自第 2 天起算：全程无谋杀行为，第 4 天清晨平民直接获胜。"""
+        eng = Engine(mk_state())
+        winner_ev = None
+        for _ in range(30):
+            ev = eng.advance()
+            if eng.winner:
+                winner_ev = ev
+                break
+        self.assertEqual(eng.winner, "平民")
+        self.assertIn("无杀倒计时", winner_ev["win_reason"])
+        self.assertEqual(eng.state["phase"], {"day": 4, "stage": "案件调查"})
 
     def test_night_bedroom_raid_relaxed_physique(self):
         players = default_players()

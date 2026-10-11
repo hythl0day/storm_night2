@@ -8,6 +8,7 @@
 
 随机调用顺序（影响复现，勿随意调整）：
     席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器 → 保险箱 → 平民道具 → 行动顺序
+    （反派两条平衡保证为无随机的确定性后处理，插在职业抽取与反派凶器之间，不改变上述调用流）
 """
 from __future__ import annotations
 
@@ -36,6 +37,12 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 ROOT = Path(__file__).resolve().parent.parent
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
+
+# 反派平衡保证（host 侧，不写入规则书，见 docs/dev-plan.md §0.3）：
+# ① 反派两人至少一人为宽域职业（含黑客——其反派技能【暴力破解】可停电）；
+# ② 凶手必持开锁手段（职业自带【破门而入】，否则从道具池预留「万能钥匙」额外配发）。
+VALVE_PROFESSIONS = ("魔术师", "机械师", "建筑师", "运动员", "黑客")
+UNLOCK_PROFESSIONS = ("黑客", "机械师")  # 职业技能含【破门而入】
 
 IDENTITY_BRIEF = {
     "平民": "你是平民。找出杀手与帮凶，把他们送上投票席；活下去。",
@@ -108,12 +115,20 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
     # 4. 反派凶器（杀手先、帮凶后，互不重复）
     killer_idx = identities.index("杀手")
     accom_idx = identities.index("帮凶")
+    # 反派保证①（无随机后处理）：反派两人均非宽域职业时，杀手与首位持宽域职业者互换职业
+    if professions[killer_idx] not in VALVE_PROFESSIONS and professions[accom_idx] not in VALVE_PROFESSIONS:
+        donor = next(i for i, pr in enumerate(professions) if pr in VALVE_PROFESSIONS)
+        professions[donor], professions[killer_idx] = professions[killer_idx], professions[donor]
     villain_weapons = rng.sample(WEAPONS, 2)
     # 5. 保险箱（固定一件凶器：从未分配的两件中随机；开局全员公告但不公布具体）
     unused_weapons = [w for w in WEAPONS if w not in villain_weapons]
     safe_item = rng.choice(unused_weapons)
     # 6. 平民道具（从剩余道具池，可能拿到仅剩的一件凶器用于自卫）
     civilian_pool = [i for i in ITEMS if i not in villain_weapons and i != safe_item]
+    # 反派保证②（无随机后处理）：凶手职业无【破门而入】时，从池中预留「万能钥匙」额外配发
+    grant_key = professions[killer_idx] not in UNLOCK_PROFESSIONS
+    if grant_key:
+        civilian_pool.remove("万能钥匙")
     civilian_items = rng.sample(civilian_pool, len(seats) - 2)
     unused_items = [i for i in civilian_pool if i not in civilian_items]
     # 7. 首日行动顺序
@@ -139,6 +154,8 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
             "item_uses_left": ITEM_USES[item],
             "alive": True,
         })
+    if grant_key:
+        players_state[killer_idx]["extra_items"] = ["万能钥匙"]
 
     return {
         "seed": seed,
@@ -164,12 +181,18 @@ def validate(state: dict) -> list[str]:
     profs = [p["profession"] for p in players]
     if len(set(profs)) != len(profs):
         problems.append("职业重复")
-    items = [p["item"] for p in players]
+    items = [p["item"] for p in players] + [e for p in players for e in p.get("extra_items", [])]
     if len(set(items)) != len(items):
         problems.append("道具重复")
     for p in players:
         if p["identity"] in ("杀手", "帮凶") and p["item"] not in WEAPONS:
             problems.append(f"{p['name']}（{p['identity']}）未持有凶器")
+    villain_profs = [p["profession"] for p in players if p["identity"] in ("杀手", "帮凶")]
+    if not any(pr in VALVE_PROFESSIONS for pr in villain_profs):
+        problems.append("反派队伍无宽域职业（魔术师/机械师/建筑师/运动员/黑客）")
+    kp = next(p for p in players if p["identity"] == "杀手")
+    if kp["profession"] not in UNLOCK_PROFESSIONS and "万能钥匙" not in kp.get("extra_items", []):
+        problems.append("杀手无开锁手段（职业【破门而入】或额外「万能钥匙」）")
     if state["safe_item"] in items:
         problems.append("保险箱道具与玩家道具冲突")
     if state["safe_item"] not in WEAPONS:
@@ -206,8 +229,10 @@ def write_card(player: dict, players: list) -> str:
         "（完整定义见规则书 §3）",
         "",
         f"## 道具：{p['item']}（剩余 {p['item_uses_left']} 次）",
-        "道具效果见规则书 §4。",
     ]
+    for extra in p.get("extra_items", []):
+        lines.append(f"## 道具：{extra}（剩余 {ITEM_USES[extra]} 次）")
+    lines.append("道具效果见规则书 §4。")
     if p["profession"] == "建筑师" and p["identity"] in ("杀手", "帮凶"):
         lines += ["", "## 开局准备", "你是反派建筑师：开局准备阶段确认密道网即可（无需选定出口）；晚间休息时可经密道前往书房/监控室/地下室之一。"]
     if p["item"] == "窃听器":

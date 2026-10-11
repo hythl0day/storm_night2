@@ -39,7 +39,7 @@ except ImportError:  # 非 Windows 无 msvcrt；本项目环境为 Windows
     msvcrt = None
 
 from . import viewer
-from .orchestrator import OPENING, AbortRun, Orchestrator
+from .orchestrator import OPENING, AbortRun, Orchestrator, morning_roster_rows
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⦷⦯⦮⦿"
 SEPARATOR = "─" * 40
@@ -153,11 +153,11 @@ def fmt_action(a: dict) -> str:
     if t == "choose_room":
         return f"选择房间：{a.get('room', '?')}"
     if t == "invite":
-        return f"邀请 {a.get('target', '?')} 同入/留宿"
+        return f"邀请 {a.get('target', '?')} 同入/守夜"
     if t == "stay":
         return "回自己卧室过夜"
     if t == "accept_invite":
-        return "接受留宿邀请"
+        return "接受守夜邀请"
     if t == "night_room":
         return f"夜间前往 {a.get('room', '?')} 执行 {a.get('do', '?')}"
     if t == "gift":
@@ -225,17 +225,11 @@ def fmt_action(a: dict) -> str:
     return json.dumps(a, ensure_ascii=False)
 
 
-def alive_roster(state: dict) -> str:
-    """存活人员一览：职业 / 技能剩余 / 道具（console 每天开始时的宿主侧显示，不进 prompt、不落盘）。"""
-    lines = []
-    for p in state["players"]:
-        if not p["alive"]:
-            continue
-        skills = "、".join(f"{k}×{v}" for k, v in state.get("skill_uses", {}).get(p["name"], {}).items() if v > 0) or "无"
-        entries = p.get("items") or [{"name": p.get("item", ""), "uses_left": p.get("item_uses_left", 0)}]
-        items = "、".join(f"{e['name']}×{e['uses_left']}" for e in entries if e["uses_left"] > 0) or "无"
-        lines.append(f"  {p['name']}｜{p['profession']}｜技能：{skills}｜道具：{items}")
-    return "\n".join(lines)
+def day_roster(orch: Orchestrator) -> str:
+    """天亮一览：全员状态（含淘汰者）+ 职业/技能/道具（宿主侧，不进 prompt、不落盘）。"""
+    rows = morning_roster_rows(orch.state, orch.orch.get("out_day", {}))
+    return "\n".join(f"  {n}｜{st}｜{ident}｜{prof}｜技能：{sk}｜道具：{it}"
+                     for n, st, ident, prof, sk, it in rows)
 
 
 # 阶段环境描写（宿主侧氛围渲染，不进 prompt、不落盘）
@@ -329,11 +323,14 @@ def make_hooks(ctx: Ctx) -> dict:
             ctx.day_shown = int(m.group(1))
             alive = sum(1 for p in ctx.orch.state["players"] if p["alive"])
             print(f"\x1b[1;33m—— 第{ctx.day_shown}天开始 · 存活 {alive} 人 ——\x1b[0m")
-            print(alive_roster(ctx.orch.state))
+            print(day_roster(ctx.orch))
         for key, line in STAGE_FLAVOR.items():
             if key in title:
                 print(f"\x1b[3;90m{line}\x1b[0m")
                 break
+
+    def on_public(line: str) -> None:
+        print(f"\x1b[92m{line}\x1b[0m")
 
     return {
         "on_call_start": on_call_start,
@@ -341,6 +338,7 @@ def make_hooks(ctx: Ctx) -> dict:
         "on_payload": on_payload,
         "on_call_end": on_call_end,
         "on_stage": on_stage,
+        "on_public": on_public,
         "should_stop": lambda: ctx.halt or ctx.quit_app,
     }
 
@@ -524,7 +522,7 @@ def main() -> None:
         ctx.day_shown = ph["day"]
         alive = sum(1 for p in orch.state["players"] if p["alive"])
         print(f"\n\x1b[1;33m—— 第{ph['day']}天开始 · 存活 {alive} 人 ——\x1b[0m")
-        print(alive_roster(orch.state))
+        print(day_roster(orch))
 
         t_work = threading.Thread(target=worker, args=(ctx,), daemon=True)
         t_tick = threading.Thread(target=ticker, args=(ctx,), daemon=True)

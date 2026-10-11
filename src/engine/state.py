@@ -38,6 +38,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ..gamedata import ITEM_USES
+
 PUBLIC_ROOMS = ["书房", "监控室", "地下室"]  # 功能房：监控覆盖，夜间开放（每房限 1 人）
 HALL = "会客室"  # 大厅：白天会议场所，自由活动同样开放；永不黑暗、不设监控、不可封闭、不限人数；夜间不开放
 FREE_ROOMS = [HALL] + PUBLIC_ROOMS  # 自由活动合法去向（白天卧室清场，见 rules-6 §5）
@@ -141,6 +143,8 @@ def ensure(state: dict) -> dict:
         locks.setdefault(bedroom_of(p["name"]), True)
         if "items" not in p:
             p["items"] = [{"name": p["item"], "uses_left": p["item_uses_left"], "available_day": 1}]
+            for extra in p.get("extra_items", []):
+                p["items"].append({"name": extra, "uses_left": ITEM_USES[extra], "available_day": 1})
         if p["name"] not in s["skill_uses"]:
             skills = dict(GENERAL_SKILLS.get(p["profession"], {}))
             skills.update(VILLAIN_SKILLS.get(p["profession"], {}))

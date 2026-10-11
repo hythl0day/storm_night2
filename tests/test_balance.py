@@ -15,7 +15,9 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import unittest
 
+from src.deal import ROOT, UNLOCK_PROFESSIONS, VALVE_PROFESSIONS, deal, load_personas, validate
 from src.engine import Engine
+from src.providers import load_config
 from test_engine import P, default_players, goto, mk_state, player
 
 
@@ -135,6 +137,30 @@ class TestHallCamping(unittest.TestCase):
         self.assertTrue(eng.state["stage_murder_used"])
         self.assertTrue(any(a["target"] is None for a in eng.state["attempts"]))
         self.assertFalse(eng.state["cases"])
+
+
+class TestDealVillainGuarantees(unittest.TestCase):
+    """deal 反派平衡保证（host 侧，不写入规则书）：凶手必有开锁手段；反派队必有宽域职业（含黑客）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.players, _ = load_config(str(ROOT / "players.toml"))
+        cls.personas = load_personas(ROOT / "personas.toml")
+
+    def test_villain_guarantees_across_seeds(self):
+        for seed in range(1, 41):
+            st = deal(seed, self.players, self.personas, None)
+            self.assertEqual(validate(st), [], f"seed={seed} 分配校验失败")
+            killer = next(p for p in st["players"] if p["identity"] == "杀手")
+            self.assertTrue(
+                killer["profession"] in UNLOCK_PROFESSIONS or "万能钥匙" in killer.get("extra_items", []),
+                f"seed={seed} 杀手无开锁手段")
+            profs = {p["profession"] for p in st["players"] if p["identity"] in ("杀手", "帮凶")}
+            self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无宽域职业")
+
+    def test_deal_still_deterministic(self):
+        self.assertEqual(deal(42, self.players, self.personas, None),
+                         deal(42, self.players, self.personas, None))
 
 
 if __name__ == "__main__":

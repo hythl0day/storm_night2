@@ -1,7 +1,8 @@
 """M5 编排器全流程集成测试：mock providers.chat，不打真实 API。
 
 用脚本化全知策略驱动 run_game() 主循环，验证：
-- 主神结局（全程消极：无人谋杀、投票全弃权，第 5 天晚间结束）
+- 倒计时结局（全程消极：无谋杀行为、投票全弃权 → 第 4 天清晨平民胜，倒计时自第 2 天起算）
+- 主神结局（一次未遂重置倒计时后再无行为 → 拖至第 5 天晚间）
 - 平民胜结局（杀手第 2 天谋杀 → 第 3 天投票出局 → 帮凶继任再杀 → 第 4 天被投出）
 - 阶段边界停止 + 重建 Orchestrator 续跑至结局（--resume 语义）
 - 归档产物：public/log.md 结局行、private 内心独白、inbox/outbox 存档
@@ -131,16 +132,19 @@ class MockGameTestBase(unittest.TestCase):
 
 
 class TestMainGodEnding(MockGameTestBase):
-    def test_passive_game_reaches_maingod(self):
+    def test_passive_game_countdown_civilian_win(self):
+        """全程消极（无谋杀行为、投票全弃权）：倒计时自第 2 天起算，第 4 天清晨平民胜。"""
         d = write_game_dir(self.root, default_players())
         orch = self.run_game(d, killer_script=False)
         s = orch.state
-        self.assertEqual(s["winner"], "主神")
-        self.assertEqual(s["phase"], {"day": 5, "stage": "晚间休息"})
+        self.assertEqual(s["winner"], "平民")
+        self.assertIn("无杀倒计时", s["win_reason"])
+        self.assertEqual(s["phase"], {"day": 4, "stage": "案件调查"})
         self.assertTrue(all(p["alive"] for p in s["players"]))  # 全程无死无伤
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
-        self.assertIn("游戏结束：主神获胜", log)
+        self.assertIn("游戏结束：平民获胜——无杀倒计时完成", log)
         self.assertIn("投票结果：无人得票", log)
+        self.assertIn("无人过半数", log)  # 投票结果附明确裁决（是否有人出局）
         # 归档：内心独白 / 简报与回执 / host_log
         self.assertTrue((d / "private" / "A" / "inner.md").exists())
         self.assertTrue((d / "outbox" / "A" / "day1-公共发言.md").exists())
@@ -148,7 +152,7 @@ class TestMainGodEnding(MockGameTestBase):
         self.assertTrue((d / "host_log.jsonl").read_text(encoding="utf-8").strip())
         # state.json 落盘即终局
         saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved["winner"], "主神")
+        self.assertEqual(saved["winner"], "平民")
         # script.md 全记录：背景 / 阵容分配（全剧透）/ 流程（选房/归宿/投票明细）/ 结局
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn("# 《暴风夜》对局全记录", script)
@@ -159,8 +163,34 @@ class TestMainGodEnding(MockGameTestBase):
         self.assertIn("- 选房结果：", script)
         self.assertIn("- 晚间归宿：", script)
         self.assertIn("- 投票明细：", script)
-        self.assertIn("游戏结束：主神获胜", script)
+        self.assertIn("游戏结束：平民获胜", script)
         self.assertNotIn("……", script)  # mock 的 inner 固定为 "……"：内心独白不得进全记录
+
+    def test_maingod_after_failed_attempt(self):
+        """未遂重置倒计时：第 3 天一次未遂后再无行为，游戏拖至第 5 天晚间主神胜。"""
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+
+        def chat_attempt(player, messages, *, on_token=None, reasoning_effort=None):
+            title = messages[-1]["content"].splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if day == 3 and "选房" in title and player.name in ("A", "D"):
+                return ChatResult(player.name, ok=True,
+                                  content=payload(actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 3 and "房间行动" in title and player.name == "A" and '"type": "murder"' in messages[-1]["content"]:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(actions=[{"type": "murder", "target": "D", "weapon": "刀"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_attempt)
+        s = orch.state
+        self.assertEqual(s["winner"], "主神")
+        self.assertEqual(s["phase"], {"day": 5, "stage": "晚间休息"})
+        self.assertEqual(len(s["attempts"]), 1)   # D 运动员【敏捷闪避】防下唯一一次未遂
+        self.assertTrue(all(p["alive"] for p in s["players"]))
 
     def test_stop_and_resume(self):
         d = write_game_dir(self.root, default_players())
@@ -175,7 +205,7 @@ class TestMainGodEnding(MockGameTestBase):
         saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
         self.assertIsNone(saved["winner"])
         orch2 = self.run_game(d, killer_script=False)  # 重建实例续跑至结局
-        self.assertEqual(orch2.state["winner"], "主神")
+        self.assertEqual(orch2.state["winner"], "平民")
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertEqual(script.count("# 《暴风夜》对局全记录"), 1)  # 续跑不重写开头
 
@@ -240,7 +270,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertNotIn("……", section)   # mock 的 inner 固定为 "……"：内心独白不进简报
 
     def test_night_features_v3(self):
-        """v3 夜间特性端到端：密道（建筑师帮凶夜用）、窃听器内容真实下发、同宿密谈、清晨状态行/状态表。"""
+        """v3 夜间特性端到端：密道（建筑师帮凶夜用）、窃听器内容真实下发、守夜密谈、清晨状态行/状态表。"""
         players = self.players()
         players[1] = P("B", "帮凶", "建筑师", "毒药", gender="女", physique=2)  # 密道持有者
         d = write_game_dir(self.root, players)
@@ -339,7 +369,7 @@ class TestInterruptAndResume(MockGameTestBase):
         self.assertNotIn("C", saved["orch"]["cursor"])         # 被中断席位的 feed 游标未提交
         self.assertIn("模拟 API 故障", (d / "host_log.jsonl").read_text(encoding="utf-8"))
         orch2 = self.run_game(d, killer_script=False)  # 健康续跑直达结局
-        self.assertEqual(orch2.state["winner"], "主神")
+        self.assertEqual(orch2.state["winner"], "平民")
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertEqual(log.count("**A**：A 的第1天发言"), 1)  # 已完成席位不重问
         self.assertEqual(log.count("**C**：C 的第1天发言"), 1)  # 被中断席位重问且只成功一次
@@ -357,7 +387,7 @@ class TestInterruptAndResume(MockGameTestBase):
         self.assertEqual(saved["phase"], {"day": 1, "stage": "公共发言"})
         self.assertEqual(saved["orch"]["wip"]["1:公共发言:发言"]["done"], ["A", "B", "C"])  # D 被中断
         orch2 = self.run_game(d, killer_script=False)
-        self.assertEqual(orch2.state["winner"], "主神")
+        self.assertEqual(orch2.state["winner"], "平民")
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         for n in "ACD":
             self.assertEqual(log.count(f"**{n}**：{n} 的第1天发言"), 1)
@@ -384,7 +414,7 @@ class TestInterruptAndResume(MockGameTestBase):
             self.assertEqual(saved["phase"]["day"], 1)  # 第 1 天尚未跑完
             orch.hooks = {}   # console continue：清掉停止标记，同一实例直接再跑（进程内续跑）
             orch.run_game()
-            self.assertEqual(orch.state["winner"], "主神")
+            self.assertEqual(orch.state["winner"], "平民")
         finally:
             orchestrator.chat = orig
         log = (d / "public" / "log.md").read_text(encoding="utf-8")

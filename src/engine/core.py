@@ -4,7 +4,7 @@
 - 第 1 天没有投票，全天禁止谋杀；侦探只在已有谋杀案件的日子指定（新顺序首位）。
 - 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
-- 无杀倒计时：首起谋杀行为（含未遂）起算，连续两个完整天无谋杀行为则第三天清晨平民胜。
+- 无杀倒计时：自第 2 天起算，连续两个完整天无谋杀行为（含未遂）则下一清晨平民胜。
 - 第 5 天晚间休息结束仍无结果 → 主神获胜（全员失败）。
 - 自由活动合法去向 = 会客室/书房/监控室/地下室（白天卧室清场）；会客室不限人数、
   不设监控、永不黑暗、夜间不开放。
@@ -168,25 +168,24 @@ class Engine:
             s["order"] = s["order"][1:] + s["order"][:1]
             s["detective"] = s["order"][0] if s["cases"] else None
             s["gifts_used"] = []
-            ann = f"第 {new_day} 天开始。今日行动顺序：{' → '.join(s['order'])}"
+            ann = f"第 {new_day}/5 天开始。今日行动顺序：{' → '.join(s['order'])}"
             ann += f"；侦探：{s['detective']}" if s["detective"] else "（尚无谋杀案件，今日不设侦探）"
             public["announcements"].append(ann)
             # 清晨状态行：host 算好的全局状态，避免玩家自行推算规则状态出错（game/42 复盘项）
             alive_n = sum(1 for p in s["players"] if p["alive"])
             public["announcements"].append(f"目前存活 {alive_n} 人")
-            if s["last_murder_day"] is None:
-                public["announcements"].append("无杀倒计时：未启动（尚无谋杀行为）")
-            else:
-                quiet = new_day - 1 - s["last_murder_day"]
-                public["announcements"].append(
-                    f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个完整天则平民直接获胜）")
+            # 无杀倒计时自第 2 天起算（rules-6 §8）：尚无谋杀行为时视同末次行为为第 1 天
+            last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
+            quiet = new_day - 1 - last_behavior
+            public["announcements"].append(
+                f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个完整天则平民直接获胜）")
             if s["sealed_items"]:
                 public["announcements"].append(f"封存道具待投票分配：{len(s['sealed_items'])} 件")
             if new_day == 4:
                 for r in PUBLIC_ROOMS:
                     s["locks"][r] = False
                 public["announcements"].append("第 4 天起，除卧室外所有门锁自动打开")
-            if s["last_murder_day"] is not None and s["last_murder_day"] <= new_day - 3:
+            if last_behavior <= new_day - 3:
                 s["winner"] = "平民"
                 s["win_reason"] = "无杀倒计时完成（连续两个完整天无任何谋杀行为）"
                 s["phase"] = {"day": new_day, "stage": new_stage}
