@@ -34,7 +34,7 @@ except ImportError:  # 非 Windows 无 msvcrt；本项目环境为 Windows
     msvcrt = None
 
 from . import viewer
-from .orchestrator import Orchestrator
+from .orchestrator import OPENING, Orchestrator
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⦷⦯⦮⦿"
 SEPARATOR = "─" * 40
@@ -198,6 +198,24 @@ def fmt_action(a: dict) -> str:
         return f"伪造痕迹（案件 {a.get('case_id', '?')}）"
     if t == "move_body":
         return f"转移尸体（案件 {a.get('case_id', '?')} → {a.get('to_room', '?')}）"
+    if t == "investigate":
+        return f"现场调查（案件 {a.get('case_id', '?')}：{a.get('choice', '?')}）"
+    if t == "profile":
+        return f"犯罪侧写（案件 {a.get('case_id', '?')}：{a.get('aspect', '?')}）"
+    if t == "detective_monitoring":
+        return f"侦探监控查询：{a.get('period', '?')} × {a.get('rooms', '?')}"
+    if t == "vote":
+        return f"投票 → {a.get('target', '?')}"
+    if t == "abstain":
+        return "弃权"
+    if t == "memory_implant":
+        return f"记忆植入：{a.get('voter', '?')} → {a.get('target', '?')}"
+    if t == "assign_vote":
+        return "封存道具分配投票"
+    if t == "armed_accuse":
+        return f"武装指认 → {a.get('target', '?')}"
+    if t == "night_raid":
+        return f"夜袭 → {a.get('room', '?')}"
     return json.dumps(a, ensure_ascii=False)
 
 
@@ -211,12 +229,6 @@ STAGE_FLAVOR = {
     "案件调查": "气氛骤紧——出事了。",
     "投票": "投票的时刻到了。",
 }
-
-OPENING = """\
-暴风雨之夜。
-你们在一座陌生古堡的石厅中醒来——没有人记得自己是谁、从何而来。
-壁炉里的火烧得正旺，长桌上放着一本规则书，和一张主人留下的字条。
-你们之中，混着杀手与帮凶。"""
 
 
 class Ctx:
@@ -374,12 +386,16 @@ def ticker(ctx: Ctx) -> None:
 
 def worker(ctx: Ctx) -> None:
     try:
-        ctx.orch.run_day()
+        ctx.orch.run_game()
         if ctx.stop:
             print("\n== 已在阶段边界停止，可用 --resume 续跑 ==")
+        elif ctx.orch.state["winner"]:
+            w = ctx.orch.state
+            print(f"\n== 对局结束：{w['winner']}获胜——{w.get('win_reason', '')} ==")
+            print("（可继续用命令查看，quit 退出）")
         else:
             ph = ctx.orch.state["phase"]
-            print(f"\n== 跑局结束：第{ph['day']}天 · {ph['stage']}；winner = {ctx.orch.state['winner']} ==")
+            print(f"\n== 跑局结束：第{ph['day']}天 · {ph['stage']} ==")
             print("（可继续用命令查看，quit 退出）")
     except Exception as e:
         print(f"\n[编排器异常] {type(e).__name__}: {e}")

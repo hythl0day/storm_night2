@@ -2,9 +2,39 @@
 
 《暴风夜》重制工程：多家顶尖 AI 参与的暴风雪山庄身份推理游戏——自动化跑局管线 + 节目素材生产。
 
-- 脚本使用说明（环境准备、席位配置、连通性测试、开局生成）：[docs/usage.md](docs/usage.md)
-- 规则裁决引擎文档（M3 起）：[docs/engine.md](docs/engine.md)
-- **交接文档（进度与下一步，新 session 入口）**：[docs/handoff.md](docs/handoff.md)
+## 常用命令
+
+```bash
+# 安装依赖（Python 3.11+，仅 httpx）
+pip install -r src/requirements.txt
+
+# 配置 API key（players.toml 里只存环境变量名；中转站四席各一个，其余共用 CN）
+export RELAY_API_KEY_CN="sk-..."       # 另有 RELAY_API_KEY_GPT / _CLAUDE / _GEMINI / _GROK
+
+# 连通性点名：全部席位各回一句话
+python -m src.smoke --all
+
+# 创建对局（同 seed 逐字节可复现；目录名即 seed 本身，方便手打）
+python -m src.deal --seed 42           # 生成 game/42/
+
+# 跑局（二选一），跑到对局结束；中断后加 --resume 按阶段续跑
+python -m src.console --game game/42        # 交互驾驶舱：流式输出 + 随时命令（输入 help 查看）
+python -m src.orchestrator --game game/42   # 无头模式（供批量跑局）
+
+# 查看存档（只读，与跑局解耦）
+python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/peek/inner/host/follow
+
+# 测试（引擎 + 平衡回归 + 编排 mock 集成，85 用例）
+python -m unittest discover -s tests
+```
+
+对局产物：`game/<id>/script.md` 是主持人侧全记录（含剧透，供整理剧本）；`public/` 为公开口径，`private/` 为各席私密素材（内心独白/笔记），剪辑时注意防剧透。
+
+## 文档
+
+- 脚本使用说明（环境准备、席位配置、连通性测试、跑局与查看器的完整用法）：[docs/usage.md](docs/usage.md)
+- 规则裁决引擎文档：[docs/engine.md](docs/engine.md)
+- 项目约定与当前进度（新 session 入口）：[AGENTS.md](AGENTS.md)
 - 节目规划（两季 + 特别单集）：[rules/show-bible.md](rules/show-bible.md)
 - 规则书 v2：[rules/rules-6.md](rules/rules-6.md)（6 人局）/ [rules/rules-8.md](rules/rules-8.md)（8 人局）
 - 工程计划与里程碑：[rules/dev-plan.md](rules/dev-plan.md)

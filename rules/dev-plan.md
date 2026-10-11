@@ -103,8 +103,8 @@ temperature = 1.0
 | M1 ✅ | `deal.py` + `state.json` schema | 同 seed 两次生成完全一致；分配约束（杀手/帮凶必得凶器等）全部满足 |
 | M2 ✅（由 M0 覆盖） | providers 适配层 + `players.toml` | 六家各完成一次最小对话；失败重试可用 |
 | M3 ✅ | 引擎核心：房间/移动/谋杀/投票/道具台账 | 单测覆盖 §7 各分支（黑暗、自卫、延时装置、舞台魔术、记忆植入等）——64 用例全绿 |
-| M4 | orchestrator 主循环 + 落盘协议 | 跑通"第 1 天全天"；`game/<id>/` 目录结构完整 |
-| M4.5 | 交互层：`viewer.py`/`view.py`/`console.py` + providers 流式化 + 输出篇幅约束（方案：`docs/perf-console-plan.md`） | view 只读子命令（status/log/peek/inner/host/follow）对已落盘对局可用；console 驾驶舱：顶栏状态+spinner、流式输出、随时命令、阶段边界暂停/退出；单次调用中位延迟 ≤90s |
+| M4 ✅ | orchestrator 主循环 + 落盘协议 | 跑通"第 1 天全天"；`game/<id>/` 目录结构完整 |
+| M4.5 ✅ | 交互层：`viewer.py`/`view.py`/`console.py` + providers 流式化 + 输出篇幅约束 | view 只读子命令（status/log/peek/inner/host/follow）对已落盘对局可用；console 驾驶舱：顶栏状态+spinner、流式输出、随时命令、阶段边界暂停/退出；单次调用中位延迟 ≤90s |
 | M5 | 完整对局 | 全自动跑完一整局，日志无人工干预；并回归两个平衡场景：平民扎堆（3 人恒同室）与卧室蹲守，确认反制路径（停电/舞台魔术/延时装置/开锁夜袭）均可触发 |
 | M6 | batch.py + 评分卡 | 连跑 10 局，产出粗筛报告（局时长、谋杀数、技能使用率、反转点、主角弧线候选） |
 | M7 | `hostseat.py` + console 人机模式 | 你 + 5 AI 在终端完整打完一局 6 人局：人类发言自由文本、动作菜单化；该局正常归档。兼作开发期规则 QA 工具，可做简易版提前介入 |

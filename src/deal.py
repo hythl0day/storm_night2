@@ -254,7 +254,7 @@ def main() -> None:
             print(f"校验失败：{pb}", file=sys.stderr)
         raise SystemExit(1)
 
-    out = Path(args.out) if args.out else ROOT / "game" / f"{seed:06d}"
+    out = Path(args.out) if args.out else ROOT / "game" / str(seed)
     if out.exists():
         raise SystemExit(f"输出目录已存在：{out}（如需重跑请换 --out 或删除）")
     (out / "public").mkdir(parents=True)

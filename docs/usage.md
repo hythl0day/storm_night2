@@ -100,16 +100,16 @@ inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
 
 控制台输出是**主持人视角**（含身份分配），不要外发。
 
-### 3.3 编排器主循环：orchestrator.py（M4）
+### 3.3 编排器主循环：orchestrator.py（M4/M5）
 
-把引擎接上六家 API，按阶段驱动一整天的对局：简报 → 收集三通道 JSON（speech/inner/notes/actions）→ 引擎裁决 → 落盘。
+把引擎接上六家 API，按阶段驱动完整对局（直至产生胜者或主神结局）：简报 → 收集三通道 JSON（speech/inner/notes/actions）→ 引擎裁决 → 落盘。
 
 ```bash
-python -m src.orchestrator --game game/012345            # 跑通第 1 天全天（进入第 2 天清晨即停）
+python -m src.orchestrator --game game/012345            # 从当前阶段跑到对局结束
 python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（阶段粒度）
 ```
 
-第 1 天流程：开局准备（仅反派建筑师/窃听器持有者有义务，其余跳过不调用）→ 公共发言（按行动顺序）→ 交换环节（先问赠送者，再单独问接收者）→ 自由活动（停电声明并入选房菜单；秘密选房+同入邀请；引擎结算；≥2 人且非黑暗的房间进行一轮房间内交谈；逐人房间行动菜单）→ 晚间休息（留宿邀请、夜间房间行动，选择互相不可见）→ 进入第 2 天清晨停止。
+全天流程：开局准备（仅第 1 天；仅反派建筑师/窃听器持有者有义务，其余跳过）→ 案件调查（第 2 天起：清晨公告由引擎自动路由，调查自荐现场调查/犯罪侧写，侦探额外监控特权）→ 公共发言（侦探最后发言）→ 交换环节（先问赠送者，再单独问接收者）→ 投票（第 2 天起：逐席收票、反派心理医生可夹带记忆植入、遗言先于身份公布、封存道具逐件多数决且平票取侦探票、第 4 天起无人出局时持武器平民可武装指认——每次投票至多一次指认）→ 自由活动（停电声明并入选房菜单；秘密选房+同入邀请；引擎结算；≥2 人且非黑暗房间一轮房间内交谈；逐人房间行动菜单；阶段末毁证窗口）→ 晚间休息（留宿邀请、夜间房间行动、杀手夜袭与夜间谋杀窗口，选择互相不可见）→ 次日清晨。任一胜负条件满足即收束，结局写入 public/log.md。
 
 行为约定：
 
@@ -121,7 +121,8 @@ python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点
 落盘产物（`game/<id>/`）：
 
 ```
-public/log.md            # 公告、发言、交换、死亡公告（按阶段标题）
+script.md                # 主持人侧全记录：背景/阵容分配（全剧透）/全部发言与行动/裁决结果，不含内心独白
+public/log.md            # 公开口径：公告、发言、交换、死亡公告（按阶段标题）
 private/<id>/inner.md    # 内心独白（追加）；notes.md 私人笔记（每阶段覆盖）
 private/<id>/log.md      # 该席听到的房间内交谈存档
 inbox/<id>/day{N}-*.md   # 每环节简报存档；outbox/<id>/ 原始回复存档
@@ -153,7 +154,7 @@ python -m src.console --game game/012345 [--resume]
 
 中断安全性：state.json 为原子写（临时文件 + 替换），强杀不会留下半个文件；被中断的那次 API 调用结果丢弃，但上游可能已计费。注意断点是**阶段粒度**：发言类环节中途强杀后 `--resume` 会从头重跑该环节（public/log.md 里已写入的发言不会自动去重，强杀尽量用在阶段初期）。
 
-流式说明：console 跑局走 SSE 流式（推理内容淡色显示）；超时分层为连接 10s / 停滞看门狗 90s / 单次总墙钟 600s；上游不支持流式时自动回退非流式。无头模式（`python -m src.orchestrator`，供 M6 批量跑局）行为不变，与 console 共用同一个 `Orchestrator.run_day()`。
+流式说明：console 跑局走 SSE 流式（推理内容淡色显示）；超时分层为连接 10s / 停滞看门狗 90s / 单次总墙钟 600s；上游不支持流式时自动回退非流式。无头模式（`python -m src.orchestrator`，供 M6 批量跑局）行为不变，与 console 共用同一个 `Orchestrator.run_game()`。
 
 ### 3.6 速度诊断：tools/bench.py
 
@@ -210,9 +211,9 @@ python tools/bench.py --skip-long
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
 | `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
 | `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](engine.md) |
-| `tests/test_engine.py` | ✅ 可用 | 引擎单测（66 用例）：`python -m unittest discover -s tests` |
+| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归（test_balance）+ 编排 mock 全流程（test_orchestrator_game）共 85 用例：`python -m unittest discover -s tests` |
 | `prompt/game_system.md` | ✅ 可用 | 对局系统提示模板（扮演设定 + 输出契约 + 规则书 + 私密卡），占位符 {name}/{profile}/{card}/{rules} |
-| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4）：阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
+| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
 | `src/viewer.py` | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py 与 console.py 共用 |
 | `src/view.py` | ✅ 可用 | 只读查看器（M4.5）：`status`/`log`/`peek`/`inner`/`host`/`follow` 子命令，与跑局解耦，见 §3.4 |
 | `src/console.py` | ✅ 可用 | 交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令，见 §3.5 |

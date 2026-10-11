@@ -12,7 +12,7 @@ src/          Python 代码（跑局管线）
   gamedata.py     游戏静态数据（职业/道具/体格映射，与规则书对齐）
   deal.py         开局生成器（M1）→ game/<seed>/
   engine/         规则裁决引擎（M3）：state / murder / vote / ledger / core
-  orchestrator.py 编排器主循环（M4）：run_day() + 观察者钩子；无头模式与 console 共用
+  orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
   viewer.py       视图层（M4.5）：读存档渲染 status/log/peek/inner/host，与跑局解耦
   view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host/follow 子命令
   console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；M7/M8 的载体
@@ -47,17 +47,17 @@ tests/        unittest（python -m unittest discover -s tests）
 - 人设只写性格底色（失忆设定，无传记无职业）；prompt 要求"靠言行流露、禁止自我介绍性格、人设不影响推理"。
 - 随机选席为**中美 3+3 对称**（两家 API 渠道均衡）；手动 `--seats` 不对称仅提示。
 - deal.py 的随机调用顺序固定（见其 docstring），改顺序 = 改变 seed 语义。
-- 文件协议：`game/<id>/` 下 `seed.txt / state.json / rules.md / players.toml / public/ / private|inbox|outbox/<席位id>/`。
+- 文件协议：`game/<id>/` 下 `seed.txt / state.json / rules.md / players.toml / script.md（主持人侧全记录，含剧透，不含内心独白）/ public/ / private|inbox|outbox/<席位id>/`。
 
 ## 测试与自检
 
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
-python -m src.deal --seed 42           # 生成样例局 game/000042/
-python -m unittest discover -s tests   # 引擎 66 用例
+python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
+python -m unittest discover -s tests   # 85 用例（引擎 + 平衡回归 + 编排 mock 集成）
 ```
 
 ## 当前进度与待办
 
-里程碑总表在 `rules/dev-plan.md` §4。当前焦点：M4.5 交互层（方案与验收标准见 `docs/perf-console-plan.md`）代码已完成，待实测——`python -m src.console --game game/012345` 跑第 1 天全天（目标墙钟 ≤45 分钟），并中途 kill 一次验证 `--resume`。
+里程碑总表在 `rules/dev-plan.md` §4。M4/M4.5 已实测完成；M5（完整对局）代码完成：`run_game()` 驱动全局（案件调查/投票含遗言与道具分配/夜袭/毁证/武装指认），并新增 `script.md` 主持人侧全记录（背景/阵容分配/全部发言与行动/裁决，不含内心独白，供整理剧本）；`tests/test_balance.py` 两个平衡场景回归 + `tests/test_orchestrator_game.py` mock 全流程（主神/平民胜/续跑）全绿；待用户实测一整局真实对局后勾掉 M5。下一里程碑：M6 batch.py + 评分卡。
 （handoff.md 已删除，用户要求需要总结时再生成。）
