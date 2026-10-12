@@ -71,7 +71,7 @@ def make_fake_chat(killer_script: bool):
         elif "侦探竞选声明" in title:
             acts = [{"type": "declare", "run": name in ("C", "D")}]  # v3.3：C/D 参选，竞选票 C 当选
         elif "侦探竞选退选" in title:
-            acts = [{"type": "stay"}]
+            acts = [{"type": "elect_stay"}]
         elif "侦探竞选投票" in title:
             acts = [{"type": "elect", "target": "C"}]
         elif "遗言" in title:

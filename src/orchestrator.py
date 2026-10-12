@@ -16,7 +16,8 @@
 消息结构：system = render(game_system.md)（人设+规则书+私密卡），user = 当次简报（增量公告 +
 增量私密事件 + 关键记录档案 + notes 回放 + 合法动作菜单）；对话不累积，每阶段独立调用。
 全部顺序执行，不并发。观察者钩子（console 订阅；无头模式全为空操作）：on_call_start /
-on_token / on_call_end / on_stage / should_stop（席位间隙安全暂停：pause/Ctrl+C/quit 共用）。
+on_token / on_payload / on_call_end / on_stage / on_public（公开公告）/ on_result（动作裁决结果）/
+on_private（私密回执）/ should_stop（席位间隙安全暂停：pause/Ctrl+C/quit 共用）。
 
 中断与续跑（席位行动粒度）：
 - 每个席位行动完成后立即落盘 state.json（含 orch.wip 环节进度）；
@@ -223,26 +224,28 @@ class Orchestrator:
             f.write(f"\n## {text}\n\n")
 
     def script_private(self, ev: dict) -> None:
-        """把事件的私密回执逐条记入全记录（host 侧事实，不进 public/log.md）。"""
+        """把事件的私密回执逐条记入全记录（host 侧事实，不进 public/log.md）。console 经 on_private 上屏。"""
         for name, msg in (ev.get("private") or {}).items():
             if not isinstance(msg, str):
                 msg = json.dumps(msg, ensure_ascii=False)
             self.script_line(f"  [{name}] {msg}")
+            self._fire("on_private", name, msg)
 
     def script_action(self, name: str, act: dict, ev: dict) -> None:
-        """记录一次动作声明与裁决结果（含驳回——host 侧可见，不公开）。"""
-        line = f"- {name} 声明 {json.dumps(act, ensure_ascii=False)}"
-        if not ev.get("ok"):
-            line += f" → 驳回（{ev.get('error')}）"
+        """记录一次动作声明与裁决结果（含驳回——host 侧可见，不公开）。console 经 on_result 上屏。"""
+        ok = bool(ev.get("ok"))
+        if not ok:
+            detail = f"驳回（{ev.get('error')}）"
         else:
             priv = (ev.get("private") or {}).get(name)
             if isinstance(priv, str) and priv:
-                line += f" → 成功：{priv}"
+                detail = f"成功：{priv}"
             elif priv:
-                line += f" → 成功：{json.dumps(priv, ensure_ascii=False)}"
+                detail = f"成功：{json.dumps(priv, ensure_ascii=False)}"
             else:
-                line += " → 成功"
-        self.script_line(line)
+                detail = "成功"
+        self.script_line(f"- {name} 声明 {json.dumps(act, ensure_ascii=False)} → {detail}")
+        self._fire("on_result", name, ok, detail)
 
     def _fire(self, name: str, *args) -> None:
         """触发观察者钩子（console 订阅；无头模式不注册即为空操作）。"""
@@ -577,7 +580,8 @@ class Orchestrator:
             self.script_morning_status()
         self.save_state()
         ph = self.state["phase"]
-        print(f"== 进入 第{ph['day']}天 · {ph['stage']} ==")
+        if not self.hooks.get("on_stage"):  # 无头模式的阶段标记；console 由 on_stage 画双线横幅
+            print(f"== 进入 第{ph['day']}天 · {ph['stage']} ==")
         self._fire("on_stage", title)
         return ev
 
@@ -675,7 +679,7 @@ class Orchestrator:
                 if name in decided:
                     continue
                 p = self.player(name)
-                menu = ['- 继续参选：{"type": "stay"}',
+                menu = ['- 继续参选：{"type": "elect_stay"}',
                         '- 退选（退选者同样无投票权）：{"type": "withdraw"}']
                 briefing = self.build_briefing(
                     p, f"第{day}天 · 侦探竞选退选", menu,
@@ -1292,6 +1296,7 @@ class Orchestrator:
                 ev = self.eng.resolve_vote(votes, None)  # 植入声明非法（如目标已死）：作废植入，不影响投票本身
             elif ev["ok"] and implant is not None:
                 self.script_line(f"  记忆植入：{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
+                self._fire("on_private", "记忆植入", f"{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
             w["resolved"] = True
             w["ev"] = ev if ev["ok"] else None
             w["error"] = "" if ev["ok"] else str(ev.get("error", ""))
@@ -1527,7 +1532,7 @@ class Orchestrator:
                     break
                 if stage == "开局准备":
                     self.run_prep()
-                    self.advance(f"第{day}天 · 公共发言")
+                    self.advance(f"第{day}天 · {'侦探竞选' if day == 1 else '公共发言'}")
                 elif stage == "案件调查":
                     self.run_investigation()
                     self.advance(f"第{day}天 · 公共发言")

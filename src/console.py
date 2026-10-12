@@ -5,11 +5,13 @@
 
 显示设计（纯 ANSI，无第三方依赖）：
   - 所有输出走正常终端滚动流，**滚轮可回看全部历史**；
+  - 阶段开始/结束用 ══ 双线横幅（前留空行），席位行动用 ── 单线分隔，层级分明；
   - 底部固定三行块：分隔线 / 输入行（> 缓冲 + 固定光标▌）/ 状态行，
     输出时先擦掉整块、输出完重画；思考流按"行"批量吐出，提示区只在换行边界重画，
     因此**思考流持续期间输入行与状态行始终可见、打字即时回显**；
   - 每次调用开始先打印角色标题行，思考内容灰色滚动；JSON 正文不刷屏，
-    解析完成后渲染人读卡片（发言亮白加粗 / 内心灰色 / 行动黄色）。
+    解析完成后渲染人读卡片（发言亮白加粗 / 内心灰色 / 行动黄色），
+    动作裁决结果与私密回执（调查/侧写/植入明细等 host 侧信息）以暗色行随附。
 
 命令：help / status / log [n] / peek <席位> / inner <席位> / host [n] /
       follow [席位] / pause / continue / save / quit
@@ -43,6 +45,7 @@ from .orchestrator import OPENING, AbortRun, Orchestrator, morning_roster_rows
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⦷⦯⦮⦿"
 SEPARATOR = "─" * 40
+STAGE_SEP = "═" * 46  # 阶段级双线分隔符（比席位级的 ── 更醒目）
 CURSOR = "▌"
 
 HELP = """命令：
@@ -210,8 +213,8 @@ def fmt_action(a: dict) -> str:
         return f"犯罪侧写（案件 {a.get('case_id', '?')}：{a.get('aspect', '?')}）"
     if t == "declare":
         return "宣告参选侦探" if a.get("run") else "宣告不参选"
-    if t == "stay":
-        return "继续参选"
+    if t == "elect_stay":
+        return "继续参选（竞选留任）"
     if t == "withdraw":
         return "退选"
     if t == "elect":
@@ -248,6 +251,7 @@ def day_roster(orch: Orchestrator) -> str:
 # 阶段环境描写（宿主侧氛围渲染，不进 prompt、不落盘）
 STAGE_FLAVOR = {
     "开局准备": "众人从昏迷中醒来，发现自己身处一座陌生的古堡……",
+    "侦探竞选": "会客室里烛火摇曳。第一天的第一件事：推选一位领头人。",
     "公共发言": "会客室里烛火摇曳。众人围坐长桌，目光在彼此之间游移。",
     "自由活动": "人群散去，古堡的走廊里响起四散的脚步声。",
     "晚间休息": "夜深了，暴雨拍打着窗棂。各自回房——或者，不回。",
@@ -269,6 +273,7 @@ class Ctx:
         self.follow: str | None = None      # None = 跟随当前调用席
         self.current_seat = ""
         self.current_label = ""
+        self.current_stage = ""            # 当前阶段标题（阶段结束分隔符用）
         self.call_start = 0.0
         self.tokens = 0
         self.reason_buf = ""                # 思考流按行批量吐出的缓冲
@@ -294,7 +299,7 @@ def make_hooks(ctx: Ctx) -> dict:
         ctx.current_seat, ctx.current_label = name, label
         ctx.call_start, ctx.tokens = time.monotonic(), 0
         ctx.reason_buf = ""
-        print(f"\x1b[1;36m── {name} · {label} {SEPARATOR}\x1b[0m")
+        print(f"\n\x1b[1;36m── {name} · {label} {SEPARATOR}\x1b[0m")
 
     def on_token(text: str, is_reasoning: bool) -> None:
         ctx.tokens += len(text)
@@ -330,7 +335,12 @@ def make_hooks(ctx: Ctx) -> dict:
             print(f"\x1b[90m  ✗ {result.error}\x1b[0m")
 
     def on_stage(title: str) -> None:
-        print(f"\n\x1b[1;35m== {title} ==\x1b[0m")
+        if ctx.current_stage and ctx.current_stage != title:
+            print(f"\n\x1b[90m── {ctx.current_stage} · 结束 {SEPARATOR}\x1b[0m\n")
+        ctx.current_stage = title
+        print(f"\n\n\x1b[1;35m{STAGE_SEP}\x1b[0m")
+        print(f"\x1b[1;35m  {title}\x1b[0m")
+        print(f"\x1b[1;35m{STAGE_SEP}\x1b[0m")
         m = re.search(r"第(\d+)天", title)
         if m and int(m.group(1)) != ctx.day_shown:
             ctx.day_shown = int(m.group(1))
@@ -345,6 +355,14 @@ def make_hooks(ctx: Ctx) -> dict:
     def on_public(line: str) -> None:
         print(f"\x1b[92m{line}\x1b[0m")
 
+    def on_result(name: str, ok: bool, detail: str) -> None:
+        """动作裁决结果（host 侧，与 on_payload 的红色声明行配对）。"""
+        print(f"\x1b[90m  {'✓' if ok else '✗'} {detail}\x1b[0m")
+
+    def on_private(name: str, msg: str) -> None:
+        """私密回执（host 侧全剧透）：调查/侧写结果、继任通知、记忆植入明细等。"""
+        print(f"\x1b[90m  [{name}] {msg}\x1b[0m")
+
     return {
         "on_call_start": on_call_start,
         "on_token": on_token,
@@ -352,6 +370,8 @@ def make_hooks(ctx: Ctx) -> dict:
         "on_call_end": on_call_end,
         "on_stage": on_stage,
         "on_public": on_public,
+        "on_result": on_result,
+        "on_private": on_private,
         "should_stop": lambda: ctx.halt or ctx.quit_app,
     }
 
@@ -445,6 +465,9 @@ def worker(ctx: Ctx) -> None:
             orch.run_game()
             if orch.state["winner"]:
                 w = orch.state
+                if ctx.current_stage:
+                    print(f"\n\x1b[90m── {ctx.current_stage} · 结束 {SEPARATOR}\x1b[0m")
+                    ctx.current_stage = ""
                 print(f"\n== 对局结束：{w['winner']}获胜——{w.get('win_reason', '')} ==")
                 print("（可继续用命令查看，quit 退出）")
                 break
