@@ -5,11 +5,12 @@
     python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（席位行动粒度）
 
 一天流程：开局准备（仅第 1 天：反派建筑师确认密道、窃听器持有者声明放置）→ 公共发言
-（侦探最后发言；侦探仅在有案件的日子存在）→ 交换环节 → 投票（第 2 天起：收票/记忆植入/
-遗言先于身份公布/封存道具分配/无人出局时武装指认）→ 自由活动（会客室/书房/监控室/地下室
+（第 1 天改为侦探竞选：声明轮短发言+参选宣告 → 密封退选 → 未参选者投票；第 2 天起为常规发言，
+侦探末置发言、一票计 1.5）→ 交换环节 → 投票（第 2 天起：收票/记忆植入/
+遗言先于身份公布/封存道具与警徽遗嘱/无人出局时武装指认）→ 自由活动（会客室/书房/监控室/地下室
 四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；引擎结算；房间交谈；房间行动；
 阶段末毁证窗口）→ 晚间休息（守夜邀请与守夜密谈/夜间房间行动/密道/收听窃听器/杀手夜袭，
-互相不可见选择）→ advance() 进入次日案件调查（清晨公告含状态行/调查自荐/侦探监控特权）。
+互相不可见选择）→ advance() 进入次日案件调查（清晨公告含状态行/调查自荐/死者字条遗嘱）。
 终局（任一胜负条件满足）自动收束并落盘结局。
 
 消息结构：system = render(game_system.md)（人设+规则书+私密卡），user = 当次简报（增量公告 +
@@ -62,6 +63,7 @@ from .engine.state import (
     is_dark,
     is_villain,
     skill_left,
+    unlock_means,
 )
 from .gamedata import ARMED_WEAPONS, physique_desc
 from .prompts import render
@@ -78,6 +80,11 @@ ROOT = Path(__file__).resolve().parent.parent
 PERSONAS_PATH = Path(__file__).resolve().parent.parent / "personas.toml"
 
 ROOM_CHOICES = FREE_ROOMS  # 选房菜单：会客室/书房/监控室/地下室（v3：白天卧室清场）
+
+
+def _fmt_votes(x) -> str:
+    """票数显示：整票不带小数点，侦探加权的半票保留 .5。"""
+    return str(int(x)) if float(x).is_integer() else str(x)
 
 
 def fmt_monitoring(data: dict, day: int | None = None) -> str:
@@ -118,7 +125,13 @@ def morning_roster_rows(state: dict, out_day: dict) -> list[tuple[str, str, str,
         else:
             status = "出局"
         skills = "、".join(f"{k}×{v}" for k, v in state.get("skill_uses", {}).get(n, {}).items() if v > 0) or "无"
-        entries = p.get("items") or ([{"name": p["item"], "uses_left": p.get("item_uses_left", 0)}] if p.get("item") else [])
+        # items 键存在即以其为准（空列表=真的无道具）；仅在键缺失时回退 deal 旧字段（兼容早期存档/夹具）
+        if "items" in p:
+            entries = p["items"]
+        elif p.get("item"):
+            entries = [{"name": p["item"], "uses_left": p.get("item_uses_left", 0)}]
+        else:
+            entries = []
         items = "、".join(f"{e['name']}×{e['uses_left']}" for e in entries if e["uses_left"] > 0) or "无"
         rows.append((n, status, p["identity"], p["profession"], skills, items))
     return rows
@@ -193,7 +206,7 @@ class Orchestrator:
         lines += [
             "",
             f"- 首日行动顺序：{' → '.join(s['order'])}",
-            f"- 书房保险箱内藏凶器：{s.get('safe_item', '?')}（玩家只知有凶器，不知具体哪件）",
+            f"- 书房保险箱：{s.get('safe_item', '?')}（开局公告已公开）",
             "",
         ]
         ann = self.dir / "public" / "announcement.md"
@@ -296,12 +309,6 @@ class Orchestrator:
             sink(f"- {line}")
         if "monitoring" in public:
             sink(f"- 监控宣读：{fmt_monitoring(public['monitoring'])}")
-        if "granted" in public or "destroyed" in public:
-            granted = public.get("granted") or {}
-            parts = [f"{it}→{who}" for who, items in granted.items() for it in items]
-            parts += [f"{it}→销毁" for it in (public.get("destroyed") or [])]
-            if parts:
-                sink(f"- 封存道具分配结果：{'、'.join(parts)}")
         for name, msg in (ev.get("private") or {}).items():
             self.tell(name, msg)
 
@@ -553,9 +560,6 @@ class Orchestrator:
             ev = self.eng.investigate(name, int(act.get("case_id", 0)), str(act.get("choice", "")))
         elif at == "profile":
             ev = self.eng.profile(name, int(act.get("case_id", 0)), str(act.get("aspect", "")))
-        elif at == "detective_monitoring":
-            ev = self.eng.detective_monitoring(
-                name, str(act.get("period", "")), [str(r) for r in (act.get("rooms") or [])])
         if ev is None:
             return None
         self.script_action(name, act, ev)
@@ -633,8 +637,99 @@ class Orchestrator:
             self.save_state()
             self.check_stop()
 
+    def run_election(self) -> None:
+        """侦探竞选（v3.3 rules-6 §7.4，取代第 1 天公共发言）：
+
+        ① 声明轮：全员按顺序短发言并宣告参选与否（公开，可夹带职业/道具宣告——谎言留档）；
+        ② 密封退选：参选者 ≥2 时逐一私下决定留任/退选，收齐后一齐公布（退选者无投票权）；
+        ③ 未参选者投票，简单多数；无人报名/全员退选/全员参选/平票 → 本局不设侦探（引擎裁决）。
+        """
+        day = self.state["phase"]["day"]
+        w = self.wip(f"{day}:公共发言:竞选", declared=[], ran=[], decided={}, withdrew=False,
+                     stay=[], voted=[], votes={}, resolved=False)
+        alive_names = [p["name"] for p in self.alive()]
+        for name in self.state["order"]:
+            p = self.player(name)
+            if not p or not p["alive"] or name in w["declared"]:
+                continue
+            menu = ['- 宣告是否参选侦探：{"type": "declare", "run": true|false}',
+                    "- 声明写在 speech 字段（简短表态；可顺带宣告你的职业与道具——可以撒谎，但谎言会留档）"]
+            briefing = self.build_briefing(
+                p, f"第{day}天 · 侦探竞选声明", menu,
+                "现在竞选侦探。侦探职权：公共发言末置发言、投票时一票计 1.5 票；出局时警徽按遗嘱传承（可指定归属或销毁）。"
+                "若留任候选人超过一人，由未参选者投票决出（参选者与退选者均无投票权）。")
+            payload = self.call_ai(p, "竞选声明", briefing)
+            speech = str(payload.get("speech") or "").strip()
+            if speech:
+                self.log_line(f"**{name}**：{speech}")
+            run = any(a.get("type") == "declare" and bool(a.get("run")) for a in payload["actions"])
+            if run:
+                w["ran"].append(name)
+            self.log_line(f"{name} 宣告{'参选侦探' if run else '不参选'}")
+            w["declared"].append(name)
+            self.save_state()
+            self.check_stop()
+        if len(w["ran"]) >= 2 and not w["withdrew"]:
+            decided: dict[str, bool] = dict(w["decided"])
+            for name in w["ran"]:
+                if name in decided:
+                    continue
+                p = self.player(name)
+                menu = ['- 继续参选：{"type": "stay"}',
+                        '- 退选（退选者同样无投票权）：{"type": "withdraw"}']
+                briefing = self.build_briefing(
+                    p, f"第{day}天 · 侦探竞选退选", menu,
+                    f"参选者：{'、'.join(w['ran'])}。留任/退选决定在所有人作答后一齐公布。"
+                    "若最终留任多人，由未参选者投票；平票或全员退选则本局不设侦探。")
+                payload = self.call_ai(p, "竞选退选", briefing)
+                decided[name] = not any(a.get("type") == "withdraw" for a in payload["actions"])
+                w["decided"] = dict(decided)
+                self.save_state()
+                self.check_stop()
+            w["stay"] = [n for n in w["ran"] if decided.get(n, True)]
+            w["withdrew"] = True
+            dropped = [n for n in w["ran"] if n not in w["stay"]]
+            self.log_line(f"退选结果：{('、'.join(dropped) + ' 退选；') if dropped else '无人退选；'}"
+                          f"留任候选人：{'、'.join(w['stay']) or '无'}")
+            self.save_state()
+        stay = list(w["stay"]) if w["withdrew"] else list(w["ran"])
+        voters = [n for n in alive_names if n not in w["ran"]]
+        if len(stay) >= 2 and voters and not w["resolved"]:
+            votes: dict[str, str | None] = dict(w["votes"])
+            for name in self.state["order"]:
+                if name not in voters or name in w["voted"]:
+                    continue
+                p = self.player(name)
+                menu = [f'- 投票选侦探：{{"type": "elect", "target": "{"|".join(stay)}"}}',
+                        '- 弃权：{"type": "abstain"}']
+                briefing = self.build_briefing(
+                    p, f"第{day}天 · 侦探竞选投票", menu,
+                    f"留任候选人：{'、'.join(stay)}。未参选者投票，简单多数当选；平票则本局不设侦探。")
+                payload = self.call_ai(p, "竞选投票", briefing)
+                votes[name] = None
+                for act in payload["actions"]:
+                    if act.get("type") == "elect" and str(act.get("target", "")) in stay:
+                        votes[name] = str(act["target"])
+                w["votes"] = dict(votes)
+                w["voted"].append(name)
+                self.save_state()
+                self.check_stop()
+        if not w["resolved"]:
+            votes = dict(w["votes"])
+            if len(stay) >= 2 and voters:
+                detail = "、".join(f"{n}→{votes.get(n) or '弃权'}" for n in voters)
+                self.script_line(f"- 竞选票型：{detail}")
+                self._fire("on_public", f"竞选票型：{detail}")
+            ev = self.eng.elect_detective(list(w["ran"]), stay, votes)
+            if ev["ok"]:
+                self.route(ev)
+            else:
+                self.log_line(f"侦探竞选未能结算：{ev.get('error', '')}（按本局不设侦探继续）")
+            w["resolved"] = True
+            self.save_state()
+
     def run_speeches(self) -> None:
-        """公共发言：按行动顺序每人一次（侦探最后发言，规则 7.2）；顺序靠后者可在简报中看到靠前者的发言。"""
+        """公共发言（第 2 天起）：按行动顺序每人一次（侦探末置发言，规则 7.2）；顺序靠后者可在简报中看到靠前者的发言。"""
         day = self.state["phase"]["day"]
         det = self.state.get("detective")
         speech_order = [n for n in self.state["order"] if n != det]
@@ -649,7 +744,7 @@ class Orchestrator:
                 continue
             menu = []
             if skill_left(self.state, name, "看破伪装") > 0 or held_item(p, "测谎仪", day) is not None:
-                menu.append('- 看破伪装（自己发言前）：{"type": "see_through", "target": "玩家名", "claims": {"profession": "对方声称的职业", "item": "对方声称的道具", "visited_rooms": ["对方声称去过的房间"], "denied_rooms": ["对方声称没去过的房间"]}}')
+                menu.append('- 看破伪装（自己发言前；claims 只填对方实际声称过的内容——无效名目或无监控覆盖的类目会标注"无法验证"，不计入谎言判定）：{"type": "see_through", "target": "玩家名", "claims": {"profession": "对方声称的职业", "item": "对方声称的道具", "visited_rooms": ["对方声称去过的房间"], "denied_rooms": ["对方声称没去过的房间"]}}')
             menu.append("- 发言写在 speech 字段；无需动作时 actions 为 []")
             briefing = self.build_briefing(p, f"第{day}天 · 公共发言（轮到你）", menu,
                                            "现在轮到你公开发言。分析、指控、质疑、声明、辩护均可。")
@@ -730,8 +825,8 @@ class Orchestrator:
             if not p or not p["alive"] or name in w["done"]:
                 continue
             menu = list(rooms_menu)
-            if is_villain(p) and (skill_left(self.state, name, "暴力破解") > 0 or held_item(p, "螺丝起子", day) is not None):
-                menu.append('- 秘密声明今天停电：{"type": "declare_blackout"}')
+            if is_villain(p) and unlock_means(self.state, name) is not None:
+                menu.append('- 秘密声明今天停电（拉电闸制造过载，消耗一次开锁手段；停电中门锁失效、监控空白、除会客室外全部黑暗）：{"type": "declare_blackout"}')
             later = [n for n in self.state["order"][i + 1:] if n in alive_names]
             extra = f"你可以邀请顺序在你之后的玩家同入：{'、'.join(later) if later else '无'}。"
             inviters = [v for t, v in pending_invite.items() if t == name]
@@ -925,7 +1020,7 @@ class Orchestrator:
                 if later:
                     extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
                 if p["identity"] == "杀手" and not self.state["stage_murder_used"]:
-                    menu.append('- 夜袭：前往一名玩家的卧室动手（需开锁手段；若房内已有 2 人则无法进入，记为谋杀失败一次）：{"type": "night_raid", "room": "某人的卧室"}')
+                    menu.append('- 夜袭：前往一名玩家的卧室动手（需开锁手段，停电期间门锁失效除外；房内满 2 人时仅停电黑暗中可潜入袭击其一，否则无法进入且当夜机会作废）：{"type": "night_raid", "room": "某人的卧室"}')
                 if is_villain(p) and p["profession"] == "建筑师" and self.state["passage"] and not self.state["passage"]["used"]:
                     menu.append('- 使用密道（当夜行动，与夜间房间/夜袭互斥；监控无痕；出口人数须满足谋杀人数条件，否则当晚失败但密道保留）：{"type": "use_passage", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock（可选）"}')
                 if self.state["bug_room"] and held_item(p, "窃听器", day) is not None:
@@ -1029,7 +1124,8 @@ class Orchestrator:
             self.save_state()
 
     def sleep_talks(self, day: int, invited: dict[str, str]) -> None:
-        """守夜密谈（v3）：守夜成立且房内恰好两人的卧室，睡前密谈一轮；夜袭进入的卧室不交谈。"""
+        """守夜密谈（v3）：守夜成立且房内恰好两人的卧室，睡前密谈一轮；夜袭进入的卧室不交谈。
+        v3.2：黑暗房间无法交谈——停电期间卧室黑暗，密谈取消。"""
         if not invited:
             return
         w = self.wip(f"{day}:晚间休息:密谈", done=[])
@@ -1040,8 +1136,8 @@ class Orchestrator:
                 continue
             occ = [n for n in self.state["order"]
                    if positions.get(n) == room and (self.player(n) or {}).get("alive")]
-            if set(occ) != {guest, host}:
-                w["done"].append(room)  # 邀请未成立/有第三者（夜袭）→ 不交谈
+            if set(occ) != {guest, host} or is_dark(self.state, room):
+                w["done"].append(room)  # 邀请未成立/有第三者（夜袭）/房间黑暗（停电）→ 不交谈
                 continue
             transcript: list[str] = []
             for occ_name in occ:
@@ -1092,7 +1188,7 @@ class Orchestrator:
 
 
     def run_investigation(self) -> None:
-        """案件调查：调查自荐（现场调查/鲁米诺试剂/犯罪侧写）+ 侦探监控特权。
+        """案件调查：调查自荐（现场调查/鲁米诺试剂/犯罪侧写）+ 死者字条遗嘱。
 
         清晨公告（死亡/未遂/强制开锁/职业公开/监控宣读）由 advance() 统一路由，此处只管调查动作。
         全无案件且无未遂的清晨（第 2 天恒如此）不调用任何 AI，直接跳过。
@@ -1102,7 +1198,25 @@ class Orchestrator:
         had_attempts = any(a["day"] == yday and a["target"] for a in self.state["attempts"])
         if not self.state["cases"] and not had_attempts:
             return
-        w = self.wip(f"{day}:案件调查:调查", done=[], det_done=False)
+        # 遗嘱（v3.2）：昨日遇害者的封存道具以"死者字条"指定归属（公开），接收人可拒收
+        w_be = self.wip(f"{day}:案件调查:遗嘱", done=[])
+        for victim in [c["victim"] for c in self.state["cases"] if c["day"] == yday]:
+            if victim in w_be["done"]:
+                continue
+            vp = self.player(victim)
+            owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == victim]
+            has_will = bool(owned) or victim == self.state.get("detective")  # 道具或侦探徽章皆可立遗嘱
+            mapping = {}
+            if has_will and vp is not None:
+                mapping = self.ask_bequest_map(
+                    vp, f"第{day}天 · 死者字条",
+                    "你在昨夜遇害。以死者字条指定遗留道具的归属——这是你最后一次影响局势的机会（遗嘱公开）。")
+            w_be["done"].append(victim)
+            self.save_state()
+            if has_will:
+                self.run_bequest(victim, mapping)
+            self.check_stop()
+        w = self.wip(f"{day}:案件调查:调查", done=[])
         case_lines = [f"案件 {c['id']}：{c['victim']} 死于{c['room']}（第{c['day']}天）" for c in self.state["cases"]]
         for name in self.state["order"]:
             if self.state["winner"]:
@@ -1125,25 +1239,9 @@ class Orchestrator:
             w["done"].append(name)
             self.save_state()
             self.check_stop()
-        det = self.state.get("detective")
-        dp = self.player(det) if det else None
-        if dp and dp["alive"] and not self.state["winner"] and not w["det_done"]:
-            periods = "、".join(self.state["monitoring"].keys()) or "（尚无记录）"
-            menu = [('- 侦探特权·额外查询监控（指定一个时间段 × 至多两个场所；'
-                     f'当前合法时段只有：{periods}）：'
-                     '{"type": "detective_monitoring", "period": "（从上列时段中选）", "rooms": ["书房", "监控室"]}'),
-                    "- 不查询则 actions 为 []"]
-            extra = ("你是今日侦探。除公开宣读的监控外，你可额外指定一个时间段 × 至多两个场所查看进入者名单，"
-                     "结果仅你可见，由你在发言中向大家转述（你可以撒谎——这是你唯一的信息特权）。")
-            briefing = self.build_briefing(dp, f"第{day}天 · 案件调查（侦探特权）", menu, extra)
-            payload = self.call_ai(dp, "案件调查-侦探特权", briefing)
-            self.apply_actions(dp, payload["actions"])
-            w["det_done"] = True
-            self.save_state()
-            self.check_stop()
 
     def run_vote(self) -> None:
-        """投票：逐席收票（反派心理医生可夹带记忆植入）→ 结算 → 遗言先于身份公布 → 封存道具分配 → 武装指认。
+        """投票：逐席收票（反派心理医生可夹带记忆植入）→ 结算 → 遗言先于身份公布 → 封存道具与警徽遗嘱 → 武装指认。
 
         断点设计：收票逐席落盘（wip.votes/implant）；结算结果 ev 本身也落盘（wip.ev），
         续跑从遗言/公布处继续，绝不会重复结算投票。
@@ -1151,7 +1249,7 @@ class Orchestrator:
         day = self.state["phase"]["day"]
         alive_names = [p["name"] for p in self.alive()]
         w = self.wip(f"{day}:投票:收票", done=[], votes={}, implant=None,
-                     resolved=False, ev=None, error="", last_words=False, routed=False)
+                     resolved=False, ev=None, error="", last_words=False, routed=False, bequest_map=None)
         votes: dict[str, str | None] = dict(w["votes"])
         implant = w["implant"]
         if not w["resolved"]:
@@ -1164,9 +1262,11 @@ class Orchestrator:
                         '- 弃权：{"type": "abstain"}']
                 if is_villain(p) and p["profession"] == "心理医生" and skill_left(self.state, name, "记忆植入") > 0:
                     menu.append('- 记忆植入（与你的投票一并声明，强迫一名玩家改投你指定的人；只会公布"票数被更改过"）：{"type": "memory_implant", "voter": "玩家名", "target": "玩家名"}')
+                det = self.state.get("detective")
+                det_note = f"；侦探（{det}）一票计 1.5 票" if det in alive_names else ""
                 briefing = self.build_briefing(
                     p, f"第{day}天 · 投票", menu,
-                    f"现在投票。得票超过存活人数（{len(alive_names)} 人）一半者出局；平票或无人过半则无人出局。")
+                    f"现在投票。得票超过存活人数（{len(alive_names)} 人）一半者出局{det_note}；平票或无人过半则无人出局。")
                 payload = self.call_ai(p, "投票", briefing)
                 for act in payload["actions"]:
                     at = act.get("type")
@@ -1209,17 +1309,30 @@ class Orchestrator:
         tally = public.get("tally") or {}
         if out and not w["last_words"]:
             op = self.player(out)
-            ask = self.build_briefing(op, f"第{day}天 · 遗言",
-                                      ["- 本环节无动作可做，actions 返回 []"],
-                                      "你被投票出局了。发表你的遗言（可以撒谎）——遗言之后主持人将公布你的身份。")
+            owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == out]
+            has_badge = out == self.state.get("detective")
+            menu = ["- 本环节无动作可做，actions 返回 []"]
+            extra = "你被投票出局了。发表你的遗言（可以撒谎）——遗言之后主持人将公布你的身份。"
+            if owned or has_badge:
+                menu = ['- 遗嘱：逐件指定遗留归属（未指定的销毁；接收人可拒收；遗嘱公开）：'
+                        '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']
+            if owned:
+                extra += f"\n你留下的未使用道具：{'、'.join(owned)}。在遗言中一并指定归属。"
+            if has_badge:
+                extra += "\n你是侦探——侦探徽章也在遗嘱之列（mapping 里以「警徽」为键指定一名存活玩家继任；不指定则销毁，本局不再设侦探）。"
+            ask = self.build_briefing(op, f"第{day}天 · 遗言", menu, extra)
             payload = self.call_ai(op, "遗言", ask)
             last_words = str(payload.get("speech") or "").strip()
             if last_words:
                 self.log_line(f"**{out} 的遗言**：{last_words}")
+            for act in payload["actions"]:
+                if act.get("type") == "bequeath" and isinstance(act.get("mapping"), dict):
+                    w["bequest_map"] = {str(k): (None if v in (None, "销毁") else str(v))
+                                        for k, v in act["mapping"].items()}
             w["last_words"] = True
             self.save_state()
         if not w["routed"]:
-            detail = "、".join(f"{t} {c}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
+            detail = "、".join(f"{t} {_fmt_votes(c)}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
             voters = w.get("voters") or len(self.alive())
             if out:
                 verdict = f"{out} 过半数出局（存活 {voters} 人，需 >{voters // 2} 票）"
@@ -1233,80 +1346,78 @@ class Orchestrator:
             self.save_state()
         if self.state["winner"]:
             return
-        if self.state["sealed_items"]:
-            self.run_assign_sealed()
-            if self.state["winner"]:
-                return
+        if out is not None and (any(e.get("from") == out for e in self.state["sealed_items"])
+                                or out == self.state.get("detective")):
+            self.run_bequest(out, w.get("bequest_map") or {})
         if out is None:
             self.run_armed_accusation()
 
-    def run_assign_sealed(self) -> None:
-        """封存道具分配：每席一票提出整体归属，逐道具多数决，平票取侦探票；无人投票的道具销毁。
+    def ask_bequest_map(self, p: dict, title: str, extra: str) -> dict:
+        """请即将离场者/死者立遗嘱：返回 {道具名|"警徽": 接收人}（空=全部销毁）。"""
+        owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == p["name"]]
+        has_badge = p["name"] == self.state.get("detective")
+        if not owned and not has_badge:
+            return {}
+        menu = ['- 遗嘱：逐件指定遗留归属（未指定的销毁；接收人可拒收；遗嘱公开）：'
+                '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']
+        extra += f"\n你留下的未使用道具：{'、'.join(owned) if owned else '无'}。"
+        if has_badge:
+            extra += "你是侦探——侦探徽章也在遗嘱之列（mapping 里以「警徽」为键指定一名存活玩家继任；不指定则销毁，本局不再设侦探）。"
+        payload = self.call_ai(p, title, self.build_briefing(p, title, menu, extra))
+        for act in payload["actions"]:
+            if act.get("type") == "bequeath" and isinstance(act.get("mapping"), dict):
+                return {str(k): (None if v in (None, "销毁") else str(v)) for k, v in act["mapping"].items()}
+        return {}
 
-        简化：不单设讨论轮（讨论已在公共发言发生），一次调用收齐全部道具的归属票。
-        """
+    def run_bequest(self, owner: str, mapping: dict) -> None:
+        """遗嘱流程（v3.2/v3.3）：本人指定归属后，逐位接收人回应（接受/拒绝，无回应默认接受），
+        引擎落账并公告。侦探出局时警徽随遗嘱一并处理（mapping 以「警徽」为键，见 rules-6 §7.4）。"""
         day = self.state["phase"]["day"]
-        items = [e["name"] for e in self.state["sealed_items"]]
-        alive_names = [p["name"] for p in self.alive()]
-        det = self.state.get("detective")
-        w = self.wip(f"{day}:投票:道具分配", done=[], ballots={}, announced=False, assigned=False)
-        if not w["announced"]:
-            self.log_line(f"封存道具待分配：{'、'.join(items)}")
-            w["announced"] = True
-            self.save_state()
-        ballots: dict[str, dict[str, str | None]] = {k: dict(v) for k, v in w["ballots"].items()}
-        for name in self.state["order"]:
-            p = self.player(name)
-            if not p or not p["alive"] or name in w["done"]:
+        w = self.wip(f"{day}:遗嘱:{owner}", replied=[], replies={}, settled=False)
+        owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == owner]
+        badge = owner == self.state.get("detective")
+        mapping = dict(mapping or {})
+        raw_badge = mapping.pop("警徽", None)
+        badge_to = str(raw_badge) if badge and raw_badge else None
+        mapping = {it: tg for it, tg in mapping.items() if it in owned}
+        replies: dict[str, dict[str, bool]] = {k: dict(v) for k, v in w["replies"].items()}
+        targets = list(dict.fromkeys([t for t in mapping.values() if t] + ([badge_to] if badge_to else [])))
+        for tgt in targets:
+            if tgt in w["replied"]:
                 continue
-            menu = [('- 为每件封存道具投出归属：{"type": "assign_vote", "mapping": {'
-                     + "、".join(f'"{it}": "玩家名 或 销毁"' for it in items) + "}}"),
-                    f"- 可分配对象：{'、'.join(alive_names)}；写 \"销毁\" 则销毁该道具"]
-            briefing = self.build_briefing(
-                p, f"第{day}天 · 道具分配", menu,
-                "封存道具（来自出局者与死者）现在分配。逐道具多数决；平票时以侦探的票为准。分配到的道具次日起可用。")
-            payload = self.call_ai(p, "道具分配", briefing)
+            p = self.player(tgt)
+            if not p or not p["alive"]:
+                continue
+            items = [it for it, t in mapping.items() if t == tgt]
+            gets_badge = badge_to == tgt
+            menu = ['- 逐件回应（接受则次日起可用；拒绝则销毁）：{"type": "bequest_reply", "decisions": {"道具名": "接受|拒绝"}}']
+            extra = (f"{owner} 的遗嘱把以下留给你：{'、'.join(items + (['侦探徽章'] if gets_badge else []))}。"
+                     "此事全员公开——收下可能带来信任也可能带来嫌疑，由你判断。")
+            if gets_badge:
+                extra += "接受侦探徽章即继任侦探（末置发言、一票计 1.5）。"
+            payload = self.call_ai(p, "遗嘱回应", self.build_briefing(p, f"第{day}天 · 遗嘱回应", menu, extra))
+            dec: dict[str, bool] = {}
             for act in payload["actions"]:
-                if act.get("type") == "assign_vote" and isinstance(act.get("mapping"), dict):
-                    ballots[name] = {str(k): (None if v in (None, "销毁") else str(v))
-                                     for k, v in act["mapping"].items()}
-            w["done"].append(name)
-            w["ballots"] = {k: dict(v) for k, v in ballots.items()}
+                if act.get("type") == "bequest_reply" and isinstance(act.get("decisions"), dict):
+                    for k, v in act["decisions"].items():
+                        dec[str(k)] = str(v) == "接受"
+            for it in items + (["警徽"] if gets_badge else []):
+                dec.setdefault(it, True)  # 无回应默认接受（不惩罚沉默；拒绝须明示）
+            replies[tgt] = dec
+            w["replied"].append(tgt)
+            w["replies"] = {k: dict(v) for k, v in replies.items()}
             self.save_state()
             self.check_stop()
-        if w["assigned"]:
+        if w["settled"]:
             return
-        if ballots:
-            def _fmt_ballot(m: dict) -> str:
-                return "、".join(f"{it}→{tgt or '销毁'}" for it, tgt in m.items())
-            detail = "；".join(f"{n}：{_fmt_ballot(m)}" for n, m in ballots.items())
-            self.script_line(f"- 道具分配票明细：{detail}")
-        mapping: dict[str, str | None] = {}
-        for item in items:
-            tally: dict[str | None, int] = {}
-            for m in ballots.values():
-                if item not in m:
-                    continue
-                v = m[item]
-                if v is not None and v not in alive_names:
-                    continue
-                tally[v] = tally.get(v, 0) + 1
-            if not tally:
-                mapping[item] = None
-                continue
-            top = max(tally.values())
-            cands = [v for v, c in tally.items() if c == top]
-            if len(cands) == 1:
-                mapping[item] = cands[0]
-            else:
-                det_pick = (ballots.get(det) or {}).get(item) if det else None
-                mapping[item] = det_pick if (det_pick is None or det_pick in alive_names) else None
-        ev = self.eng.assign_sealed(mapping)
-        if ev["ok"]:
-            self.route(ev)
-        else:
-            print(f"  封存道具分配失败：{ev.get('error')}")
-        w["assigned"] = True
+        if owned:
+            self.route(self.eng.bequest(owner, mapping, replies))
+        if badge:
+            accept = bool(badge_to and replies.get(badge_to, {}).get("警徽"))
+            evb = self.eng.bequest_badge(owner, badge_to, accept)
+            if evb["ok"]:
+                self.route(evb)
+        w["settled"] = True
         self.save_state()
 
     def run_armed_accusation(self) -> None:
@@ -1346,6 +1457,13 @@ class Orchestrator:
             if fired:
                 w["fired"] = True
                 self.save_state()
+                # 指认错误出局者的遗留道具（与侦探徽章）同样走遗嘱流程（v3.2/v3.3）
+                if not self.player(name)["alive"] and (any(e.get("from") == name for e in self.state["sealed_items"])
+                                                       or name == self.state.get("detective")):
+                    mapping = self.ask_bequest_map(
+                        p, f"第{day}天 · 遗嘱",
+                        "你的指认错误，你出局了（身份已公布）。你的遗留道具由你指定归属。")
+                    self.run_bequest(name, mapping)
                 return  # 一次投票后至多一次指认
             self.save_state()
             self.check_stop()
@@ -1414,7 +1532,10 @@ class Orchestrator:
                     self.run_investigation()
                     self.advance(f"第{day}天 · 公共发言")
                 elif stage == "公共发言":
-                    self.run_speeches()
+                    if day == 1:
+                        self.run_election()  # v3.3：第 1 天公共发言时段改为侦探竞选
+                    else:
+                        self.run_speeches()
                     if not self.state["winner"]:
                         self.run_exchange()
                     if not self.state["winner"]:

@@ -94,7 +94,8 @@ class TestSampleState(unittest.TestCase):
         st = load_state(FIXTURE)
         eng = Engine(st)
         self.assertEqual(st["phase"], {"day": 1, "stage": "开局准备"})
-        self.assertTrue(st["locks"]["地下室"])
+        self.assertTrue(st["locks"]["监控室"])   # v3.2：监控室上锁（首开需开锁手段）
+        self.assertFalse(st["locks"]["地下室"])  # v3.2：地下室取消门锁
         self.assertFalse(st["locks"]["书房"])
         self.assertTrue(st["locks"]["桑娜·克劳德的卧室"])
         for p in st["players"]:
@@ -109,7 +110,7 @@ class TestSampleState(unittest.TestCase):
         order0 = list(eng.state["order"])
         goto(eng, "案件调查", day=2)
         self.assertEqual(eng.state["order"], order0[1:] + order0[:1])
-        self.assertIsNone(eng.state["detective"])  # v3：无案件的日子不设侦探
+        self.assertIsNone(eng.state["detective"])  # v3.3：未举行竞选则无侦探
         self.assertIsNone(eng.state["winner"])
 
 
@@ -594,23 +595,154 @@ class TestVote(unittest.TestCase):
         self.assertFalse(ev["ok"])
         self.assertIn("武器", ev["error"])
 
-    def test_assign_sealed_next_day_available(self):
+    def test_bequest_grant_and_destroy(self):
+        """v3.2 遗嘱制：出局者指定归属 + 接收人接受 → 次日可用；拒收/未指定 → 销毁。"""
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
-        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
-        self.assertIn("刀", {e["name"] for e in eng.state["sealed_items"]})
-        ev = eng.assign_sealed({"刀": "C"})
+        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})  # A（杀手·魔术师·刀）出局
+        self.assertEqual([e["name"] for e in eng.state["sealed_items"] if e.get("from") == "A"], ["刀"])
+        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": True}})
         self.assertTrue(ev["ok"], ev)
-        entry = items_of(eng, "C")["刀"]
-        self.assertEqual(entry["available_day"], 3)
+        self.assertEqual(items_of(eng, "C")["刀"]["available_day"], 3)  # 次日起可用
         self.assertEqual(eng.state["sealed_items"], [])
+        self.assertIn("→ C", ev["public"]["announcements"][0])
 
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
-        ev = eng.assign_sealed({"刀": None})
+        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": False}})  # 拒收 → 销毁
         self.assertTrue(ev["ok"])
-        self.assertEqual(ev["public"]["destroyed"], ["刀"])
+        self.assertNotIn("刀", items_of(eng, "C"))
+        self.assertIn("拒收", ev["public"]["announcements"][0])
+
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
+        ev = eng.bequest("A", {}, {})  # 未指定 → 销毁
+        self.assertTrue(ev["ok"])
+        self.assertIn("未指定归属", ev["public"]["announcements"][0])
+        self.assertEqual(eng.state["sealed_items"], [])
+
+
+class TestDetectiveElection(unittest.TestCase):
+    """v3.3 侦探竞选与警徽遗嘱（rules-6 §7.4）：第 1 天竞选产生，出局按遗嘱传承，不补选。"""
+
+    def test_no_candidates(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        ev = eng.elect_detective([], [], {})
+        self.assertTrue(ev["ok"], ev)
+        self.assertIsNone(eng.state["detective"])
+        self.assertTrue(eng.state["detective_election_done"])
+        self.assertIn("无人报名", ev["public"]["announcements"][0])
+
+    def test_single_candidate_acclaimed(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        ev = eng.elect_detective(["C"], ["C"], {})
+        self.assertEqual(eng.state["detective"], "C")
+        self.assertIn("直接当选", ev["public"]["announcements"][0])
+
+    def test_tie_no_detective(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        ev = eng.elect_detective(["C", "D"], ["C", "D"], {"A": "C", "B": "D", "E": None, "F": None})
+        self.assertIsNone(eng.state["detective"])
+        self.assertIn("平票", ev["public"]["announcements"][0])
+
+    def test_plurality_win_and_voter_eligibility(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        # 参选者 C/D 无投票权：C 的票被丢弃；A、B 投 C，E 投 D → C 2 票当选
+        ev = eng.elect_detective(["C", "D"], ["C", "D"], {"C": "D", "A": "C", "B": "C", "E": "D", "F": None})
+        self.assertEqual(eng.state["detective"], "C")
+        self.assertIn("C 2票", ev["public"]["announcements"][0])
+
+    def test_all_ran_no_voters(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        allsix = list(eng.state["order"])
+        ev = eng.elect_detective(allsix, allsix[:2], {})
+        self.assertIsNone(eng.state["detective"])
+        self.assertIn("全员参选", ev["public"]["announcements"][0])
+
+    def test_all_withdraw(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        ev = eng.elect_detective(["C", "D"], [], {})
+        self.assertIsNone(eng.state["detective"])
+        self.assertIn("全部退选", ev["public"]["announcements"][0])
+
+    def test_election_only_day1_once(self):
+        eng = Engine(mk_state())
+        goto(eng, "公共发言", day=1)
+        self.assertTrue(eng.elect_detective(["C"], ["C"], {})["ok"])
+        self.assertFalse(eng.elect_detective(["D"], ["D"], {})["ok"])  # 不重复竞选
+        self.assertEqual(eng.state["detective"], "C")
+        eng2 = Engine(mk_state())
+        goto(eng2, "投票", day=2)
+        self.assertFalse(eng2.elect_detective(["C"], ["C"], {})["ok"])  # 非第 1 天竞选时段
+
+    def test_detective_vote_weight(self):
+        """侦探一票计 1.5：6 人局侦探+2 人=3.5 过半（>3）；侦探+1 人=2.5 不过半。"""
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        eng.state["detective"] = "C"
+        ev = eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": None})
+        self.assertEqual(ev["public"]["tally"]["A"], 3.5)
+        self.assertEqual(ev["public"]["out"], "A")
+
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        eng.state["detective"] = "C"
+        ev = eng.resolve_vote({"C": "A", "D": "A"})
+        self.assertEqual(ev["public"]["tally"]["A"], 2.5)
+        self.assertIsNone(ev["public"]["out"])  # 2.5 不 > 3
+
+        # 5 人局：侦探+1=2.5 不 >2.5；侦探+2=3.5 过半
+        players = default_players()
+        players[5]["alive"] = False  # F 已死
+        eng = Engine(mk_state(players=players, day=2, stage="投票"))
+        eng.state["detective"] = "C"
+        self.assertIsNone(eng.resolve_vote({"C": "A", "D": "A"})["public"]["out"])
+        eng = Engine(mk_state(players=players, day=2, stage="投票"))
+        eng.state["detective"] = "C"
+        ev = eng.resolve_vote({"C": "A", "D": "A", "E": "A"})
+        self.assertEqual(ev["public"]["out"], "A")
+
+    def test_badge_bequest_transfer_refuse_destroy(self):
+        eng = Engine(mk_state())
+        eng.state["detective"] = "C"
+        player(eng, "C")["alive"] = False
+        ev = eng.bequest_badge("C", "D", True)
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["detective"], "D")
+        self.assertIn("→ D", ev["public"]["announcements"][0])
+        self.assertFalse(eng.bequest_badge("C", "E", True)["ok"])  # C 已非侦探
+
+        eng = Engine(mk_state())
+        eng.state["detective"] = "C"
+        player(eng, "C")["alive"] = False
+        ev = eng.bequest_badge("C", "D", False)  # 拒收 → 销毁
+        self.assertIsNone(eng.state["detective"])
+        self.assertIn("拒收", ev["public"]["announcements"][0])
+
+        eng = Engine(mk_state())
+        eng.state["detective"] = "C"
+        player(eng, "C")["alive"] = False
+        ev = eng.bequest_badge("C", None, True)  # 未指定 → 销毁
+        self.assertIsNone(eng.state["detective"])
+        self.assertIn("未指定", ev["public"]["announcements"][0])
+
+    def test_badge_heir_exercises_weight(self):
+        """警徽传承后，继任侦探的票权立即生效（5 人局 1.5+2=3.5 > 2.5）。"""
+        eng = Engine(mk_state())
+        eng.state["detective"] = "C"
+        player(eng, "C")["alive"] = False
+        eng.bequest_badge("C", "D", True)
+        goto(eng, "投票", day=2)
+        ev = eng.resolve_vote({"D": "A", "E": "A", "F": "A"})
+        self.assertEqual(ev["public"]["out"], "A")
 
 
 class TestCountdownAndNightRaid(unittest.TestCase):
@@ -657,17 +789,18 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertEqual(ev["type"], "murder")
         self.assertEqual(ev["case"]["wound"], "空手")
 
-    def test_night_raid_full_bedroom_counts_as_failure(self):
+    def test_night_raid_full_bedroom_lit_no_countdown_reset(self):
+        """v3.2 倒计时修正：夜袭满员亮房卧室无法进入——消耗当夜机会，但不计谋杀行为（不重置倒计时）。"""
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=2)
-        self.assertEqual(eng.state["order"], ["B", "C", "D", "E", "F", "A"])
+        self.assertEqual(eng.state["order"], ["B", "C", "D", "E", "F", "A"])  # A 最后行动，守夜对先成立
         ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["D"], "C的卧室")
         self.assertEqual(ev["positions"]["A"], "A的卧室")
-        self.assertTrue(eng.state["stage_murder_used"])
-        self.assertEqual(eng.state["last_murder_day"], 2)
-        self.assertTrue(any(a["target"] is None for a in eng.state["attempts"]))
+        self.assertTrue(eng.state["stage_murder_used"])              # 当夜机会已消耗
+        self.assertIsNone(eng.state["last_murder_day"])              # 但不重置无杀倒计时
+        self.assertFalse(any(a["target"] is None for a in eng.state["attempts"]))  # 不再登记"未遂"
 
     def test_night_room_capacity_one(self):
         eng = Engine(mk_state())
@@ -692,7 +825,7 @@ class TestCountdownAndNightRaid(unittest.TestCase):
 
 class TestMorningReportAndInvestigation(unittest.TestCase):
     def kill_e_day2(self, eng, weapon="刀"):
-        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        free2(eng, {"A": "书房", "E": "书房", "B": "书房", "C": "会客室", "D": "会客室", "F": "会客室"})
         ev = eng.murder("A", "E", weapon=weapon)
         assert ev["ok"], ev
         return ev
@@ -752,7 +885,7 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         players = default_players()
         players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
-        free2(eng, {"A": "地下室", "C": "地下室", "E": "地下室", "B": "监控室", "D": "会客室", "F": "会客室"})
+        free2(eng, {"A": "地下室", "C": "地下室", "E": "地下室", "B": "会客室", "D": "会客室", "F": "会客室"})
         eng.murder("A", "E")
         ev = eng.falsify("B", 1, "伪造痕迹")
         self.assertFalse(ev["ok"])
@@ -782,22 +915,6 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         self.assertEqual(ev["private"]["F"]["result"], "强壮")
         ev = eng.profile("F", 1, "性别")
         self.assertFalse(ev["ok"])
-
-    def test_detective_monitoring_privilege(self):
-        eng = Engine(mk_state())
-        self.kill_e_day2(eng)
-        goto(eng, "案件调查", day=3)
-        det = eng.state["detective"]
-        self.assertEqual(det, eng.state["order"][0])  # v3：有案件才设侦探
-        ev = eng.detective_monitoring(det, "第2天自由活动", ["书房", "监控室"])
-        self.assertTrue(ev["ok"], ev)
-        self.assertIn("A", ev["private"][det]["书房"])
-        self.assertIn("B", ev["private"][det]["监控室"])
-        others = [n for n in ["A", "C", "E"] if n != det]
-        self.assertFalse(eng.detective_monitoring(others[0], "第2天自由活动", ["书房"])["ok"])
-        ev = eng.detective_monitoring(det, "第2天", ["书房"])  # 非法时段：驳回并列出合法值
-        self.assertFalse(ev["ok"])
-        self.assertIn("第2天自由活动", ev["error"])
 
 
 class TestMonitoringLocksLedger(unittest.TestCase):
@@ -846,12 +963,12 @@ class TestMonitoringLocksLedger(unittest.TestCase):
     def test_unlock_permanent_and_bedroom_relock(self):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
-        ev = eng.enter_rooms({"E": "地下室", "A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.enter_rooms({"E": "监控室", "A": "书房", "B": "书房", "C": "会客室", "D": "会客室", "F": "会客室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(eng.state["locks"]["地下室"])
+        self.assertFalse(eng.state["locks"]["监控室"])  # v3.2：监控室上锁，破门而入开后永久开启
         self.assertEqual(eng.state["skill_uses"]["E"]["破门而入"], 0)
         goto(eng, "自由活动", day=2)
-        self.assertFalse(eng.state["locks"]["地下室"])
+        self.assertFalse(eng.state["locks"]["监控室"])
 
         # 卧室被他人开锁进入后，下一时间阶段恢复上锁（v3：白天卧室清场，此场景只能在夜间发生）
         eng = Engine(mk_state())
@@ -863,10 +980,11 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertTrue(eng.state["locks"]["C的卧室"])
 
     def test_enter_locked_room_without_means_rejected(self):
+        """v3.2：监控室上锁——进入者都没有开锁手段时整体驳回且状态不变。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         snap = copy.deepcopy(eng.state)
-        ev = eng.enter_rooms({"A": "地下室", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.enter_rooms({"A": "监控室", "B": "书房", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
         self.assertFalse(ev["ok"])
         self.assertEqual(eng.state, snap)
 
@@ -874,6 +992,14 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"A": "书房", "B": "书房", "C": "书房", "D": "书房", "E": "会客室", "F": "会客室"})
+        self.assertFalse(ev["ok"])
+        self.assertIn("上限", ev["error"])
+
+    def test_monitoring_room_capacity_two(self):
+        """v3.2：监控室人数上限降为 2。"""
+        eng = Engine(mk_state())
+        goto(eng, "自由活动", day=1)
+        ev = eng.enter_rooms({"D": "监控室", "E": "监控室", "F": "监控室", "A": "书房", "B": "书房", "C": "会客室"})
         self.assertFalse(ev["ok"])
         self.assertIn("上限", ev["error"])
 
@@ -927,9 +1053,12 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertFalse(eng.state["power_out"])
 
     def test_blackout_civilian_rejected(self):
+        """v3.2：平民即使持有开锁手段（黑客的破门而入）也不能拉电闸停电。"""
         eng = Engine(mk_state())
         goto(eng, "公共发言", day=2)
-        self.assertFalse(eng.declare_blackout("D")["ok"])
+        ev = eng.declare_blackout("E")  # E 是平民黑客，持【破门而入】
+        self.assertFalse(ev["ok"])
+        self.assertIn("反派", ev["error"])
 
     def test_blackout_window_until_rooms_entered(self):
         players = default_players()
@@ -947,6 +1076,29 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         goto(eng2, "自由活动", day=2)
         self.assertTrue(eng2.enter_rooms(rooms)["ok"])
         self.assertFalse(eng2.declare_blackout("B")["ok"])
+
+    def test_blackout_v32_package(self):
+        """v3.2 停电包：门锁失效 + 监控空白 + 卧室黑暗化；杀手可在停电夜潜入满员卧室撕开守夜对。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players, order=["C", "D", "A", "B", "E", "F"]))
+        goto(eng, "投票", day=2)
+        self.assertTrue(eng.declare_blackout("B")["ok"])           # 消耗 B 的破门而入
+        self.assertEqual(eng.state["skill_uses"]["B"]["破门而入"], 0)
+        goto(eng, "自由活动", day=2)
+        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        self.assertNotIn("第2天自由活动", eng.state["monitoring"])  # 停电期间监控空白
+        self.assertNotIn("第2天自由活动", eng.state["monitoring_true"])
+        goto(eng, "晚间休息", day=2)
+        self.assertTrue(is_dark(eng.state, "C的卧室"))              # 卧室黑暗化（取消紧急照明）
+        self.assertFalse(is_dark(eng.state, "会客室"))              # 会客室永不黑暗
+        ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "C的卧室")          # 黑暗中潜入满员卧室（门锁失效无需钥匙）
+        self.assertFalse(eng.state["stage_murder_used"])           # 潜入本身不耗机会，深夜才判定
+        ev = eng.murder("A", "C")                                   # 黑暗房 ≤2：可对守夜对动手
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder_attempt")              # C 的急救箱自动防御
 
     def test_night_assigned_marker(self):
         eng = Engine(mk_state())
@@ -969,6 +1121,55 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertTrue(ev["private"]["F"]["lies"])
         self.assertEqual(eng.state["skill_uses"]["F"]["看破伪装"], 0)
         self.assertFalse(eng.see_through("F", "C", {"profession": "医师"})["ok"])
+
+    def test_see_through_unverifiable_not_counted(self):
+        """v3.2 修复（game/42 误判）：占位符名目/无监控房间 → "无法验证"，不污染谎言聚合。"""
+        players = default_players()
+        players[5] = P("F", "平民", "心理医生", "窃听器", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "公共发言", day=1)
+        # C 是医师：职业声明属实；占位符道具名与会客室行踪均为"无法验证"
+        ev = eng.see_through("F", "C", {"profession": "医师", "item": "无声称", "visited_rooms": ["会客室"]})
+        self.assertTrue(ev["ok"], ev)
+        msg = ev["private"]["F"]
+        self.assertFalse(msg["lies"])
+        self.assertEqual(msg["verdicts"]["职业声明「医师」"], "属实")
+        self.assertTrue(msg["verdicts"]["道具声明「无声称」"].startswith("无法验证"))
+        self.assertTrue(msg["verdicts"]["去过会客室"].startswith("无法验证"))
+        self.assertIn("全部属实", msg["conclusion"])
+        # 谎言仍会被抓：C 不是化学家
+        ev = eng.see_through("F", "C", {"profession": "化学家"})
+        self.assertTrue(ev["private"]["F"]["lies"])
+        self.assertEqual(ev["private"]["F"]["verdicts"]["职业声明「化学家」"], "谎言")
+        # 空 claims 驳回
+        self.assertFalse(eng.see_through("F", "C", {})["ok"])
+
+    def test_detective_skips_dead_and_order_filtered(self):
+        """v3.2 修复（game/42 死侦探）：清晨公告顺序与存活名单不含死者（v3.3 起侦探竞选产生、不再每日轮换）。"""
+        eng = Engine(mk_state())
+        goto(eng, "晚间休息", day=1)
+        s = eng.state
+        s["cases"].append({"id": 1, "day": 1, "stage": "自由活动", "victim": "X", "room": "书房",
+                           "culprit": "A", "period": "第1天自由活动", "wound": "利器",
+                           "body_moved": False, "falsified": None, "sealed": True})
+        s["profession_public"].append("X")  # 跳过清晨的职业公开（X 不是玩家）
+        player(eng, "A")["alive"] = False   # A 为顺序首位
+        ev = eng.advance()                  # → 第2天案件调查
+        self.assertTrue(ev["ok"], ev)
+        ann = "\n".join(ev["public"]["announcements"])
+        self.assertNotIn("A →", ann)
+        self.assertIn("目前存活 5 人：B、C、D、E、F", ann)
+
+    def test_morning_roster_no_ghost_items(self):
+        """v3.2 修复（game/42 幽灵道具）：items 为空列表时不得回退 deal 旧字段。"""
+        from src.orchestrator import morning_roster_rows
+        eng = Engine(mk_state())
+        player(eng, "C")["items"] = []      # 急救箱已耗尽/被收走
+        rows = morning_roster_rows(eng.state, {})
+        row = next(r for r in rows if r[0] == "C")
+        self.assertEqual(row[5], "无")
+        row = next(r for r in rows if r[0] == "A")
+        self.assertIn("刀", row[5])         # 正常持有不受影响
 
     def test_seal_room_blocks_night_entry(self):
         eng = Engine(mk_state())

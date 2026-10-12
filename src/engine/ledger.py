@@ -10,9 +10,10 @@
 """
 from __future__ import annotations
 
-from ..gamedata import ITEM_USES
+from ..gamedata import ITEM_USES, ITEMS, PROFESSIONS
 from .state import (
     ACTION_STAGES,
+    ALL_SKILLS,
     FREE_ROOMS,
     HALL,
     PUBLIC_ROOMS,
@@ -66,9 +67,10 @@ def _roommates(state: dict, room: str, exclude: str) -> list[str]:
 
 
 def unlock(state: dict, user: str, room: str) -> dict:
-    """打开一扇上锁的房门（手段：【破门而入】/「万能钥匙」）。
+    """打开一扇上锁的房门（手段：【破门而入】/「万能钥匙」/「螺丝起子」）。
 
     门开后永久开启；例外：卧室被他人开锁后下一时间阶段恢复上锁（登记 bedroom_relock）。
+    停电期间所有门锁失效，无需也无法开锁。
     """
     s = state
     p = get_player(s, user)
@@ -76,6 +78,8 @@ def unlock(state: dict, user: str, room: str) -> dict:
         return reject("unlock", "玩家不存在或已死亡")
     if s["phase"]["stage"] not in ACTION_STAGES:
         return reject("unlock", "当前阶段不能开锁")
+    if s["power_out"]:
+        return reject("unlock", "停电期间门锁全部失效，无需开锁")
     if not s["locks"].get(room, False):
         return reject("unlock", "该房间未上锁")
     means = unlock_means(s, user)
@@ -177,10 +181,11 @@ def use_flashlight(state: dict, user: str) -> dict:
 
 
 def declare_blackout(state: dict, user: str) -> dict:
-    """【暴力破解】/「螺丝起子」：自由活动阶段开始前秘密声明，当天自由活动停电。
+    """拉电闸制造过载（v3.2）：反派消耗一次任一开锁手段（【破门而入】/「万能钥匙」/「螺丝起子」）声明，当天自由活动停电。
 
     声明窗口：公共发言/投票阶段，或自由活动阶段内选房结算之前（进入房间后才向众人公布）。
-    停电期间除卧室外所有房间黑暗；若发电机未修复，停电延续到次日。
+    停电期间：会客室外所有房间黑暗（含夜间卧室）、所有门锁失效（保险箱除外）、监控不记录；
+    若发电机（地下室）未修复，停电延续到次日。
     """
     s = state
     p = get_player(s, user)
@@ -196,14 +201,15 @@ def declare_blackout(state: dict, user: str) -> dict:
         return reject("declare_blackout", "已经处于停电中")
     if not is_villain(p):
         return reject("declare_blackout", "只有反派能发动停电")
-    if skill_left(s, user, "暴力破解") > 0:
-        consume_skill(s, user, "暴力破解")
-    elif held_item(p, "螺丝起子", s["phase"]["day"]) is not None:
-        consume_item_entry(p, held_item(p, "螺丝起子", s["phase"]["day"]))
-    else:
-        return reject("declare_blackout", "没有【暴力破解】或「螺丝起子」")
+    means = unlock_means(s, user)
+    if means is None:
+        return reject("declare_blackout", "拉电闸需要任一开锁手段（【破门而入】/「万能钥匙」/「螺丝起子」）")
+    consume_unlock_means(s, user, means)
     s["power_out"] = True
-    return {"ok": True, "type": "declare_blackout", "public": None, "private": {user: "停电已发动（进入房间后向众人公布）"}}
+    if s["phase"]["day"] not in s["blackout_days"]:
+        s["blackout_days"].append(s["phase"]["day"])
+    return {"ok": True, "type": "declare_blackout", "public": None,
+            "private": {user: f"你用{means}拉开电闸制造过载——今天停电（进入房间后向众人公布）"}}
 
 
 def fix_generator(state: dict, user: str) -> dict:
@@ -242,26 +248,6 @@ def view_monitoring(state: dict, user: str) -> dict:
     if s["positions"].get(user) != "监控室":
         return reject("view_monitoring", "你不在监控室")
     return {"ok": True, "type": "view_monitoring", "public": None, "private": {user: s["monitoring"]}}
-
-
-def detective_monitoring(state: dict, user: str, period: str, rooms: list[str]) -> dict:
-    """侦探特权：调查阶段额外指定一个时间段 × 至多两个场所查看监控（私下告知，由侦探转述）。
-
-    非法时段驳回并列出当前已有记录的合法时段（AI 友好，避免静默空结果）。
-    """
-    s = state
-    if s["phase"]["stage"] != "案件调查":
-        return reject("detective_monitoring", "只能在案件调查阶段使用")
-    if s["detective"] != user:
-        return reject("detective_monitoring", "只有当日侦探能额外查询")
-    if not rooms or len(rooms) > 2:
-        return reject("detective_monitoring", "一次最多查询两个场所")
-    if period not in s["monitoring"]:
-        valid = "、".join(s["monitoring"].keys()) or "（尚无记录）"
-        return reject("detective_monitoring", f"无此时段的记录；已有记录的时段：{valid}")
-    records = s["monitoring"][period]
-    data = {r: records.get(r, []) for r in rooms}
-    return {"ok": True, "type": "detective_monitoring", "public": None, "private": {user: data}}
 
 
 def tamper_monitoring(state: dict, user: str, period: str, room: str, op: str, name: str, new_name: str | None = None) -> dict:
@@ -438,9 +424,10 @@ def profile(state: dict, user: str, case_id: int, aspect: str) -> dict:
 def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     """【看破伪装】/「测谎仪」：验证目标此前关于 职业/道具/技能/行踪 的声明是否含谎言。
 
-    claims 由编排器从发言中提取：{"profession", "item", "skill",
-    "visited_rooms": [声称去过的房间], "denied_rooms": [声称没去过的房间]}。
-    行踪以真实监控记录（monitoring_true，当天）验证。无法验证"我是不是凶手"类声明。
+    claims 由使用者从目标发言中提取（须引用对方实际声称过的内容）：
+    {"profession", "item", "skill", "visited_rooms": [...], "denied_rooms": [...]}。
+    每项裁决为三态：属实 / 谎言 / 无法验证（无效名目、对方未作此类声明、或房间无监控覆盖），
+    "无法验证"不计入谎言判定。行踪以真实监控记录（monitoring_true）验证；会客室不设监控。
     """
     s = state
     day = s["phase"]["day"]
@@ -456,38 +443,68 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
         means = ("item", "测谎仪")
     else:
         return reject("see_through", "没有【看破伪装】或「测谎仪」")
-    detail: dict[str, bool] = {}
+    if not isinstance(claims, dict) or not any(v for v in claims.values()):
+        return reject("see_through", "没有可验证的声明（请在 claims 中引用对方实际声称过的内容）")
 
     def entered(room: str) -> bool:
         return any(target in rooms.get(room, []) for rooms in s["monitoring_true"].values())
 
-    if "profession" in claims:
-        detail["profession"] = claims["profession"] == tp["profession"]
-    if "item" in claims:
-        detail["item"] = held_item(tp, claims["item"], day) is not None
-    if "skill" in claims:
-        detail["skill"] = claims["skill"] in s["skill_uses"].get(target, {})
-    for r in claims.get("visited_rooms", []):
-        detail[f"去过{r}"] = entered(r)
-    for r in claims.get("denied_rooms", []):
-        detail[f"没去过{r}"] = not entered(r)
+    def monitorable(room: str) -> bool:
+        return room in PUBLIC_ROOMS or is_bedroom(room)
+
+    verdicts: dict[str, str] = {}
+    if claims.get("profession"):
+        c = str(claims["profession"])
+        if c in PROFESSIONS:
+            verdicts[f"职业声明「{c}」"] = "属实" if c == tp["profession"] else "谎言"
+        else:
+            verdicts[f"职业声明「{c}」"] = "无法验证（不是有效职业名）"
+    if claims.get("item"):
+        c = str(claims["item"])
+        if c in ITEMS:
+            verdicts[f"道具声明「{c}」"] = "属实" if held_item(tp, c, day) is not None else "谎言"
+        else:
+            verdicts[f"道具声明「{c}」"] = "无法验证（不是有效道具名）"
+    if claims.get("skill"):
+        c = str(claims["skill"])
+        if c in ALL_SKILLS:
+            verdicts[f"技能声明「{c}」"] = "属实" if skill_left(s, target, c) > 0 else "谎言"
+        else:
+            verdicts[f"技能声明「{c}」"] = "无法验证（不是有效技能名）"
+    for key, ph in (("visited_rooms", "去过"), ("denied_rooms", "没去过")):
+        for r in claims.get(key) or []:
+            r = str(r)
+            if not monitorable(r):
+                verdicts[f"{ph}{r}"] = "无法验证（该房间无监控覆盖）"
+            elif key == "visited_rooms":
+                verdicts[f"{ph}{r}"] = "属实" if entered(r) else "谎言"
+            else:
+                verdicts[f"{ph}{r}"] = "属实" if not entered(r) else "谎言"
     if means[0] == "skill":
         consume_skill(s, user, means[1])
     else:
         consume_item_entry(p, held_item(p, means[1], day))
-    lies = any(not v for v in detail.values())
+    n_lie = sum(1 for v in verdicts.values() if v == "谎言")
+    n_true = sum(1 for v in verdicts.values() if v == "属实")
+    lies = n_lie > 0
+    if lies:
+        conclusion = f"所验声明中含 {n_lie} 条谎言"
+    elif n_true:
+        conclusion = "所验声明全部属实"
+    else:
+        conclusion = "无有效声明可验证（无法验证项不计入谎言判定）"
     return {
         "ok": True,
         "type": "see_through",
         "public": None,
-        "private": {user: {"target": target, "lies": lies, "detail": detail}},
+        "private": {user: {"target": target, "verdicts": verdicts, "lies": lies, "conclusion": conclusion}},
     }
 
 
 def seal_room(state: dict, user: str, allowed: list[str] | None = None) -> dict:
     """【封闭空间】：自由活动时间进入房间后发动，临时锁死至下一个自由活动时间。
 
-    除你与许可的人外任何人无法进出（万能钥匙与【暴力破解】也无效）。
+    除你与许可的人外任何人无法进出（开锁手段均无效；停电也不会打开它）。
     """
     s = state
     p = get_player(s, user)

@@ -208,16 +208,24 @@ def fmt_action(a: dict) -> str:
         return f"现场调查（案件 {a.get('case_id', '?')}：{a.get('choice', '?')}）"
     if t == "profile":
         return f"犯罪侧写（案件 {a.get('case_id', '?')}：{a.get('aspect', '?')}）"
-    if t == "detective_monitoring":
-        return f"侦探监控查询：{a.get('period', '?')} × {a.get('rooms', '?')}"
+    if t == "declare":
+        return "宣告参选侦探" if a.get("run") else "宣告不参选"
+    if t == "stay":
+        return "继续参选"
+    if t == "withdraw":
+        return "退选"
+    if t == "elect":
+        return f"竞选投票 → {a.get('target', '?')}"
     if t == "vote":
         return f"投票 → {a.get('target', '?')}"
     if t == "abstain":
         return "弃权"
     if t == "memory_implant":
         return f"记忆植入：{a.get('voter', '?')} → {a.get('target', '?')}"
-    if t == "assign_vote":
-        return "封存道具分配投票"
+    if t == "bequeath":
+        return f"立遗嘱：{a.get('mapping', {})}"
+    if t == "bequest_reply":
+        return f"遗嘱回应：{a.get('decisions', {})}"
     if t == "armed_accuse":
         return f"武装指认 → {a.get('target', '?')}"
     if t == "night_raid":
@@ -226,9 +234,14 @@ def fmt_action(a: dict) -> str:
 
 
 def day_roster(orch: Orchestrator) -> str:
-    """天亮一览：全员状态（含淘汰者）+ 职业/技能/道具（宿主侧，不进 prompt、不落盘）。"""
-    rows = morning_roster_rows(orch.state, orch.orch.get("out_day", {}))
-    return "\n".join(f"  {n}｜{st}｜{ident}｜{prof}｜技能：{sk}｜道具：{it}"
+    """天亮一览：保险箱状态 + 全员状态（含淘汰者）+ 职业/技能/道具（宿主侧，不进 prompt、不落盘）。"""
+    s = orch.state
+    safe = f"  保险箱：「{s.get('safe_item', '?')}」" + ("（已打开）" if s.get("safe_open") else "（未打开）")
+    safe += f"｜侦探：{s.get('detective') or '无'}"
+    if s.get("power_out"):
+        safe += "｜停电中"
+    rows = morning_roster_rows(s, orch.orch.get("out_day", {}))
+    return safe + "\n" + "\n".join(f"  {n}｜{st}｜{ident}｜{prof}｜技能：{sk}｜道具：{it}"
                      for n, st, ident, prof, sk, it in rows)
 
 

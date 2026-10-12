@@ -22,13 +22,17 @@ def _seat_dir(game_dir: Path, state: dict, key: str) -> Path | None:
 
 
 def render_status(game_dir: Path) -> str:
-    """当前阶段 + 存活名单 + 身份台账（上帝视角）+ 道具/技能次数。"""
+    """当前阶段 + 存活名单 + 身份台账（上帝视角）+ 道具/技能次数 + 保险箱状态。"""
     s = load_state(game_dir)
     ph = s["phase"]
     head = f"第{ph['day']}天 · {ph['stage']}"
     if s.get("winner"):
         head += f"｜已结束：{s['winner']}（{s.get('win_reason', '')}）"
-    lines = [head]
+    safe = f"保险箱：「{s.get('safe_item', '?')}」" + ("（已打开）" if s.get("safe_open") else "（未打开）")
+    safe += f"｜侦探：{s.get('detective') or '无'}"
+    if s.get("power_out"):
+        safe += "｜停电中"
+    lines = [head, safe]
     skills = s.get("skill_uses", {})
     positions = s.get("positions", {})
     for p in s["players"]:

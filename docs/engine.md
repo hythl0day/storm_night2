@@ -27,7 +27,7 @@
 ## 3. 公共 API（Engine 方法）
 
 阶段与流转：
-- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序、**仅已有案件时**任命侦探、第 4 天门锁全开、清晨公告（死亡/职业/监控宣读/封存道具 + 状态行：存活数/无杀倒计时/封存数）、无杀倒计时与主神胜利判定
+- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序、清晨公告（死亡/职业/监控宣读/封存道具 + 状态行：存活数/无杀倒计时/封存数；存活侦探列名提醒）、第 4 天门锁全开、无杀倒计时与主神胜利判定
 - `engine.winner` — `None` / `"平民"` / `"反派"` / `"主神"`
 - `enter_rooms(assignments, invited=None)` — 自由活动选房结算（合法去向：会客室/书房/监控室/地下室，白天卧室清场；会客室不限容不设监控；容量/自动开锁付费/封闭空间/装置触发）
 - `night_assign(assignments=None, invited=None)` — 晚间归宿（守夜邀请、夜间房间行动、杀手夜袭、按顺序冲突处理；会客室夜间不开放）
@@ -38,9 +38,10 @@
 - `stage_magic(user, target)` — 魔术师【舞台魔术】（占用当阶段谋杀机会）
 
 投票：
-- `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；`implant={"user":..,"victim":..,"target":..}` 为记忆植入改票
+- `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；侦探一票计 1.5（v3.3）；`implant={"user":..,"victim":..,"target":..}` 为记忆植入改票
 - `armed_accusation(accuser, suspect)` — 武装指认（v3：第 2 天首次投票起、未产生出局者的投票后、持武器平民；武器口径 = 枪/刀/棍，不含不明药剂）
-- `assign_sealed(mapping)` — 封存道具分配（`{道具: 新主人|None(销毁)}`，次日可用）
+- `elect_detective(ran, stay, votes)` — 侦探竞选裁决（v3.3：仅第 1 天竞选时段一次；平票/无人报名/全员参选则本局无侦探）
+- `bequest(owner, mapping, replies)` / `bequest_badge(owner, to, accept)` — 遗嘱制（v3.2）：封存道具逐件指定归属、接收人可拒收、次日可用；v3.3 起警徽同走遗嘱（拒收/未指定则销毁，不补选）
 
 房间与道具台账：
 - `unlock(user, room)` / `open_safe(user)` / `transfer(giver, receiver, item, accept=True)` / `use_flashlight(user)`
@@ -50,7 +51,6 @@
 
 监控与调查：
 - `view_monitoring(user)` — 查看公开监控（篡改后的口径）；v3 起恒为全量返回（不接参数，杜绝格式幻觉）
-- `detective_monitoring(user, period, rooms)` — 侦探额外监控查询；非法时段驳回并列出合法时段
 - `tamper_monitoring(user, period, room, op, name, new_name=None)` — 【信号干扰】/「病毒U盘」，`op` ∈ `add`/`remove`/`replace`
 - `investigate(user, case_id, choice)` — 【现场调查】/「鲁米诺试剂」，`choice` ∈ `武器伤痕`/`死亡时间`/`尸体转移`
 - `falsify(user, case_id, kind)` — 伪造类反派技能（`kind` 区分伪造痕迹/销毁证物/伪造证物）
@@ -91,4 +91,4 @@ python -m unittest discover -s tests -v   # 92 用例（引擎 + 平衡回归 + 
 
 ## 7. 编排器侧职责（已在 orchestrator.py 实现）
 
-自由发言/交谈内容生成与分发、守夜邀请的交互收集、**守夜密谈**（守夜两人睡前一轮）、窃听器收听内容下发（v3 起真实投递房内交谈存档）、监控下发扁平化（今日新增置顶 + 历史平铺，替代嵌套 JSON）、密道夜间使用的收集与执行、道具分配的多数决与侦探平票裁决（无侦探日平票即销毁）、动作菜单生成与三通道 JSON 解析。其中两处编排侧裁定：封存道具分配不单设讨论轮（一次调用收齐归属票）；每次无人出局的投票至多接受一次武装指认。
+自由发言/交谈内容生成与分发、守夜邀请的交互收集、**守夜密谈**（守夜两人睡前一轮）、窃听器收听内容下发（v3 起真实投递房内交谈存档）、监控下发扁平化（今日新增置顶 + 历史平铺，替代嵌套 JSON）、密道夜间使用的收集与执行、侦探竞选（v3.3：声明轮/密封退选/未参选者投票）与遗嘱流程（道具+警徽的指定归属与接收人回应）、动作菜单生成与三通道 JSON 解析。其中两处编排侧裁定：遗嘱不立讨论轮（出局者一次指定、接收人逐一回应）；每次无人出局的投票至多接受一次武装指认。

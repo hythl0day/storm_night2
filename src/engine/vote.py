@@ -1,6 +1,7 @@
-"""投票与出局裁决（rules-6 §7.3），含记忆植入与武装指认（M3 引擎）。
+"""投票与出局裁决（rules-6 §7.3），含记忆植入、武装指认与侦探竞选/警徽遗嘱（M3 引擎）。
 
 - 第 2 天起每天投票；得票超过存活人数一半者出局；平票或无人过半则无人出局。
+- v3.3：侦探（第 1 天竞选产生）一票计 1.5 票；侦探出局时警徽按遗嘱传承或销毁，不补选。
 - 出局者公布身份与职业；出局者是杀手时帮凶私下继任杀手。
 - 投票后存活平民只剩 1 人 → 反派立即获胜；反派全部出局 → 平民获胜。
 - 【记忆植入】：反派心理医生强迫一名玩家改投指定对象；公告只说"票数被更改过"。
@@ -20,6 +21,8 @@ from .state import (
     reject,
     skill_left,
 )
+
+DETECTIVE_VOTE_WEIGHT = 1.5  # 侦探票权（rules-6 §7.4）
 
 
 def _seal_player_items(state: dict, p: dict) -> None:
@@ -66,10 +69,11 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
         consume_skill(s, by, "记忆植入")
         ballots[voter] = target
         implanted = True
-    tally: dict[str, int] = {}
-    for t in ballots.values():
+    det = s.get("detective")
+    tally: dict[str, float] = {}
+    for v, t in ballots.items():
         if t is not None:
-            tally[t] = tally.get(t, 0) + 1
+            tally[t] = tally.get(t, 0) + (DETECTIVE_VOTE_WEIGHT if v == det else 1)
     out = None
     if tally:
         top = max(tally.values())
@@ -154,34 +158,94 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
     return ev
 
 
-def assign_sealed(state: dict, mapping: dict[str, str | None]) -> dict:
-    """封存道具分配：{道具名: 归属玩家或 None(销毁)}。分配到的道具次日起可用。
+def bequest(state: dict, owner: str, mapping: dict, replies: dict) -> dict:
+    """遗嘱落账（v3.2 rules-6 §7.3）：出局者/死者的封存道具由本人逐件指定归属，接收人可拒绝。
 
-    侦探平票裁决等讨论过程由编排器处理；本函数只校验并落账。
+    mapping: {道具名: 接收人名}（本人指定；未指定的销毁）。
+    replies: {接收人名: {道具名: bool}}（拒绝或无回应 → 销毁）。
+    道具次日起可用；公告公开道具名、来源与去向（信任信号即推理素材）。
     """
     s = state
     day = s["phase"]["day"]
-    pool = {e["name"]: e for e in s["sealed_items"]}
-    for item, target in mapping.items():
-        if item not in pool:
-            return reject("assign_sealed", f"{item} 不在封存道具中")
-        if target is not None:
-            tp = get_player(s, target)
-            if tp is None or not tp["alive"]:
-                return reject("assign_sealed", f"{target} 不是存活玩家")
-    granted: dict[str, list[str]] = {}
-    destroyed: list[str] = []
-    for item, target in mapping.items():
-        e = pool[item]
+    owned = [e for e in s["sealed_items"] if e.get("from") == owner]
+    announcements: list[str] = []
+    for e in list(owned):
+        name = e["name"]
+        to = mapping.get(name)
+        tp = get_player(s, to) if to else None
         s["sealed_items"].remove(e)
-        if target is None:
-            destroyed.append(item)
+        if tp is not None and tp["alive"] and bool(replies.get(to, {}).get(name)):
+            grant_item(tp, name, e["uses_left"], day + 1)
+            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）→ {to}（次日起可用）")
+        elif tp is not None and tp["alive"]:
+            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）被 {to} 拒收，销毁")
         else:
-            grant_item(get_player(s, target), e["name"], e["uses_left"], day + 1)
-            granted.setdefault(target, []).append(item)
-    return {
-        "ok": True,
-        "type": "assign_sealed",
-        "public": {"granted": granted, "destroyed": destroyed, "announcements": ["封存道具已分配（次日起可用）"]},
-        "private": {},
-    }
+            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）未指定归属，销毁")
+    return {"ok": True, "type": "bequest", "public": {"announcements": announcements}, "private": {}}
+
+
+def elect_detective(state: dict, ran: list[str], stay: list[str], votes: dict[str, str | None]) -> dict:
+    """侦探竞选裁决（v3.3 rules-6 §7.4）：第 1 天"公共发言"时段改为竞选。
+
+    ran: 声明参选者（按行动顺序）；stay: 密封退选后仍留任者（⊆ ran）；
+    votes: {投票人: 留任候选人或 None(弃权)}——自始未参选的存活者才有投票权（退选者无）。
+    无人报名 / 全员退选 / 全员参选（无合格投票人）/ 平票 → 本局不设侦探，且不补选。
+    """
+    s = state
+    if s["winner"]:
+        return reject("elect_detective", "游戏已结束")
+    if s["phase"]["day"] != 1 or s["phase"]["stage"] != "公共发言":
+        return reject("elect_detective", "侦探竞选只在第 1 天竞选时段进行")
+    if s.get("detective_election_done"):
+        return reject("elect_detective", "侦探竞选已结算")
+    alive = [p["name"] for p in s["players"] if p["alive"]]
+    if any(n not in alive for n in ran) or any(n not in ran for n in stay):
+        return reject("elect_detective", "候选人名单非法")
+    s["detective_election_done"] = True
+
+    def done(announcements: list[str]) -> dict:
+        return {"ok": True, "type": "elect_detective", "public": {"announcements": announcements}, "private": {}}
+
+    if not ran:
+        return done(["侦探竞选：无人报名参选，本局不设侦探"])
+    if not stay:
+        return done(["侦探竞选：候选人全部退选，本局不设侦探"])
+    if len(stay) == 1:
+        s["detective"] = stay[0]
+        return done([f"侦探竞选：{stay[0]} 为唯一候选人，直接当选侦探"
+                     "（公共发言末置发言，投票计 1.5 票；出局时警徽按遗嘱传承）"])
+    voters = [n for n in alive if n not in ran]
+    if not voters:
+        return done(["侦探竞选：全员参选，无人持有投票权，本局不设侦探"])
+    tally: dict[str, int] = {}
+    for v, t in votes.items():
+        if v in voters and t in stay:
+            tally[t] = tally.get(t, 0) + 1
+    if not tally:
+        return done(["侦探竞选：无人得票，本局不设侦探"])
+    top = max(tally.values())
+    cands = [t for t, c in tally.items() if c == top]
+    if len(cands) != 1:
+        return done(["侦探竞选：平票，本局不设侦探"])
+    s["detective"] = cands[0]
+    detail = "、".join(f"{t} {c}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
+    return done([f"侦探竞选：{cands[0]} 当选侦探（{detail}）"
+                 "（公共发言末置发言，投票计 1.5 票；出局时警徽按遗嘱传承）"])
+
+
+def bequest_badge(state: dict, owner: str, to: str | None, accept: bool) -> dict:
+    """警徽遗嘱（v3.3 rules-6 §7.4）：侦探出局时把侦探身份传给指定存活者；拒收/未指定 → 销毁，不补选。"""
+    s = state
+    if s.get("detective") != owner:
+        return reject("bequest_badge", f"{owner} 不是现任侦探")
+    tp = get_player(s, to) if to else None
+    if tp is not None and tp["alive"] and accept:
+        s["detective"] = to
+        ann = f"遗嘱：侦探徽章（{owner} 遗留）→ {to}"
+    else:
+        s["detective"] = None
+        if tp is not None and tp["alive"]:
+            ann = f"遗嘱：侦探徽章（{owner} 遗留）被 {to} 拒收，销毁"
+        else:
+            ann = f"遗嘱：侦探徽章（{owner} 遗留）未指定归属，销毁"
+    return {"ok": True, "type": "bequest_badge", "public": {"announcements": [ann]}, "private": {}}

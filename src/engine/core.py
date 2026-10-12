@@ -1,7 +1,7 @@
 """引擎主体：阶段流转、房间分配结算与行动入口（M3）。
 
 阶段流：开局准备 → 公共发言 →（第 2 天起）投票 → 自由活动 → 晚间休息 → 次日清晨案件调查 → …
-- 第 1 天没有投票，全天禁止谋杀；侦探只在已有谋杀案件的日子指定（新顺序首位）。
+- 第 1 天没有投票，全天禁止谋杀；第 1 天公共发言时段改为侦探竞选（rules-6 §7.4，v3.3）。
 - 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
 - 无杀倒计时：自第 2 天起算，连续两个完整天无谋杀行为（含未遂）则下一清晨平民胜。
@@ -25,9 +25,11 @@ from .state import (
     check_winner,
     consume_unlock_means,
     current_period,
+    door_locked,
     ensure,
     get_player,
     is_bedroom,
+    is_dark,
     record_entry,
     reject,
     unlock_means,
@@ -64,8 +66,14 @@ class Engine:
     def armed_accusation(self, accuser: str, suspect: str) -> dict:
         return vote_mod.armed_accusation(self.state, accuser, suspect)
 
-    def assign_sealed(self, mapping: dict[str, str | None]) -> dict:
-        return vote_mod.assign_sealed(self.state, mapping)
+    def bequest(self, owner: str, mapping: dict, replies: dict) -> dict:
+        return vote_mod.bequest(self.state, owner, mapping, replies)
+
+    def elect_detective(self, ran: list[str], stay: list[str], votes: dict[str, str | None]) -> dict:
+        return vote_mod.elect_detective(self.state, ran, stay, votes)
+
+    def bequest_badge(self, owner: str, to: str | None, accept: bool) -> dict:
+        return vote_mod.bequest_badge(self.state, owner, to, accept)
 
     def unlock(self, user: str, room: str) -> dict:
         return ledger.unlock(self.state, user, room)
@@ -87,9 +95,6 @@ class Engine:
 
     def view_monitoring(self, user: str) -> dict:
         return ledger.view_monitoring(self.state, user)
-
-    def detective_monitoring(self, user: str, period: str, rooms: list[str]) -> dict:
-        return ledger.detective_monitoring(self.state, user, period, rooms)
 
     def tamper_monitoring(self, user: str, period: str, room: str, op: str, name: str, new_name: str | None = None) -> dict:
         return ledger.tamper_monitoring(self.state, user, period, room, op, name, new_name)
@@ -166,21 +171,22 @@ class Engine:
                 }
             new_day, new_stage = day + 1, "案件调查"
             s["order"] = s["order"][1:] + s["order"][:1]
-            s["detective"] = s["order"][0] if s["cases"] else None
+            alive_names = [p["name"] for p in s["players"] if p["alive"]]
             s["gifts_used"] = []
-            ann = f"第 {new_day}/5 天开始。今日行动顺序：{' → '.join(s['order'])}"
-            ann += f"；侦探：{s['detective']}" if s["detective"] else "（尚无谋杀案件，今日不设侦探）"
+            shown_order = " → ".join(n for n in s["order"] if n in alive_names)
+            ann = f"第 {new_day}/5 天开始。今日行动顺序：{shown_order}"
+            if s["detective"] and s["detective"] in alive_names:
+                ann += f"；侦探：{s['detective']}"
             public["announcements"].append(ann)
             # 清晨状态行：host 算好的全局状态，避免玩家自行推算规则状态出错（game/42 复盘项）
-            alive_n = sum(1 for p in s["players"] if p["alive"])
-            public["announcements"].append(f"目前存活 {alive_n} 人")
+            public["announcements"].append(f"目前存活 {len(alive_names)} 人：{'、'.join(alive_names)}")
             # 无杀倒计时自第 2 天起算（rules-6 §8）：尚无谋杀行为时视同末次行为为第 1 天
             last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
             quiet = new_day - 1 - last_behavior
             public["announcements"].append(
                 f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个完整天则平民直接获胜）")
             if s["sealed_items"]:
-                public["announcements"].append(f"封存道具待投票分配：{len(s['sealed_items'])} 件")
+                public["announcements"].append(f"遗留道具待立遗嘱：{len(s['sealed_items'])} 件")
             if new_day == 4:
                 for r in PUBLIC_ROOMS:
                     s["locks"][r] = False
@@ -262,6 +268,8 @@ class Engine:
         if monitoring_public:
             public["monitoring"] = monitoring_public
             public["announcements"].append("监控公开宣读：案发时间段 ×（案发房间 + 死者卧室）的进入者名单见 monitoring 字段")
+            if yday in s.get("blackout_days", []):
+                public["announcements"].append("（昨日停电，当日时段监控记录空白——空白不代表无人进入）")
 
     def enter_rooms(self, assignments: dict[str, str], invited: dict[str, str] | None = None) -> dict:
         """自由活动选房间结算（原子：整体非法则驳回且不改状态，由编排器让违规者改选）。
@@ -269,7 +277,7 @@ class Engine:
         assignments: {玩家: 房间}，须覆盖全体存活玩家。合法去向 = 会客室/书房/监控室/地下室
         （v3：白天卧室清场，一律不可选）；会客室不限人数、不设监控。上锁房间可被有开锁手段者
         自动开锁进入（顺序靠前者优先支付手段）；invited 为邀请同入的配对记录（{受邀者: 邀请者}，
-        仅作编排器协调语义的存档，结算不设特权）。侦探选择的房间立即对所有人公开。
+        仅作编排器协调语义的存档，结算不设特权）。
         结算后自动检查延时装置触发。
         """
         s = self.state
@@ -304,7 +312,7 @@ class Engine:
             if name not in assignments:
                 continue
             room = assignments[name]
-            if not s["locks"].get(room, False):
+            if not door_locked(s, room):
                 continue
             if is_bedroom(room) and bedroom_owner(room) == name:
                 continue
@@ -334,10 +342,6 @@ class Engine:
             for w in [n for n, r in assignments.items() if r == room and n != payer]:
                 private[w] = f"{payer} 打开了{room}的门"
         public: dict = {"announcements": []}
-        det = s["detective"]
-        if det and det in assignments:
-            public["announcements"].append(f"侦探 {det} 选择了 {assignments[det]}")
-            public["detective_room"] = assignments[det]
         device_events = murder_mod.trigger_devices(s)
         for dev_ev in device_events:
             private.update(dev_ev["private"])
@@ -355,8 +359,9 @@ class Engine:
         assignments 缺省回自己卧室。规则要点：
         - 每个夜间房间（书房/监控室/地下室）只能进入 1 人，靠后者失败；
         - 卧室满 2 人后他人无法进入；被邀请者无法进入杀手已进入的卧室；
-        - 杀手夜袭他人卧室需开锁手段；若卧室已有 2 人则无法进入（记为谋杀失败一次，
-          消耗夜间谋杀机会并重置无杀倒计时）。
+        - 杀手夜袭他人卧室需开锁手段（停电期间门锁失效除外）；若卧室已有 2 人：停电黑暗中
+          杀手可潜入并袭击其一；否则无法进入——当夜谋杀机会消耗，但不计为谋杀行为（不重置无杀倒计时）。
+        - 停电期间所有门锁失效（door_locked 统一裁定）。
         结算后自动检查延时装置触发。
         """
         s = self.state
@@ -387,14 +392,16 @@ class Engine:
                 if killer_inside and p["identity"] != "杀手":
                     note = "无法进入（不知原因）"
                 elif len(occupants) >= BEDROOM_CAPACITY:
-                    if is_night_raid:
-                        s["stage_murder_used"] = True
-                        s["last_murder_day"] = day
-                        s["attempts"].append({"target": None, "day": day, "stage": "晚间休息", "room": want, "period": current_period(s)})
-                        note = "无法进入（记为谋杀失败一次）"
+                    if is_night_raid and is_dark(s, want):
+                        # 停电黑暗中卧室满员也可潜入（v3.2 破守夜）；谋杀条件在深夜判定（黑暗 ≤2）
+                        placed = want
+                        private[name] = "你在黑暗中潜入了这间已有两人的卧室"
+                    elif is_night_raid:
+                        s["stage_murder_used"] = True  # 消耗当夜机会，但不计为谋杀行为（不重置无杀倒计时）
+                        note = "无法进入（房内满员，当夜谋杀机会已消耗）"
                     else:
                         note = "无法进入（不知原因）"
-                elif not is_invited and s["locks"].get(want, False):
+                elif not is_invited and door_locked(s, want):
                     means = unlock_means(s, name)
                     if means is None or (p["identity"] == "杀手" and s["stage_murder_used"]):
                         note = "无法进入（不知原因）"
@@ -415,7 +422,7 @@ class Engine:
                     note = "无法进入（不知原因）"
                 elif occupants:
                     note = "无法进入（夜间房间已满）"
-                elif s["locks"].get(want, False):
+                elif door_locked(s, want):
                     means = unlock_means(s, name)
                     if means is None:
                         note = "无法进入（房间上锁）"

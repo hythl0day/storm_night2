@@ -17,7 +17,7 @@ import unittest
 
 from src.deal import ROOT, VALVE_PROFESSIONS, deal, load_personas, validate
 from src.engine import Engine
-from src.gamedata import VILLAIN_ITEMS
+from src.gamedata import VILLAIN_ITEMS, WEAPONS
 from src.providers import load_config
 from test_engine import P, default_players, goto, mk_state, player
 
@@ -49,13 +49,14 @@ class TestCivilianStacking(unittest.TestCase):
         self.assertIn("非反派", ev["error"])
 
     def test_a3_counter_blackout(self):
-        """反制·停电：帮凶声明停电后书房变黑暗，谋杀人数限制放宽到 ≤2，两人扎堆被撕开。"""
+        """反制·停电：反派用开锁手段拉电闸，书房变黑暗，谋杀人数限制放宽到 ≤2，两人扎堆被撕开。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "运动员", "不明药剂", gender="女", physique=2)  # 运动员反派技能含【暴力破解】
+        players[1] = P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2)  # v3.2：破门而入可拉电闸
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         ev = eng.declare_blackout("B")
         self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["skill_uses"]["B"]["破门而入"], 0)  # 停电消耗一次开锁手段
         stack_day2(eng, {"A": "书房", "B": "会客室", "C": "书房", "D": "会客室", "E": "书房", "F": "会客室"})
         self.assertTrue(eng.state["power_out"])
         ev = eng.murder("A", "E", weapon="刀")
@@ -94,7 +95,7 @@ class TestHallCamping(unittest.TestCase):
     def test_b1_solo_hall_camping_is_exposed(self):
         """大厅无门无锁不限容：独自蹲大厅时杀手直接走入即可动手（亮房 1 平民满足条件）。"""
         eng = Engine(mk_state())
-        stack_day2(eng, {"A": "会客室", "E": "会客室", "B": "书房", "C": "书房", "D": "监控室", "F": "监控室"})
+        stack_day2(eng, {"A": "会客室", "E": "会客室", "B": "书房", "C": "书房", "D": "书房", "F": "地下室"})
         ev = eng.murder("A", "E", weapon="刀")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["case"]["room"], "会客室")
@@ -129,19 +130,20 @@ class TestHallCamping(unittest.TestCase):
         self.assertFalse(player(eng, "C")["alive"])
 
     def test_b4_paired_bedroom_beats_night_raid(self):
-        """反制的边界：两人合住一间卧室，夜袭无法进入（记谋杀失败一次），无人遇害。"""
+        """反制的边界：两人合住一间亮房卧室，夜袭无法进入（v3.2：消耗当夜机会但不计谋杀行为），无人遇害。"""
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["A"], "A的卧室")
         self.assertTrue(eng.state["stage_murder_used"])
-        self.assertTrue(any(a["target"] is None for a in eng.state["attempts"]))
+        self.assertIsNone(eng.state["last_murder_day"])  # 不再重置无杀倒计时
         self.assertFalse(eng.state["cases"])
 
 
 class TestDealVillainGuarantees(unittest.TestCase):
-    """deal 反派平衡保证：凶手固定持有「万能钥匙」（公开规则）；反派队必有宽域职业（含黑客，保密）。"""
+    """deal 平衡保证（v3.2）：杀手固定「万能钥匙」；反派队功能覆盖（舞台魔术/延时装置/记忆植入/信号干扰，保密）；
+    平民车道保底（螺丝起子 1 人 + 可指认凶器 1 人）；四凶器严格必现。"""
 
     @classmethod
     def setUpClass(cls):
@@ -157,12 +159,21 @@ class TestDealVillainGuarantees(unittest.TestCase):
             self.assertIn("万能钥匙", killer.get("extra_items", []), f"seed={seed} 杀手未固定持有万能钥匙")
             self.assertEqual(len(accom.get("extra_items", [])), 1, f"seed={seed} 帮凶反派道具数错误")
             self.assertIn(accom["extra_items"][0], VILLAIN_ITEMS, f"seed={seed} 帮凶反派道具非法")
-            for p in st["players"]:
-                if p["identity"] == "平民":
-                    self.assertNotIn(p["item"], ["万能钥匙"] + VILLAIN_ITEMS,
-                                     f"seed={seed} 平民 {p['name']} 抽到 {p['item']}（禁入平民池）")
+            civs = [p for p in st["players"] if p["identity"] == "平民"]
+            for p in civs:
+                self.assertNotIn(p["item"], ["万能钥匙"] + VILLAIN_ITEMS,
+                                 f"seed={seed} 平民 {p['name']} 抽到 {p['item']}（禁入平民车道）")
+            # v3.2 平民车道：螺丝起子恰好 1 人、保底可指认凶器至少 1 人、四凶器严格必现
+            self.assertEqual(sum(1 for p in civs if p["item"] == "螺丝起子"), 1,
+                             f"seed={seed} 螺丝起子车道错误")
+            self.assertTrue(any(p["item"] in ("消音手枪", "刀", "棒球棍") for p in civs),
+                            f"seed={seed} 平民无保底凶器")
+            weapons_in_play = [p["item"] for p in st["players"] if p["item"] in WEAPONS]
+            if st["safe_item"] in WEAPONS:
+                weapons_in_play.append(st["safe_item"])
+            self.assertEqual(sorted(weapons_in_play), sorted(WEAPONS), f"seed={seed} 四凶器未全部入场")
             profs = {p["profession"] for p in st["players"] if p["identity"] in ("杀手", "帮凶")}
-            self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无宽域职业")
+            self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无功能性主动技能")
 
     def test_deal_still_deterministic(self):
         self.assertEqual(deal(42, self.players, self.personas, None),

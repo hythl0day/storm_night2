@@ -2,7 +2,7 @@
 
 Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初始化，随 state 一并落盘）：
 
-- locks: {房间: bool}                   门锁（True=上锁）；卧室键为 "<名字>的卧室"；初始地下室与各卧室上锁
+- locks: {房间: bool}                   门锁（True=上锁）；卧室键为 "<名字>的卧室"；初始监控室与各卧室上锁（v3.2：地下室去锁、监控室上锁）
 - safe_open: bool                       书房保险箱是否已被打开
 - positions: {名字: 房间}               当前阶段所在房间；白天会议阶段为 "会客室"
 - monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被【信号干扰】/「病毒U盘」篡改）
@@ -12,7 +12,8 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - attempts: [未遂]                      谋杀未遂（含"夜袭未能进入"，target 为 None）；供公告与无杀倒计时
 - last_murder_day: int|None             最近一次谋杀行为（含未遂）的日期；None=倒计时未启动
 - winner / win_reason                   胜负结果（"平民"/"反派"/"主神"）
-- detective: 名字|None                  当日侦探（仅已有谋杀案件的日子指定，见 rules-6 §7.4）
+- detective: 名字|None                  侦探（第 1 天竞选产生；出局时警徽按遗嘱传承或销毁，不补选，见 rules-6 §7.4）
+- detective_election_done: bool         第 1 天侦探竞选是否已结算（防重复竞选）
 - stage_murder_used: bool               杀手本阶段谋杀机会是否已用
 - power_out: bool                       停电中（修复发电机后恢复）
 - flashlight_lit: [房间]                本阶段被「手电筒」照亮的房间
@@ -45,7 +46,7 @@ PUBLIC_ROOMS = ["书房", "监控室", "地下室"]  # 功能房：监控覆盖�
 HALL = "会客室"  # 大厅：白天会议场所，自由活动同样开放；永不黑暗、不设监控、不可封闭、不限人数；夜间不开放
 FREE_ROOMS = [HALL] + PUBLIC_ROOMS  # 自由活动合法去向（白天卧室清场，见 rules-6 §5）
 ENV_WEAPON = {"书房": "雕像", "地下室": "电线"}
-ROOM_CAPACITY = {"书房": 3, "监控室": 3, "地下室": 3}  # 会客室不限人数
+ROOM_CAPACITY = {"书房": 3, "监控室": 2, "地下室": 3}  # 会客室不限人数；v3.2 监控室降为 2
 BEDROOM_CAPACITY = 2
 MEETING_STAGES = ("案件调查", "公共发言", "投票")
 ACTION_STAGES = ("自由活动", "晚间休息")
@@ -76,14 +77,16 @@ GENERAL_SKILLS = {
 VILLAIN_SKILLS = {
     "医师": {"伪造痕迹": 1},
     "化学家": {"销毁证物": 1},
-    "运动员": {"转移尸体": 1, "暴力破解": 1},
-    "黑客": {"信号干扰": 1, "暴力破解": 1},
+    "运动员": {"转移尸体": 1},
+    "黑客": {"信号干扰": 1},
     "犯罪侧写师": {"伪造证物": 1},
     "心理医生": {"记忆植入": 1},
     "建筑师": {"建造密道": 1},
     "机械师": {"延时装置": 1},
     "魔术师": {"舞台魔术": 1},
 }
+
+ALL_SKILLS = {s for kit in list(GENERAL_SKILLS.values()) + list(VILLAIN_SKILLS.values()) for s in kit}
 
 
 def bedroom_of(name: str) -> str:
@@ -122,8 +125,10 @@ def ensure(state: dict) -> dict:
     s.setdefault("winner", None)
     s.setdefault("win_reason", None)
     s.setdefault("detective", None)
+    s.setdefault("detective_election_done", False)  # v3.3：第 1 天侦探竞选结算标记
     s.setdefault("stage_murder_used", False)
     s.setdefault("power_out", False)
+    s.setdefault("blackout_days", [])  # 发生过停电的天数（清晨监控宣读"空白"提示用）
     s.setdefault("flashlight_lit", [])
     s.setdefault("bedroom_relock", [])
     s.setdefault("sealed_room", None)
@@ -139,7 +144,7 @@ def ensure(state: dict) -> dict:
     s.setdefault("night_assigned", None)
     locks = s.setdefault("locks", {})
     for r in PUBLIC_ROOMS:
-        locks.setdefault(r, r == "地下室")
+        locks.setdefault(r, r == "监控室")  # v3.2：监控室上锁（首开需开锁手段）；地下室取消门锁
     for p in s["players"]:
         locks.setdefault(bedroom_of(p["name"]), True)
         if "items" not in p:
@@ -179,19 +184,26 @@ def current_period(state: dict) -> str:
 
 
 def is_dark(state: dict, room: str) -> bool:
-    """黑暗判定：地下室永久黑暗；会客室永不黑暗；停电期间除卧室与会客室外全部黑暗；手电筒照亮的房间本次除外。"""
+    """黑暗判定（v3.2）：地下室永久黑暗；会客室永不黑暗；停电期间除会客室外全部黑暗（含卧室，取消紧急照明）；手电筒照亮的房间本次除外。"""
     if room in state["flashlight_lit"]:
         return False
-    if is_bedroom(room) or room == "会客室":
+    if room == HALL:
         return False
     if room == "地下室":
         return True
     return bool(state["power_out"])
 
 
+def door_locked(state: dict, room: str) -> bool:
+    """门锁判定（v3.2）：停电期间所有门锁失效（保险箱除外——箱子不是门），供电恢复后回到原锁状态。"""
+    if state["power_out"]:
+        return False
+    return bool(state["locks"].get(room, False))
+
+
 def record_entry(state: dict, name: str, room: str) -> None:
-    """监控只记录"某时间段谁进入了某场所"，不记离开；经密道者不留记录；会客室不设监控。"""
-    if name in state["passage_stealth"] or room == HALL:
+    """监控只记录"某时间段谁进入了某场所"，不记离开；停电期间监控空白（不记录）；经密道者不留记录；会客室不设监控。"""
+    if name in state["passage_stealth"] or room == HALL or state["power_out"]:
         return
     period = current_period(state)
     state["monitoring"].setdefault(period, {}).setdefault(room, []).append(name)
@@ -229,14 +241,16 @@ def grant_item(p: dict, name: str, uses_left: int, available_day: int) -> None:
 
 
 def unlock_means(state: dict, name: str) -> str | None:
-    """可用开锁手段：优先职业技能【破门而入】，其次道具「万能钥匙」。"""
+    """可用开锁手段（v3.2 三种）：优先职业技能【破门而入】，其次道具「万能钥匙」「螺丝起子」。"""
     p = get_player(state, name)
     if p is None or not p["alive"]:
         return None
     if skill_left(state, name, "破门而入") > 0:
         return "破门而入"
-    if held_item(p, "万能钥匙", state["phase"]["day"]) is not None:
-        return "万能钥匙"
+    day = state["phase"]["day"]
+    for item in ("万能钥匙", "螺丝起子"):
+        if held_item(p, item, day) is not None:
+            return item
     return None
 
 
@@ -244,7 +258,8 @@ def consume_unlock_means(state: dict, name: str, means: str) -> None:
     if means == "破门而入":
         consume_skill(state, name, "破门而入")
     else:
-        consume_item_entry(get_player(state, name), held_item(get_player(state, name), "万能钥匙", state["phase"]["day"]))
+        p = get_player(state, name)
+        consume_item_entry(p, held_item(p, means, state["phase"]["day"]))
 
 
 def check_winner(state: dict) -> str | None:

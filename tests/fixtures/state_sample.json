@@ -14,7 +14,7 @@
     "格罗克",
     "桑娜·克劳德"
   ],
-  "safe_item": "棒球棍",
+  "safe_item": "消音手枪",
   "unused_professions": [
     "运动员",
     "心理医生",
@@ -22,12 +22,10 @@
   ],
   "unused_items": [
     "急救箱",
-    "万能钥匙",
-    "测谎仪",
-    "螺丝起子",
+    "手电筒",
+    "窃听器",
     "可疑的粉末",
-    "裹尸袋",
-    "病毒U盘"
+    "裹尸袋"
   ],
   "players": [
     {
@@ -37,8 +35,8 @@
       "physique": 1,
       "nationality": "中国",
       "identity": "平民",
-      "profession": "魔术师",
-      "item": "消音手枪",
+      "profession": "建筑师",
+      "item": "鲁米诺试剂",
       "item_uses_left": 1,
       "alive": true
     },
@@ -50,8 +48,8 @@
       "nationality": "美国",
       "identity": "平民",
       "profession": "医师",
-      "item": "手电筒",
-      "item_uses_left": 2,
+      "item": "棒球棍",
+      "item_uses_left": 1,
       "alive": true
     },
     {
@@ -62,7 +60,7 @@
       "nationality": "美国",
       "identity": "平民",
       "profession": "犯罪侧写师",
-      "item": "窃听器",
+      "item": "测谎仪",
       "item_uses_left": 1,
       "alive": true
     },
@@ -76,7 +74,10 @@
       "profession": "化学家",
       "item": "不明药剂",
       "item_uses_left": 1,
-      "alive": true
+      "alive": true,
+      "extra_items": [
+        "病毒U盘"
+      ]
     },
     {
       "id": "gpt",
@@ -85,10 +86,13 @@
       "physique": 4,
       "nationality": "美国",
       "identity": "杀手",
-      "profession": "建筑师",
+      "profession": "魔术师",
       "item": "刀",
       "item_uses_left": 1,
-      "alive": true
+      "alive": true,
+      "extra_items": [
+        "万能钥匙"
+      ]
     },
     {
       "id": "doubao",
@@ -98,7 +102,7 @@
       "nationality": "中国",
       "identity": "平民",
       "profession": "黑客",
-      "item": "鲁米诺试剂",
+      "item": "螺丝起子",
       "item_uses_left": 1,
       "alive": true
     }

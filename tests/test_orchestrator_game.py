@@ -68,15 +68,22 @@ def make_fake_chat(killer_script: bool):
         acts: list[dict] = []
         if "开局准备" in title:
             pass
+        elif "侦探竞选声明" in title:
+            acts = [{"type": "declare", "run": name in ("C", "D")}]  # v3.3：C/D 参选，竞选票 C 当选
+        elif "侦探竞选退选" in title:
+            acts = [{"type": "stay"}]
+        elif "侦探竞选投票" in title:
+            acts = [{"type": "elect", "target": "C"}]
         elif "遗言" in title:
             speech = "我无话可说。"
-        elif "侦探特权" in title:
-            acts = [{"type": "detective_monitoring", "period": f"第{max(day - 1, 1)}天自由活动", "rooms": ["书房"]}]
+            acts = [{"type": "bequeath", "mapping": {"万能钥匙": "D"}}]
+        elif "死者字条" in title:
+            acts = [{"type": "bequeath", "mapping": {"万能钥匙": "D"}}]
+        elif "遗嘱回应" in title:
+            acts = [{"type": "bequest_reply", "decisions": {"万能钥匙": "接受"}}]
         elif "案件调查" in title:
             if '"type": "profile"' in briefing:
                 acts = [{"type": "profile", "case_id": 1, "aspect": "性别"}]
-        elif "道具分配" in title:
-            acts = [{"type": "assign_vote", "mapping": {"万能钥匙": "D"}}]
         elif "武装指认" in title:
             pass
         elif "投票" in title:
@@ -89,7 +96,7 @@ def make_fake_chat(killer_script: bool):
             if killer_script and day == 2 and name in ("A", "E"):
                 room = "书房"      # A 第 2 天在书房杀 E（E 无自卫手段）
             if killer_script and day >= 3 and name in ("B", "F"):
-                room = "监控室"    # B 继任后第 3 天在监控室杀 F
+                room = "书房"      # B 继任后第 3 天在书房杀 F（v3.2：监控室上锁，改走书房）
             acts = [{"type": "choose_room", "room": room}]
         elif "内交谈" in title:
             pass  # 只发言
@@ -147,7 +154,7 @@ class TestMainGodEnding(MockGameTestBase):
         self.assertIn("无人过半数", log)  # 投票结果附明确裁决（是否有人出局）
         # 归档：内心独白 / 简报与回执 / host_log
         self.assertTrue((d / "private" / "A" / "inner.md").exists())
-        self.assertTrue((d / "outbox" / "A" / "day1-公共发言.md").exists())
+        self.assertTrue((d / "outbox" / "A" / "day1-竞选声明.md").exists())  # v3.3：第 1 天公共发言改为侦探竞选
         self.assertTrue((d / "inbox" / "F" / "day1-开局准备.md").exists())
         self.assertTrue((d / "host_log.jsonl").read_text(encoding="utf-8").strip())
         # state.json 落盘即终局
@@ -159,7 +166,7 @@ class TestMainGodEnding(MockGameTestBase):
         self.assertIn("## 背景", script)
         self.assertIn("## 阵容与分配（全剧透）", script)
         self.assertIn("| A | 男 | 魁梧 | 中国 | 杀手 | 魔术师 | 刀×1 |", script)
-        self.assertIn("书房保险箱内藏凶器：消音手枪", script)
+        self.assertIn("书房保险箱：消音手枪（开局公告已公开）", script)
         self.assertIn("- 选房结果：", script)
         self.assertIn("- 晚间归宿：", script)
         self.assertIn("- 投票明细：", script)
@@ -239,11 +246,15 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertEqual(names["B"]["identity"], "杀手")  # 帮凶已继任
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("**A 的遗言**", log)          # 遗言先于身份公布
-        self.assertIn("封存道具待分配：万能钥匙", log)
+        self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", log)
         self.assertIn("游戏结束：平民获胜", log)
-        # 侧写与侦探特权的调用确实发生（简报已存档）
+        # v3.3 侦探竞选：C/D 参选、未参选者投票，C 当选（末置发言 + 1.5 票权）
+        self.assertEqual(s["detective"], "C")
+        self.assertIn("C 宣告参选侦探", log)
+        self.assertIn("侦探竞选：C 当选侦探", log)
+        # 侧写的调用确实发生（简报已存档）
         self.assertTrue((d / "inbox" / "D" / "day3-案件调查.md").exists())
-        self.assertTrue((d / "inbox" / "D" / "day4-案件调查-侦探特权.md").exists())
+        self.assertTrue((d / "inbox" / "A" / "day1-竞选声明.md").exists())
         # 案件台账：两起案件，凶手分别为 A 与 B
         self.assertEqual([(c["victim"], c["culprit"]) for c in s["cases"]], [("E", "A"), ("F", "B")])
         # script.md 全记录：秘密谋杀行动、房间内交谈、投票明细、道具分配结果均可见
@@ -252,7 +263,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn('- B 声明 {"type": "murder", "target": "F", "weapon": "不明药剂"} → 成功', script)
         self.assertIn("书房内交谈", script)  # v3：案发前的同房交谈（书房）
         self.assertIn("- 投票明细：", script)
-        self.assertIn("封存道具分配结果：万能钥匙→D", script)
+        self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", script)
         self.assertIn("游戏结束：平民获胜", script)
 
     def test_briefing_key_records(self):
@@ -321,14 +332,14 @@ class TestCivilianWinEnding(MockGameTestBase):
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("目前存活", log)                       # 清晨状态行
         self.assertIn("无杀倒计时：", log)
-        self.assertIn("今日不设侦探", log)                   # 第 2 天尚无案件
+        self.assertIn("侦探：C", log)                        # v3.3：竞选产生的侦探列入清晨公告
         self.assertTrue(any("窃听器录音" in m for m in s["orch"]["hist"]["F"]))  # 私密历史留痕
 
 
 class TestInterruptAndResume(MockGameTestBase):
     """席位粒度断点：API 失败 / Ctrl+C / 席位间隙停止都会落盘，续跑跳过已完成席位、重问被中断席位。
 
-    默认阵容 order=A..F；侦探次日才设立（第 1 天 detective=None），故第 1 天发言顺序即 A,B,C,D,E,F。
+    默认阵容 order=A..F；第 1 天公共发言时段为侦探竞选（C/D 参选、C 当选），声明轮顺序即 A..F。
     """
 
     @staticmethod
@@ -359,13 +370,13 @@ class TestInterruptAndResume(MockGameTestBase):
     def test_api_failure_aborts_and_resume_recovers(self):
         d = write_game_dir(self.root, default_players())
         chat = self._flaky_once(
-            lambda name, title: name == "C" and title.startswith("# 第1天 · 公共发言"),
+            lambda name, title: name == "C" and title.startswith("# 第1天 · 侦探竞选声明"),
             lambda player: ChatResult(player.name, ok=False, error="模拟 API 故障", latency=0.01),
         )
         self._run_expecting(d, chat, orchestrator.AbortRun)
         saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["phase"], {"day": 1, "stage": "公共发言"})
-        self.assertEqual(saved["orch"]["wip"]["1:公共发言:发言"]["done"], ["A", "B"])  # C 被中断时 A/B 已完成
+        self.assertEqual(saved["orch"]["wip"]["1:公共发言:竞选"]["declared"], ["A", "B"])  # C 被中断时 A/B 已完成
         self.assertNotIn("C", saved["orch"]["cursor"])         # 被中断席位的 feed 游标未提交
         self.assertIn("模拟 API 故障", (d / "host_log.jsonl").read_text(encoding="utf-8"))
         orch2 = self.run_game(d, killer_script=False)  # 健康续跑直达结局
@@ -381,11 +392,11 @@ class TestInterruptAndResume(MockGameTestBase):
             raise KeyboardInterrupt
 
         chat = self._flaky_once(
-            lambda name, title: name == "D" and title.startswith("# 第1天 · 公共发言"), ki)
+            lambda name, title: name == "D" and title.startswith("# 第1天 · 侦探竞选声明"), ki)
         self._run_expecting(d, chat, KeyboardInterrupt)
         saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["phase"], {"day": 1, "stage": "公共发言"})
-        self.assertEqual(saved["orch"]["wip"]["1:公共发言:发言"]["done"], ["A", "B", "C"])  # D 被中断
+        self.assertEqual(saved["orch"]["wip"]["1:公共发言:竞选"]["declared"], ["A", "B", "C"])  # D 被中断
         orch2 = self.run_game(d, killer_script=False)
         self.assertEqual(orch2.state["winner"], "平民")
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
@@ -402,8 +413,9 @@ class TestInterruptAndResume(MockGameTestBase):
             calls["n"] += 1
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
-        # 第 1 天调用序：F 开局准备(1) → 发言 A,B,C,D,E,F(2-7) → 交换 A(8)：第 8 次后停 = 交换环节中途
-        orch = Orchestrator(d, hooks={"should_stop": lambda: calls["n"] >= 8})
+        # 第 1 天调用序：F 开局准备(1) → 竞选声明 A..F(2-7) → 退选 C,D(8-9) → 竞选投票 A,B,E,F(10-13)
+        # → 交换 A(14)：第 14 次后停 = 交换环节中途
+        orch = Orchestrator(d, hooks={"should_stop": lambda: calls["n"] >= 14})
         orig = orchestrator.chat
         orchestrator.chat = counting
         try:
