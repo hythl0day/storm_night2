@@ -163,6 +163,8 @@ def fmt_action(a: dict) -> str:
         return "接受守夜邀请"
     if t == "night_room":
         return f"夜间前往 {a.get('room', '?')} 执行 {a.get('do', '?')}"
+    if t == "night_hall":
+        return "夜宿会客室"
     if t == "gift":
         return f"把「{a.get('item', '?')}」赠送给 {a.get('to', '?')}"
     if t == "accept":

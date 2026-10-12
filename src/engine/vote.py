@@ -97,7 +97,7 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
             heir = next((p for p in s["players"] if p["alive"] and p["identity"] == "帮凶"), None)
             if heir is not None:
                 heir["identity"] = "杀手"
-                private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）"
+                private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）；你从遗嘱中接受的道具当天即可用"
     s["last_vote"] = {"day": day, "out": out}
     check_winner(s)
     if not s["winner"] and _civilian_count(s) <= 1:
@@ -163,10 +163,15 @@ def bequest(state: dict, owner: str, mapping: dict, replies: dict) -> dict:
 
     mapping: {道具名: 接收人名}（本人指定；未指定的销毁）。
     replies: {接收人名: {道具名: bool}}（拒绝或无回应 → 销毁）。
-    道具次日起可用；公告公开道具名、来源与去向（信任信号即推理素材）。
+    道具次日起可用——例外（v3.4）：杀手被投票出局时，继任帮凶从该遗嘱中接受的道具当天即可用。
+    公告公开道具名、来源与去向（信任信号即推理素材）。
     """
     s = state
     day = s["phase"]["day"]
+    op = get_player(s, owner)
+    heir = None
+    if op is not None and op["identity"] == "杀手":
+        heir = next((p for p in s["players"] if p["alive"] and p["identity"] == "杀手"), None)
     owned = [e for e in s["sealed_items"] if e.get("from") == owner]
     announcements: list[str] = []
     for e in list(owned):
@@ -175,8 +180,9 @@ def bequest(state: dict, owner: str, mapping: dict, replies: dict) -> dict:
         tp = get_player(s, to) if to else None
         s["sealed_items"].remove(e)
         if tp is not None and tp["alive"] and bool(replies.get(to, {}).get(name)):
-            grant_item(tp, name, e["uses_left"], day + 1)
-            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）→ {to}（次日起可用）")
+            immediate = heir is not None and tp["name"] == heir["name"]
+            grant_item(tp, name, e["uses_left"], day if immediate else day + 1)
+            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）→ {to}（{'当天即可用' if immediate else '次日起可用'}）")
         elif tp is not None and tp["alive"]:
             announcements.append(f"遗嘱：「{name}」（{owner} 遗留）被 {to} 拒收，销毁")
         else:

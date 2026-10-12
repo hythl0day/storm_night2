@@ -190,6 +190,7 @@ class Engine:
             if new_day == 4:
                 for r in PUBLIC_ROOMS:
                     s["locks"][r] = False
+                s["locks"][HALL] = False  # 含会客室夜锁（v3.4）
                 public["announcements"].append("第 4 天起，除卧室外所有门锁自动打开")
             if last_behavior <= new_day - 3:
                 s["winner"] = "平民"
@@ -220,6 +221,7 @@ class Engine:
         s = self.state
         if stage in MEETING_STAGES:
             s["positions"] = {p["name"]: "会客室" for p in s["players"] if p["alive"]}
+            s["locks"][HALL] = False  # 会客室夜锁随夜晚结束解除（v3.4）
         if stage == "自由活动":
             s["stage_murder_used"] = False
             s["flashlight_lit"] = []
@@ -233,6 +235,8 @@ class Engine:
             )
             s["flashlight_lit"] = []
             s["passage_stealth"] = []
+            if s["phase"]["day"] < 4:
+                s["locks"][HALL] = True  # v3.4：会客室夜间自动落锁（第 4 天起全开）
 
     def _morning_report(self, day: int, public: dict, private: dict) -> None:
         """清晨公告：昨日死亡与未遂、强制开锁、职业公开、尸体道具封存、监控公开宣读。"""
@@ -253,6 +257,10 @@ class Engine:
                 public["announcements"].append(f"{c['victim']} 的职业公开：{vp['profession']}")
         for a in attempts:
             public["announcements"].append(f"{a['target']} 遇袭但幸存（袭击者与方式未公布）")
+        hall_sleepers = [n for n, r in s["positions"].items()
+                         if r == HALL and (get_player(s, n) or {}).get("alive")]
+        if hall_sleepers:
+            public["announcements"].append(f"夜宿会客室公开：{'、'.join(hall_sleepers)}（大厅无隐私）")
         monitoring_public: dict[str, dict[str, list[str]]] = {}
         for c in cases:
             if not c["sealed"]:
@@ -414,7 +422,19 @@ class Engine:
                 else:
                     placed = want
             elif want == HALL:
-                note = "会客室夜间不开放"
+                # v3.4：会客室夜宿——夜间上锁（停电时锁失效可直接进入；第 4 天起全开）；
+                # 【暴力破解】开锁后当夜他人可随入，夜锁每日重新落下。人数不限，亮房谋杀条件。
+                if door_locked(s, HALL):
+                    means = unlock_means(s, name)
+                    if means is None:
+                        note = "无法进入（会客室夜间上锁）"
+                    else:
+                        consume_unlock_means(s, name, means)
+                        s["locks"][HALL] = False
+                        placed = want
+                        private[name] = f"你用{means}打开了会客室的夜锁，今晚在大厅过夜"
+                else:
+                    placed = want
             elif want in PUBLIC_ROOMS:
                 occupants = [n for n, r in positions.items() if r == want]
                 sealed = s["sealed_room"]

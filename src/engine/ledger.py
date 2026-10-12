@@ -96,7 +96,8 @@ def unlock(state: dict, user: str, room: str) -> dict:
 
 
 def open_safe(state: dict, user: str) -> dict:
-    """打开书房保险箱并取得其中凶器；同房者看见开箱行为但看不见获得了什么。"""
+    """打开书房保险箱并取得其中道具。内容开局已全员公告（v3.2）；非黑暗时同房者看见开箱行为
+    （自然知道取走的是哪件），黑暗中则无人知晓（rules-6 §7.5）。"""
     s = state
     day = s["phase"]["day"]
     p = get_player(s, user)
@@ -115,9 +116,10 @@ def open_safe(state: dict, user: str) -> dict:
     s["safe_open"] = True
     item = s["safe_item"]
     grant_item(p, item, ITEM_USES[item], day)
-    private = {user: f"保险箱里是：{item}（已收入你的道具）"}
-    for w in _roommates(s, "书房", user):
-        private[w] = f"{user} 打开了保险箱（你看不见他拿到了什么）"
+    private = {user: f"你打开了保险箱，取走了「{item}」（已收入你的道具）"}
+    if not is_dark(s, "书房"):  # 黑暗中房内行为不可见（§7.5）；内容开局已公告，同房者看得见取走的是哪件
+        for w in _roommates(s, "书房", user):
+            private[w] = f"{user} 打开了保险箱，取走了「{item}」"
     return {"ok": True, "type": "open_safe", "public": None, "private": private}
 
 
@@ -203,7 +205,7 @@ def declare_blackout(state: dict, user: str) -> dict:
         return reject("declare_blackout", "只有反派能发动停电")
     means = unlock_means(s, user)
     if means is None:
-        return reject("declare_blackout", "拉电闸需要任一开锁手段（【破门而入】/「万能钥匙」/「螺丝起子」）")
+        return reject("declare_blackout", "拉电闸需要消耗一次【暴力破解】（【破门而入】/「万能钥匙」/「螺丝起子」任一）")
     consume_unlock_means(s, user, means)
     s["power_out"] = True
     if s["phase"]["day"] not in s["blackout_days"]:

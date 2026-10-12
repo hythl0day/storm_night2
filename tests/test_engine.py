@@ -623,6 +623,85 @@ class TestVote(unittest.TestCase):
         self.assertIn("未指定归属", ev["public"]["announcements"][0])
         self.assertEqual(eng.state["sealed_items"], [])
 
+    def test_bequest_succession_immediate(self):
+        """v3.4：杀手被票出局时，继任帮凶从该遗嘱中接受的道具当天即可用；其他接收人仍次日起可用。"""
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})  # A（杀手）出局 → B（帮凶）继任
+        self.assertEqual(player(eng, "B")["identity"], "杀手")
+        ev = eng.bequest("A", {"刀": "B"}, {"B": {"刀": True}})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(items_of(eng, "B")["刀"]["available_day"], 2)  # 当天即可用
+        self.assertIn("当天即可用", ev["public"]["announcements"][0])
+
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
+        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": True}})  # 平民接收人仍次日起可用
+        self.assertEqual(items_of(eng, "C")["刀"]["available_day"], 3)
+        self.assertIn("次日起可用", ev["public"]["announcements"][0])
+
+
+class TestHallNightSleep(unittest.TestCase):
+    """v3.4 会客室夜宿（rules-6 §5/§7.7）：入夜自动落锁、【暴力破解】可开（随入）、
+    停电/第 4 天起自由进入、清晨公开夜宿名单、谋杀按亮房条件。"""
+
+    def test_hall_night_locked_and_crack_follow_in(self):
+        eng = Engine(mk_state())
+        goto(eng, "晚间休息", day=2)
+        self.assertTrue(eng.state["locks"].get("会客室"))  # 入夜自动落锁
+        ev = eng.night_assign({"C": "会客室"}, {})
+        self.assertEqual(ev["positions"]["C"], "C的卧室")  # 无【暴力破解】手段进不去
+
+        eng = Engine(mk_state())
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"E": "会客室", "F": "会客室"}, {})
+        self.assertEqual(ev["positions"]["E"], "会客室")   # E 黑客以破门而入开锁
+        self.assertEqual(ev["positions"]["F"], "会客室")   # 锁开后 F 随入
+        self.assertEqual(eng.state["skill_uses"]["E"]["破门而入"], 0)
+
+    def test_hall_night_blackout_free_entry(self):
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        self.assertTrue(eng.declare_blackout("B")["ok"])   # B 帮凶机械师拉电闸
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"C": "会客室"}, {})
+        self.assertEqual(ev["positions"]["C"], "会客室")   # 停电锁失效，自由进入
+
+    def test_hall_night_day4_free_entry(self):
+        eng = Engine(mk_state())
+        eng.state["phase"] = {"day": 3, "stage": "晚间休息"}
+        eng.state["last_murder_day"] = 3  # 避开无杀倒计时
+        goto(eng, "晚间休息", day=4)
+        self.assertFalse(eng.state["locks"].get("会客室", False))  # 第 4 天起不再上锁
+        ev = eng.night_assign({"C": "会客室"}, {})
+        self.assertEqual(ev["positions"]["C"], "会客室")
+
+    def test_hall_sleepers_announced_next_morning(self):
+        eng = Engine(mk_state())
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"E": "会客室"}, {})
+        ev = eng.advance()  # → 第 3 天清晨
+        self.assertTrue(any("夜宿会客室" in a and "E" in a for a in ev["public"]["announcements"]))
+
+    def test_hall_night_murder_lit_condition(self):
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        self.assertTrue(eng.declare_blackout("B")["ok"])
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"A": "会客室", "C": "会客室"}, {})
+        self.assertEqual(ev["positions"]["A"], "会客室")
+        ev = eng.murder("A", "C", weapon="刀")
+        self.assertTrue(ev["ok"], ev)  # 恰好 1 平民，亮房条件可杀
+
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        self.assertTrue(eng.declare_blackout("B")["ok"])
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"A": "会客室", "C": "会客室", "D": "会客室"}, {})
+        ev = eng.murder("A", "C", weapon="刀")
+        self.assertFalse(ev["ok"])  # 2 名平民在大厅，亮房 ≤1 不满足
+
 
 class TestDetectiveElection(unittest.TestCase):
     """v3.3 侦探竞选与警徽遗嘱（rules-6 §7.4）：第 1 天竞选产生，出局按遗嘱传承，不补选。"""
@@ -1024,7 +1103,23 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertTrue(ev["ok"], ev)
         self.assertIn("消音手枪", items_of(eng, "E"))
         self.assertIn("打开了保险箱", ev["private"]["A"])
+        self.assertIn("消音手枪", ev["private"]["A"])  # v3.3：内容开局已公告，同房者看得见取走的是哪件
         self.assertFalse(eng.open_safe("E")["ok"])
+
+    def test_open_safe_dark_no_witness(self):
+        """v3.3：停电（黑暗）中开保险箱，同房者收不到开箱通知（rules-6 §7.5 黑暗不可见）。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)  # 破门而入 → 可拉电闸
+        eng = Engine(mk_state(players=players))
+        goto(eng, "公共发言", day=1)
+        ev = eng.declare_blackout("B")
+        self.assertTrue(ev["ok"], ev)
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({"E": "书房", "A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.open_safe("E")
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("消音手枪", items_of(eng, "E"))
+        self.assertNotIn("A", ev["private"])
 
     def test_flashlight_and_blackout(self):
         players = default_players()

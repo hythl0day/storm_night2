@@ -830,7 +830,7 @@ class Orchestrator:
                 continue
             menu = list(rooms_menu)
             if is_villain(p) and unlock_means(self.state, name) is not None:
-                menu.append('- 秘密声明今天停电（拉电闸制造过载，消耗一次开锁手段；停电中门锁失效、监控空白、除会客室外全部黑暗）：{"type": "declare_blackout"}')
+                menu.append('- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——破门而入/万能钥匙/螺丝起子任一；停电中门锁失效、监控空白、除会客室外全部黑暗）：{"type": "declare_blackout"}')
             later = [n for n in self.state["order"][i + 1:] if n in alive_names]
             extra = f"你可以邀请顺序在你之后的玩家同入：{'、'.join(later) if later else '无'}。"
             inviters = [v for t, v in pending_invite.items() if t == name]
@@ -1017,6 +1017,7 @@ class Orchestrator:
                     '- 回自己卧室过夜（默认）：{"type": "stay"}',
                     '- 守夜邀请：邀请一名顺序在你之后的玩家来你卧室一同守夜（即夜间的同入邀请）：{"type": "invite", "target": "玩家名"}',
                     '- 不回卧室，夜间前往书房/监控室/地下室执行一项行动：{"type": "night_room", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock"}',
+                    '- 夜宿会客室（大厅过夜：夜间上锁——需【暴力破解】手段进入，停电时或第 4 天起免费；人数不限、始终明亮、无密谈，清晨公开夜宿名单）：{"type": "night_hall"}',
                 ]
                 extra = "夜间行动互相不可见。每个夜间房间只能进入 1 人（顺序靠后冲突者失败，默认回自己卧室）。会客室夜间不开放。"
                 extra += "\n注意：上面「当前局面」里的位置是你自由活动结束时的实际位置；本环节决定的是**今晚去哪过夜**——不回卧室就选 night_room，什么都不做默认回自己卧室。"
@@ -1024,7 +1025,7 @@ class Orchestrator:
                 if later:
                     extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
                 if p["identity"] == "杀手" and not self.state["stage_murder_used"]:
-                    menu.append('- 夜袭：前往一名玩家的卧室动手（需开锁手段，停电期间门锁失效除外；房内满 2 人时仅停电黑暗中可潜入袭击其一，否则无法进入且当夜机会作废）：{"type": "night_raid", "room": "某人的卧室"}')
+                    menu.append('- 夜袭：前往一名玩家的卧室动手（需【暴力破解】手段，停电期间门锁失效除外；房内满 2 人时仅停电黑暗中可潜入袭击其一，否则无法进入且当夜机会作废）：{"type": "night_raid", "room": "某人的卧室"}')
                 if is_villain(p) and p["profession"] == "建筑师" and self.state["passage"] and not self.state["passage"]["used"]:
                     menu.append('- 使用密道（当夜行动，与夜间房间/夜袭互斥；监控无痕；出口人数须满足谋杀人数条件，否则当晚失败但密道保留）：{"type": "use_passage", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock（可选）"}')
                 if self.state["bug_room"] and held_item(p, "窃听器", day) is not None:
@@ -1051,6 +1052,9 @@ class Orchestrator:
                             assignments[name] = room
                             night_do[name] = str(act.get("do", ""))
                             passages.pop(name, None)
+                    elif at == "night_hall":
+                        assignments[name] = HALL
+                        passages.pop(name, None)
                     elif at == "night_raid" and p["identity"] == "杀手":
                         room = str(act.get("room", ""))
                         if is_bedroom(room) and bedroom_owner(room) != name:
@@ -1387,6 +1391,10 @@ class Orchestrator:
         mapping = {it: tg for it, tg in mapping.items() if it in owned}
         replies: dict[str, dict[str, bool]] = {k: dict(v) for k, v in w["replies"].items()}
         targets = list(dict.fromkeys([t for t in mapping.values() if t] + ([badge_to] if badge_to else [])))
+        owner_p = self.player(owner)
+        heir = None
+        if owner_p is not None and owner_p["identity"] == "杀手":
+            heir = next((q["name"] for q in self.alive() if q["identity"] == "杀手"), None)
         for tgt in targets:
             if tgt in w["replied"]:
                 continue
@@ -1395,7 +1403,8 @@ class Orchestrator:
                 continue
             items = [it for it, t in mapping.items() if t == tgt]
             gets_badge = badge_to == tgt
-            menu = ['- 逐件回应（接受则次日起可用；拒绝则销毁）：{"type": "bequest_reply", "decisions": {"道具名": "接受|拒绝"}}']
+            avail = "当天即可用" if tgt == heir else "次日起可用"
+            menu = [f'- 逐件回应（接受则{avail}；拒绝则销毁）：{{"type": "bequest_reply", "decisions": {{"道具名": "接受|拒绝"}}}}']
             extra = (f"{owner} 的遗嘱把以下留给你：{'、'.join(items + (['侦探徽章'] if gets_badge else []))}。"
                      "此事全员公开——收下可能带来信任也可能带来嫌疑，由你判断。")
             if gets_badge:
