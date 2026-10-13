@@ -70,7 +70,7 @@ deal 的车道分配与平衡保证（v3.2，全部论证见 docs/v3.2-plan.md�
 | `orchestrator.py` | 主循环：按阶段生成简报 → 收集各 AI 输出 → 校验动作 → 推状态 → 落盘 |
 | `prompts/` | 模板：规则书注入、私密卡、阶段简报、合法动作菜单、发言/独白要求 |
 | `archive/` | 落盘协议：`game/<id>/` 目录结构（见 revision-plan §8.2） |
-| `batch.py` | 抽卡批量跑：N 局队列、失败续跑、评分卡粗筛 |
+| `tools/scorecard.py` | 评分卡（M6 修订）：只读扫描人工挑选的对局存档目录（selected_games/），单局报告（台账/流程简报/戏剧性评分/主角弧线候选/成本）+ 多局报告（版本分组胜率/机制利用率/多样性/成本汇总）。批量跑局器（batch.py）已取消——单局一小时以上，手动换 seed + 断点续跑更稳 |
 | `viewer.py` / `view.py` | 视图层 + 只读查看器薄壳（M4.5）：`status`/`log`/`peek`/`inner`/`host`/`follow` 读 `game/<id>/` 存档渲染，与跑局解耦 |
 | `console.py` | 交互驾驶舱（M4.5）：进程内驱动 orchestrator 跑局 + 流式渲染 + 随时命令（pause/save/peek 等）；M7 `play`、M8 `watch` 的载体 |
 
@@ -112,7 +112,7 @@ temperature = 1.0
 | M4 ✅ | orchestrator 主循环 + 落盘协议 | 跑通"第 1 天全天"；`game/<id>/` 目录结构完整 |
 | M4.5 ✅ | 交互层：`viewer.py`/`view.py`/`console.py` + providers 流式化 + 输出篇幅约束 | view 只读子命令（status/log/peek/inner/host/follow）对已落盘对局可用；console 驾驶舱：顶栏状态+spinner、流式输出、随时命令、阶段边界暂停/退出；单次调用中位延迟 ≤90s |
 | M5 ✅ | 完整对局 | 全自动跑完一整局，日志无人工干预；并回归两个平衡场景：平民扎堆（3 人恒同室）与卧室蹲守，确认反制路径（停电/舞台魔术/延时装置/开锁夜袭）均可触发 |
-| M6 | batch.py + 评分卡 | 连跑 10 局，产出粗筛报告（局时长、谋杀数、技能使用率、反转点、主角弧线候选） |
+| M6 | tools/scorecard.py 评分卡 | 手动跑局换 seed、完整存档挑入 selected_games/；单局报告（流程简报+戏剧性评分+主角弧线候选）与多局报告（版本分组胜率/机制利用率/多样性/成本）可用 |
 | M7 | `hostseat.py` + console 人机模式 | 你 + 5 AI 在终端完整打完一局 6 人局：人类发言自由文本、动作菜单化；该局正常归档。兼作开发期规则 QA 工具，可做简易版提前介入 |
 | M8 | watch 看海模式（viewer 轮询或 console 钩子广播，届时二选一） | 跑局/批量跑局时上帝视角实时观战：公开事件 + 全部私密视角与内心独白同屏刷新，供彩蛋单集录制 |
 

@@ -178,6 +178,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
     return {
         "seed": seed,
         "ruleset": "rules-6.md",
+        "rules_version": "v3.5",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "mode": "6人局",
         "phase": {"day": 1, "stage": "开局准备"},
         "order": order,
