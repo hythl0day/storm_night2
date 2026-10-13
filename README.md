@@ -46,3 +46,12 @@ python -m unittest discover -s tests
 - 节目规划（两季 + 特别单集）：[screenwriting/show-bible.md](screenwriting/show-bible.md)
 - 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v3）/ [docs/rules-8.md](docs/rules-8.md)（8 人局）
 - 工程计划与里程碑：[docs/dev-plan.md](docs/dev-plan.md)
+
+## 其他
+
+git历史有变动时，需要
+
+```bash
+# 重新设置 git
+git fetch && git reset --hard origin/main
+```

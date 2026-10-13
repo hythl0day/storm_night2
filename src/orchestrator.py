@@ -352,6 +352,8 @@ class Orchestrator:
             "latency": round(latency, 2),
             "total_tokens": usage.get("total_tokens"),
         }
+        if usage:
+            entry["usage"] = dict(usage)  # 全量 usage（input/output/prompt_cache 命中等），供缓存观测与成本核算
         if error:
             entry["error"] = error
         with open(self.dir / "host_log.jsonl", "a", encoding="utf-8") as f:
@@ -473,6 +475,65 @@ class Orchestrator:
         """统一列表项前缀（feed 里的公告行自带 "- "，避免叠成双破折号）。"""
         return "- " + (line[2:] if line.startswith("- ") else line)
 
+    def _stage_hints(self, title: str) -> list[str]:
+        """本环节规则速查：只放本环节最易误读的规则与关键数字（全文仍以系统提示中的规则书为准）。
+
+        置于简报末尾（动作菜单之前），吃 recency；针对真实对局中暴露的事故——
+        如 game/1 双平民把"超过半数"误算成需 3 票（实际 2.5 票即出局）。
+        """
+        n = len(self.alive())
+        if "侦探竞选声明" in title:
+            return ["声明时可附带宣告职业与道具——可以撒谎，但这类声明属于【看破伪装】可验证范围，谎言会留档。",
+                    "侦探职权：桌上凶器归侦探 + 末置发言 + 一票计 1.5 + 垄断武装指认；出局时警徽随遗嘱传承。",
+                    "流程：声明轮之后是密封退选（参选者各自私下决定去留），再由自始未参选者投票。"]
+        if "侦探竞选退选" in title:
+            return ["退选即失去当选资格；留任候选人只剩 1 人则直接当选。",
+                    "无人留任（全部退选/无人参选/全员参选）→ 本局不设侦探，不再补选。"]
+        if "侦探竞选投票" in title:
+            return ["只有自始未参选者（不含退选者）有投票权，每人 1 票。", "平票 → 本局不设侦探，不再补选。"]
+        if "公共发言" in title:
+            return ["侦探末置发言（若侦探存活）。发言结束进入交换环节（每人一次赠送机会，对方可拒绝）。"]
+        if "交换环节" in title:
+            return ["每人仅一次发起赠送的机会；对方可以拒绝；道具转手不影响剩余次数。"]
+        if "投票" in title:
+            need = (n + 1) / 2  # 严格过半的最小票值（0.5 步进）：n=4→2.5，n=5→3，n=6→3.5
+            return [f"存活 {n} 人：出局线 = 得票严格超过 {n}/2，即至少 {need:g} 票（普通票 1、侦探票 1.5）——"
+                    f"{need - 0.5:g} 票不够。",
+                    "可弃权；平票或未过线 → 本轮无人出局。",
+                    "本轮无人出局时，之后可能进入武装指认（见规则书 §7.3）。"]
+        if "武装指认" in title:
+            return ["每次投票至多接受一次指认，按行动顺序先声明者优先。",
+                    "指认对象确为杀手 → 平民立即获胜；指错（帮凶/平民）→ 你直接出局，游戏继续。"]
+        if "死者字条" in title or "遗言" in title:
+            return ["遗言/死者字条在身份公布之前——可以撒谎。",
+                    "有未使用的遗留道具时一并立遗嘱：逐件指定归属；接收人可拒收；未指定/被拒收的道具不销毁，"
+                    "放回会客室桌上；接受的道具当天即可用。"]
+        if "遗嘱回应" in title:
+            return ["拒收的道具不销毁，放回会客室桌上；接受的道具当天即可用。"]
+        if "案件调查" in title:
+            return ["现场调查三项任选一项：武器伤痕 / 死亡时间 / 尸体转移；多起案件每起都可查，同一项可被多人重复验证。",
+                    "结果仅你本人可见——公布、隐瞒或撒谎由你决定。"]
+        if "选房" in title:
+            return ["顺序靠后者可见顺序靠前者的选择结果；房间满员/上锁而无开锁手段/被【封闭空间】挡住 → 滞留会客室。",
+                    "同一上锁房间由顺序最前的有手段者开门（自动消耗一次手段），之后的人直接随入。"]
+        if "内交谈" in title:
+            return ["按行动顺序各发言一次，后发言者能看到先发言者的话；黑暗房间内无法交谈。"]
+        if "房间行动" in title:
+            return ["非黑暗时，房间行动（查监控/开箱/修发电机）会被同房者看见；黑暗中无人知晓是谁做的。"]
+        if "夜袭" in title:
+            return ["夜袭目标：有且仅有 1 名非反派角色的房间；持【暴力破解】手段可尝试进入某卧室（已有 2 人则无法进入）。",
+                    "夜袭失败（无法进入）消耗当夜机会，但不计为谋杀行为、不重置无杀倒计时。"]
+        if "密谈" in title or "夜谈" in title:
+            return ["密谈/夜谈内容只有参与者知道；按行动顺序各发言一次；停电不影响密谈（黑暗中照常进行）。"]
+        if "晚间休息" in title:
+            return ["归宿选择互不可见；守夜只能邀请行动顺序在你之后的人；夜间房间行动每个房间限 1 人。",
+                    "夜宿会客室：始终明亮、人数不限，但夜宿者名单次日清晨公开。"]
+        if "秘密布置" in title:
+            return ["窃听器是唯一能听到会客室交谈的手段（监控只记录谁进入，听不到谈话）。"]
+        if "毁证机会" in title:
+            return ["仅当现场没有其他非反派角色时：杀手可缴获尸体上的未使用道具、可发动毁证类技能/道具。"]
+        return []
+
     def build_briefing(self, p: dict, title: str, menu: list[str], extra: str = "") -> str:
         """简报 = 增量公开事件 + 增量私密事件 + 当前局面 + 关键记录 + notes 回放 + 合法动作菜单。
 
@@ -527,6 +588,11 @@ class Orchestrator:
         if extra:
             lines.append("")
             lines.append(extra)
+        hints = self._stage_hints(title)
+        if hints:
+            lines.append("")
+            lines.append("## 本环节规则速查")
+            lines += [f"- {h}" for h in hints]
         lines.append("")
         lines.append("## 本环节合法动作（JSON 示例）")
         lines += menu or ["- 本环节无动作可做，actions 返回 []"]

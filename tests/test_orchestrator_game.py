@@ -530,5 +530,53 @@ class TestInterruptAndResume(MockGameTestBase):
             self.assertEqual(log.count(f"**{n}**：{n} 的第1天发言"), 1)  # 断点续跑无重复发言
 
 
+class StageHintsTest(MockGameTestBase):
+    """简报增强：本环节规则速查块（明确数字/易误读规则）+ host_log 全量 usage。"""
+
+    def setUp(self):
+        super().setUp()
+        self.orch = Orchestrator(write_game_dir(self.root, default_players()))
+
+    def test_vote_hint_explicit_threshold(self):
+        hints = self.orch._stage_hints("第2天 · 投票")  # 6 人存活
+        self.assertTrue(any("至少 3.5 票" in h for h in hints), hints)
+        self.assertTrue(any("3 票不够" in h for h in hints), hints)
+
+    def test_vote_hint_threshold_scales_down(self):
+        for p in self.orch.state["players"][4:]:
+            p["alive"] = False  # 剩 4 人：2.5 即出局（game/1 豆包/杰米娜误算为需 3 票的事故）
+        hints = self.orch._stage_hints("第3天 · 投票")
+        self.assertTrue(any("至少 2.5 票" in h for h in hints), hints)
+        self.assertTrue(any("2 票不够" in h for h in hints), hints)
+
+    def test_election_hint_not_swallowed_by_vote(self):
+        hints = self.orch._stage_hints("第1天 · 侦探竞选投票")
+        self.assertTrue(any("未参选者" in h for h in hints), hints)
+
+    def test_night_raid_hint(self):
+        hints = self.orch._stage_hints("第2天 · 晚间休息（夜袭）")
+        self.assertTrue(any("非反派" in h for h in hints), hints)
+        self.assertTrue(any("不重置无杀倒计时" in h for h in hints), hints)
+
+    def test_briefing_hints_before_menu(self):
+        p = self.orch.player(self.orch.state["order"][0])
+        text = self.orch.build_briefing(p, "第2天 · 投票", ['- {"type": "vote"}'])
+        self.assertIn("## 本环节规则速查", text)
+        self.assertLess(text.index("## 本环节规则速查"), text.index("## 本环节合法动作"))
+
+    def test_briefing_no_hints_for_plain_stage(self):
+        p = self.orch.player(self.orch.state["order"][0])
+        text = self.orch.build_briefing(p, "第2天 · 自由活动（会客室内交谈）", [])
+        self.assertIn("## 本环节规则速查", text)  # 内交谈有速查
+        text2 = self.orch.build_briefing(p, "第2天 · 自由活动（非标准环节）", [])
+        self.assertNotIn("## 本环节规则速查", text2)
+
+    def test_host_log_full_usage(self):
+        self.orch.host_log("A", "测试", True, 1.0, {"total_tokens": 100, "prompt_cache_hit_tokens": 80})
+        line = json.loads((self.orch.dir / "host_log.jsonl").read_text(encoding="utf-8").strip())
+        self.assertEqual(line["total_tokens"], 100)
+        self.assertEqual(line["usage"]["prompt_cache_hit_tokens"], 80)
+
+
 if __name__ == "__main__":
     unittest.main()
