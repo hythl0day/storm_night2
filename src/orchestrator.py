@@ -71,6 +71,7 @@ from .engine.state import (
     skill_left,
     unlock_means,
 )
+from .fmt import fmt_action
 from .gamedata import ARMED_WEAPONS, physique_desc
 from .prompts import render
 from .providers import Player, chat, find_player, load_config
@@ -180,6 +181,7 @@ class Orchestrator:
         self.orch.setdefault("out_day", {})  # 出局/指认出局者 → 天数（script.md 清晨状态表用）
         self._system_cache: dict[str, str] = {}
         self._pending: dict[str, int] = {}  # 席位名 → 待提交的 feed 游标（call_ai 成功后才提交）
+        self._receipt_open = False  # script.md 行动回执块分隔头是否已打开（连续回执共享一块）
         self.hooks = hooks or {}
         self.script_path = self.dir / "script.md"
         if not self.script_path.exists():
@@ -220,36 +222,52 @@ class Orchestrator:
             lines += ["## 开局公告（主人字条）", "", ann.read_text(encoding="utf-8").strip(), ""]
         self.script_path.write_text("\n".join(lines), encoding="utf-8")
 
-    def script_line(self, line: str) -> None:
+    def script_line(self, line: str, _receipt: bool = False) -> None:
+        if not _receipt:
+            self._receipt_open = False  # 非回执内容切断回执块，下一条回执重新开分隔头
         with open(self.script_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
 
     def script_header(self, text: str) -> None:
+        self._receipt_open = False
         with open(self.script_path, "a", encoding="utf-8") as f:
             f.write(f"\n## {text}\n\n")
+
+    def _receipt_line(self, text: str) -> None:
+        """行动回执：连续回执共享一个分隔块头，与正文（公告/发言/流程行）视觉上明确隔开。"""
+        if not self._receipt_open:
+            self.script_line("  ── 行动回执（host 档案 · 含秘密行动，剪辑勿公开）" + "─" * 10, _receipt=True)
+        self.script_line(f"  {text}", _receipt=True)
+        self._receipt_open = True
 
     def script_private(self, ev: dict) -> None:
         """把事件的私密回执逐条记入全记录（host 侧事实，不进 public/log.md）。console 经 on_private 上屏。"""
         for name, msg in (ev.get("private") or {}).items():
             if not isinstance(msg, str):
                 msg = json.dumps(msg, ensure_ascii=False)
-            self.script_line(f"  [{name}] {msg}")
+            self._receipt_line(f"◆ {name}｜{msg}")
             self._fire("on_private", name, msg)
+        for note in ev.get("host") or []:
+            # host 备注：引擎裁定的真实原因（对玩家保密的部分），如"未能进入（房内是杀手）"
+            self._receipt_line(f"◆ 主持备注｜{note}")
+            self._fire("on_private", "主持备注", note)
 
     def script_action(self, name: str, act: dict, ev: dict) -> None:
         """记录一次动作声明与裁决结果（含驳回——host 侧可见，不公开）。console 经 on_result 上屏。"""
         ok = bool(ev.get("ok"))
+        act_txt = fmt_action(act)
         if not ok:
-            detail = f"驳回（{ev.get('error')}）"
-        else:
-            priv = (ev.get("private") or {}).get(name)
-            if isinstance(priv, str) and priv:
-                detail = f"成功：{priv}"
-            elif priv:
-                detail = f"成功：{json.dumps(priv, ensure_ascii=False)}"
-            else:
-                detail = "成功"
-        self.script_line(f"- {name} 声明 {json.dumps(act, ensure_ascii=False)} → {detail}")
+            self._receipt_line(f"◆ {name}｜{act_txt} → 驳回（{ev.get('error')}）")
+            self._fire("on_result", name, ok, f"{act_txt} → 驳回（{ev.get('error')}）")
+            return
+        priv = (ev.get("private") or {}).get(name)
+        self._receipt_line(f"◆ {name}｜{act_txt} → 成功")
+        detail = f"{act_txt} → 成功"
+        if priv:
+            if not isinstance(priv, str):
+                priv = json.dumps(priv, ensure_ascii=False)
+            self._receipt_line(f"    结果：{priv}")
+            detail += f"：{priv}"
         self._fire("on_result", name, ok, detail)
 
     def _fire(self, name: str, *args) -> None:
@@ -1111,7 +1129,13 @@ class Orchestrator:
             self.route(ev)
             self.script_line("- 晚间归宿：" + "、".join(f"{n}→{r}" for n, r in ev["positions"].items()))
             if invited:
-                self.script_line("  守夜：" + "、".join(f"{t} 接受 {v} 的邀请" for t, v in invited.items()))
+                # 按归宿结果区分成立/未成（应邀未成的原因在行动回执的主持备注里，对玩家仍保密）
+                ok_pairs = [f"{t} 进入 {v} 的卧室" for t, v in invited.items() if ev["positions"].get(t) == bedroom_of(v)]
+                no_pairs = [f"{t} 未能进入 {v} 的卧室" for t, v in invited.items() if ev["positions"].get(t) != bedroom_of(v)]
+                if ok_pairs:
+                    self.script_line("  守夜成立：" + "、".join(ok_pairs))
+                if no_pairs:
+                    self.script_line("  守夜未成：" + "、".join(no_pairs))
             self.script_private(ev)
             for v in ev.get("device_triggers", []):
                 self.script_line(f"  延时装置触发：{v}")

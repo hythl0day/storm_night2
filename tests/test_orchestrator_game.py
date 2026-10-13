@@ -259,8 +259,9 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertEqual([(c["victim"], c["culprit"]) for c in s["cases"]], [("E", "A"), ("F", "B")])
         # script.md 全记录：秘密谋杀行动、房间内交谈、投票明细、道具分配结果均可见
         script = (d / "script.md").read_text(encoding="utf-8")
-        self.assertIn('- A 声明 {"type": "murder", "target": "E", "weapon": "刀"} → 成功', script)
-        self.assertIn('- B 声明 {"type": "murder", "target": "F", "weapon": "不明药剂"} → 成功', script)
+        self.assertIn("── 行动回执", script)  # 行动回执块分隔头（v3.5 二跑复盘：行动记录独立成块）
+        self.assertIn("◆ A｜谋杀 E（凶器：刀） → 成功", script)
+        self.assertIn("◆ B｜谋杀 F（凶器：不明药剂） → 成功", script)
         self.assertIn("书房内交谈", script)  # v3：案发前的同房交谈（书房）
         self.assertIn("- 投票明细：", script)
         self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", script)
@@ -417,7 +418,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         orch = self.run_game_with(d, chat_blackout)
         s = orch.state
         script = (d / "script.md").read_text(encoding="utf-8")
-        self.assertIn('声明 {"type": "declare_blackout"}', script)  # v3.5 复盘修复：停电声明记入全记录
+        self.assertIn("◆ B｜声明今晚停电 → 成功", script)  # v3.5 复盘修复：停电声明记入全记录（行动回执格式）
         self.assertIn("C的卧室密谈（C、D）：【旁听：A】", script)
         self.assertIn("C 的密谈内容", script)
         # 密谈双方正常收到；杀手作为旁听者收到；密谈者的记录不泄漏"被旁听"

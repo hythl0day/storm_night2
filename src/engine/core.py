@@ -284,7 +284,7 @@ class Engine:
             monitoring_public[c["period"]] = {r: records.get(r, []) for r in sorted(rooms)}
         if monitoring_public:
             public["monitoring"] = monitoring_public
-            public["announcements"].append("监控公开宣读：案发时间段 ×（案发房间 + 死者卧室）的进入者名单见 monitoring 字段")
+            public["announcements"].append("监控公开宣读：案发时间段（案发房间 + 死者卧室）的进入者名单如下")
             if yday in s.get("blackout_days", []):
                 public["announcements"].append("（昨日停电，当日时段监控记录缺失——缺失不代表无人进入）")
 
@@ -419,6 +419,7 @@ class Engine:
         invited = invited or {}
         positions: dict[str, str] = {}
         private: dict = {}
+        host: list[str] = []  # host 备注：裁定真实原因（进 script.md 行动回执，对玩家保密）
         for name in s["order"]:
             p = get_player(s, name)
             if not p or not p["alive"]:
@@ -436,6 +437,8 @@ class Engine:
                 is_night_raid = p["identity"] == "杀手" and not s["stage_murder_used"] and not is_invited
                 if killer_inside and p["identity"] != "杀手":
                     note = "无法进入（不知原因）"
+                    killers = "、".join(n for n in occupants if get_player(s, n)["identity"] == "杀手")
+                    host.append(f"{name} 未能进入{want}（真实原因：杀手 {killers} 已在房内）")
                 elif len(occupants) >= BEDROOM_CAPACITY:
                     if is_night_raid and is_dark(s, want):
                         # 停电黑暗中卧室满员也可潜入（v3.2 破守夜）；谋杀条件在深夜判定（黑暗 ≤2）
@@ -446,10 +449,15 @@ class Engine:
                         note = "无法进入（房内满员，当夜谋杀机会已消耗）"
                     else:
                         note = "无法进入（不知原因）"
+                        host.append(f"{name} 未能进入{want}（真实原因：房内满员——{'、'.join(occupants)}）")
                 elif not is_invited and door_locked(s, want):
                     means = unlock_means(s, name)
-                    if means is None or (p["identity"] == "杀手" and s["stage_murder_used"]):
+                    if means is None:
                         note = "无法进入（不知原因）"
+                        host.append(f"{name} 未能进入{want}（真实原因：房门上锁且 TA 无开锁手段）")
+                    elif p["identity"] == "杀手" and s["stage_murder_used"]:
+                        note = "无法进入（不知原因）"
+                        host.append(f"{name} 未能进入{want}（真实原因：杀手当夜袭击机会已消耗）")
                     else:
                         consume_unlock_means(s, name, means)
                         s["locks"][want] = False
@@ -481,6 +489,7 @@ class Engine:
                 sealed = s["sealed_room"]
                 if sealed and want == sealed["room"] and name != sealed["owner"] and name not in sealed["allowed"]:
                     note = "无法进入（不知原因）"
+                    host.append(f"{name} 未能进入{want}（真实原因：被【封闭空间】锁死，主人：{sealed['owner']}）")
                 elif occupants:
                     note = "无法进入（夜间房间已满）"
                 elif door_locked(s, want):
@@ -506,6 +515,8 @@ class Engine:
         for dev_ev in device_events:
             private.update(dev_ev["private"])
         ev = {"ok": True, "type": "night_assign", "public": {"announcements": []}, "private": private, "positions": dict(positions)}
+        if host:
+            ev["host"] = host
         if device_events:
             ev["device_triggers"] = [e["case"]["victim"] for e in device_events]
         if check_winner(s):

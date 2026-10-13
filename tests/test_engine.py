@@ -908,6 +908,9 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         ev = eng.night_assign({"A": "C的卧室", "D": "C的卧室"}, invited={"D": "C"})
         self.assertEqual(ev["positions"]["A"], "C的卧室")
         self.assertEqual(ev["positions"]["D"], "D的卧室")
+        # host 备注给出真实原因（对玩家仍是"不知原因"）——v3.5 二跑复盘：host 档案不能自己也不知道
+        self.assertIn("无法进入（不知原因）", ev["private"]["D"])
+        self.assertTrue(any("杀手 A 已在房内" in n for n in ev.get("host", [])), ev.get("host"))
 
 
 class TestMorningReportAndInvestigation(unittest.TestCase):
