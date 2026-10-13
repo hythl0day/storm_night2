@@ -372,6 +372,55 @@ class TestCivilianWinEnding(MockGameTestBase):
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("夜宿会客室公开：E、F", log)
 
+    def test_blackout_bedroom_talk_with_eavesdropper(self):
+        """v3.5 修订：停电黑暗中守夜密谈照常（摸黑也能谈）；杀手潜入满员卧室时旁听全部内容，
+        密谈者不知情（密谈不取消，避免"取消"本身泄漏潜入）。"""
+        d = write_game_dir(self.root, self.players())
+        base = make_fake_chat(False)
+
+        def chat_blackout(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "选房" in title and day == 2 and name == "B":
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"},
+                                                                      {"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "晚间休息" in title and "密谈" not in title and "夜袭" not in title:
+                acts = []
+                if name == "C" and day == 2:
+                    acts = [{"type": "invite", "target": "D"}]
+                elif name == "D" and day == 2:
+                    acts = [{"type": "accept_invite"}]
+                elif name == "A" and day == 2:
+                    acts = [{"type": "night_raid", "room": "C的卧室"}]
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "密谈" in title:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech=f"{name} 的密谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "夜袭" in title and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "C", "weapon": "刀"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_blackout)
+        s = orch.state
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("C的卧室密谈（C、D）：【旁听：A】", script)
+        self.assertIn("C 的密谈内容", script)
+        # 密谈双方正常收到；杀手作为旁听者收到；密谈者的记录不泄漏"被旁听"
+        self.assertTrue(any("C的卧室密谈" in m and "密谈内容" in m for m in s["orch"]["hist"]["C"]))
+        self.assertTrue(any("听到了他们的密谈" in m for m in s["orch"]["hist"]["A"]))
+        self.assertFalse(any("旁听" in m or "听到" in m for m in s["orch"]["hist"]["C"]))
+        # 黑暗中守夜对（2 名非反派）仍被杀手袭击：C 的急救箱自动防下（未遂）
+        self.assertTrue(s["attempts"])
+
 
 class TestInterruptAndResume(MockGameTestBase):
     """席位粒度断点：API 失败 / Ctrl+C / 席位间隙停止都会落盘，续跑跳过已完成席位、重问被中断席位。

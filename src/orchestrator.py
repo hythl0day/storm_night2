@@ -1165,9 +1165,9 @@ class Orchestrator:
             self.save_state()
 
     def sleep_talks(self, day: int, invited: dict[str, str]) -> None:
-        """守夜密谈（v3）：守夜成立且房内恰好两人的卧室，睡前密谈一轮；夜袭进入的卧室不交谈。
-        v3.2：黑暗房间无法交谈——停电期间卧室黑暗，卧室密谈取消。
-        v3.5：夜宿会客室者（≥2 名存活）睡前围炉夜谈一轮，内容仅当夜夜宿者知晓；大厅永不黑暗，停电也照常。"""
+        """守夜密谈：守夜成立的两人（+v3.5 会客室夜宿者 ≥2 人）睡前各密谈一轮。
+        v3.5 修订：黑暗不再取消卧室密谈（守夜两人互知在场，摸黑也能谈）；停电中潜入密谈卧室的
+        杀手改为旁听全部内容且密谈者不知情（取消密谈会泄漏"屋里有人"，故照常进行）。"""
         w = self.wip(f"{day}:晚间休息:密谈", done=[])
         positions = self.state["positions"]
         for guest, host in invited.items():
@@ -1176,15 +1176,19 @@ class Orchestrator:
                 continue
             occ = [n for n in self.state["order"]
                    if positions.get(n) == room and (self.player(n) or {}).get("alive")]
-            if set(occ) != {guest, host} or is_dark(self.state, room):
-                w["done"].append(room)  # 邀请未成立/有第三者（夜袭）/房间黑暗（停电）→ 不交谈
+            if guest not in occ or host not in occ:
+                w["done"].append(room)  # 邀请未成立 → 不交谈
                 continue
+            speakers = [n for n in occ if n in (guest, host)]   # occ 已按行动顺序排列
+            listeners = [n for n in occ if n not in (guest, host)]  # v3.5：停电潜入者在黑暗中旁听
             transcript: list[str] = []
-            for occ_name in occ:
+            for occ_name in speakers:
                 p = self.player(occ_name)
                 other = host if occ_name == guest else guest
                 menu = ["- 本环节是守夜密谈：speech 只有对方能听到；actions 为 []"]
                 extra = f"深夜，{room}，只有你和 {other} 两人。睡前可以密谈一轮。"
+                if is_dark(self.state, room):
+                    extra += "（停电中，房间一片漆黑——你们看不见彼此，但仍能低声交谈。）"
                 if transcript:
                     extra += "\n对方刚才说：\n" + "\n".join(transcript)
                 briefing = self.build_briefing(p, f"第{day}天 · 晚间休息（{room}密谈）", menu, extra)
@@ -1193,14 +1197,21 @@ class Orchestrator:
                 if speech:
                     transcript.append(f"{occ_name}：{speech}")
             if transcript:
-                self.script_line(f"- {room}密谈（{host}、{guest}）：")
+                self.script_line(f"- {room}密谈（{host}、{guest}）："
+                                 + (f"【旁听：{'、'.join(listeners)}】" if listeners else ""))
                 for line in transcript:
                     self.script_line(f"    {line}")
-                for occ_name in occ:
+                content = "；".join(transcript)
+                for occ_name in speakers:
                     seat = self.seat(self.player(occ_name))
                     with open(self.dir / "private" / seat / "log.md", "a", encoding="utf-8") as f:
                         f.write(f"\n## 第{day}天 · {room}密谈\n\n" + "\n".join(transcript) + "\n")
-                    self.tell(occ_name, f"{room}密谈：" + "；".join(transcript))
+                    self.tell(occ_name, f"{room}密谈：" + content)
+                for occ_name in listeners:  # 旁听者得知全部内容；密谈者不知情（不泄漏潜入）
+                    seat = self.seat(self.player(occ_name))
+                    with open(self.dir / "private" / seat / "log.md", "a", encoding="utf-8") as f:
+                        f.write(f"\n## 第{day}天 · {room}（你在黑暗中旁听密谈）\n\n" + "\n".join(transcript) + "\n")
+                    self.tell(occ_name, f"你在黑暗中潜入{room}，听到了他们的密谈：" + content)
             w["done"].append(room)
             self.save_state()
             self.check_stop()
