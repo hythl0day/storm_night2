@@ -113,6 +113,55 @@ def _retry_after(resp: httpx.Response) -> float | None:
 
 # ---- OpenAI 协议 ----
 
+class _ThinkTagger:
+    """OpenAI 兼容流中把 content 里的 <think>…</think> 段识别为推理内容（跨 chunk 安全）。
+
+    部分模型（如 gpt 系）把思维链以 <think> 标签写进正文流而非 reasoning_content 字段；
+    区间 token 以 is_reasoning=True 回调（落盘 content 仍保持完整，不受影响）。
+    """
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self) -> None:
+        self.in_think = False
+        self.tail = ""  # 跨 chunk 的标签碎片缓冲（标签最长 8 字符）
+
+    @staticmethod
+    def _partial_len(buf: str, tag: str) -> int:
+        """buf 尾部与 tag 前缀匹配的最长长度（0..len(tag)-1）。"""
+        for k in range(min(len(tag) - 1, len(buf)), 0, -1):
+            if buf.endswith(tag[:k]):
+                return k
+        return 0
+
+    def feed(self, chunk: str) -> list[tuple[str, bool]]:
+        """返回 [(文本, is_reasoning)] 段；空段已剔除。碎片留在 tail 待下一块拼合。"""
+        buf = self.tail + chunk
+        self.tail = ""
+        out: list[tuple[str, bool]] = []
+        i = 0
+        while i < len(buf):
+            tag = self.CLOSE if self.in_think else self.OPEN
+            j = buf.find(tag, i)
+            if j == -1:
+                keep = self._partial_len(buf, tag)
+                seg = buf[i:len(buf) - keep]
+                if seg:
+                    out.append((seg, self.in_think))
+                self.tail = buf[len(buf) - keep:]
+                return out
+            if j > i:
+                out.append((buf[i:j], self.in_think))
+            self.in_think = not self.in_think
+            i = j + len(tag)
+        return out
+
+    def flush(self) -> list[tuple[str, bool]]:
+        """流结束时吐出残余碎片（未闭合的 <think> 残段按当前状态归类）。"""
+        out = [(self.tail, self.in_think)] if self.tail else []
+        self.tail = ""
+        return out
+
+
 def _chat_openai(player, messages, stall, wall_limit, on_token, reasoning_effort):
     headers = {"Authorization": f"Bearer {player.api_key}"}
     payload: dict = {"model": player.model, "messages": messages, "max_tokens": player.max_tokens}
@@ -133,6 +182,7 @@ def _chat_openai_stream(player, payload, headers, stall, wall_limit, on_token):
     parts: list[str] = []
     usage: dict = {}
     finish = ""
+    tagger = _ThinkTagger()
     start = time.monotonic()
     with httpx.Client(timeout=_timeout(stall)) as client:
         with client.stream("POST", f"{player.base_url}/chat/completions",
@@ -157,11 +207,14 @@ def _chat_openai_stream(player, payload, headers, stall, wall_limit, on_token):
                     delta = choice.get("delta") or {}
                     if delta.get("content"):
                         parts.append(delta["content"])
-                        on_token(delta["content"], False)
+                        for seg, is_think in tagger.feed(delta["content"]):
+                            on_token(seg, is_think)  # <think>…</think> 段按推理内容上报
                     elif delta.get("reasoning_content"):
                         on_token(delta["reasoning_content"], True)
                     if choice.get("finish_reason"):
                         finish = choice["finish_reason"]
+    for seg, is_think in tagger.flush():
+        on_token(seg, is_think)
     return "".join(parts).strip(), usage, finish
 
 

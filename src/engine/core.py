@@ -234,7 +234,7 @@ class Engine:
             s["passage_stealth"] = []
             s["sealed_room"] = None
             if s["power_out"]:
-                public["announcements"].append("停电中：除卧室外所有房间一片黑暗")
+                public["announcements"].append("停电中：除卧室外所有房间一片黑暗（可前往地下室修复发电机恢复供电）")
         if stage == "晚间休息":
             s["stage_murder_used"] = any(
                 c["day"] == s["phase"]["day"] and c["stage"] == "自由活动" for c in s["cases"]

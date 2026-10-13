@@ -873,6 +873,7 @@ class Orchestrator:
                         pending_invite[tgt] = name
                 elif at == "declare_blackout":
                     ev = self.eng.declare_blackout(name)
+                    self.script_action(name, act, ev)  # 停电声明记入全记录并在 console 上屏（对玩家仍保密）
                     self.route(ev) if ev["ok"] else self.reject_note(p, ev)
             assignments[name] = room
             ev = self.eng.choose_room_one(name, room)  # v3.5：选择即结算（进入即开锁；失败滞留会客室）

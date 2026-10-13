@@ -1,0 +1,57 @@
+"""providers._ThinkTagger 单元测试：<think>…</think> 段识别为推理内容（跨 chunk 安全，不经网络）。
+
+运行：python -m unittest discover -s tests -v
+"""
+from __future__ import annotations
+
+import sys
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+import unittest
+
+from src.providers import _ThinkTagger
+
+
+def run(tagger: _ThinkTagger, chunks: list[str]) -> list[tuple[str, bool]]:
+    out: list[tuple[str, bool]] = []
+    for c in chunks:
+        out.extend(tagger.feed(c))
+    out.extend(tagger.flush())
+    return out
+
+
+class TestThinkTagger(unittest.TestCase):
+    def test_plain_content(self):
+        self.assertEqual(run(_ThinkTagger(), ["hello", " world"]), [("hello", False), (" world", False)])
+
+    def test_single_think_block(self):
+        out = run(_ThinkTagger(), ["<think>想一想</think>正文"])
+        self.assertEqual(out, [("想一想", True), ("正文", False)])
+
+    def test_tag_split_across_chunks(self):
+        out = run(_ThinkTagger(), ["<th", "ink>想", "一想</t", "hink>正文"])
+        self.assertEqual(out, [("想", True), ("一想", True), ("正文", False)])
+
+    def test_split_inside_text_kept(self):
+        # 尾部像标签碎片但不是时照常吐出（'<t' 若拼不上 '<think>' 会在下一块原样输出）
+        out = run(_ThinkTagger(), ["abc<", "def>"])
+        self.assertEqual(out, [("abc", False), ("<def>", False)])
+
+    def test_unclosed_think_flushes_as_reasoning(self):
+        out = run(_ThinkTagger(), ["<think>没写完"])
+        self.assertEqual(out, [("没写完", True)])
+
+    def test_multiple_blocks(self):
+        out = run(_ThinkTagger(), ["<think>a</think>x<think>b</think>y"])
+        self.assertEqual(out, [("a", True), ("x", False), ("b", True), ("y", False)])
+
+    def test_empty_and_tail_only(self):
+        tagger = _ThinkTagger()
+        self.assertEqual(tagger.feed(""), [])
+        self.assertEqual(run(_ThinkTagger(), ["<t"]), [("<t", False)])
+
+
+if __name__ == "__main__":
+    unittest.main()

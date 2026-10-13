@@ -32,7 +32,7 @@ python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/
 python -m tools.scorecard                   # 多局报告：版本分组胜率/机制利用率/多样性/成本
 python -m tools.scorecard --game 42         # 单局报告：台账/流程简报/戏剧性评分/主角弧线候选
 
-# 测试（引擎 + 平衡回归 + 编排 mock 集成，140 用例）
+# 测试（引擎 + 平衡回归 + 编排 mock 集成，147 用例）
 python -m unittest discover -s tests
 ```
 

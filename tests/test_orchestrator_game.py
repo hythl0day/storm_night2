@@ -412,6 +412,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         orch = self.run_game_with(d, chat_blackout)
         s = orch.state
         script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn('声明 {"type": "declare_blackout"}', script)  # v3.5 复盘修复：停电声明记入全记录
         self.assertIn("C的卧室密谈（C、D）：【旁听：A】", script)
         self.assertIn("C 的密谈内容", script)
         # 密谈双方正常收到；杀手作为旁听者收到；密谈者的记录不泄漏"被旁听"

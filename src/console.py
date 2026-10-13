@@ -287,14 +287,20 @@ class Ctx:
 
 
 def make_hooks(ctx: Ctx) -> dict:
+    REASON_WRAP = 100  # 思考流软折行阈值：整段一行的模型按此折行，提示块得以定期回归（game/42 复盘修复）
+
     def flush_reason() -> None:
-        """把思考缓冲吐到屏幕上：只吐到最后一个换行符（保持输出行首不变式）。"""
+        """把思考缓冲吐到屏幕上：吐到最后一个换行符；无换行但超阈值时强制折行。"""
         buf = ctx.reason_buf
         cut = buf.rfind("\n") + 1
         if cut == 0:
-            return
+            if len(buf) < REASON_WRAP:
+                return
+            emit, cut = buf + "\n", len(buf)
+        else:
+            emit = buf[:cut]
         ctx.reason_buf = buf[cut:]
-        ctx.display.write(f"\x1b[94m{buf[:cut]}\x1b[0m")
+        ctx.display.write(f"\x1b[94m{emit}\x1b[0m")
 
     def flush_remaining() -> None:
         if ctx.reason_buf:
@@ -359,6 +365,8 @@ def make_hooks(ctx: Ctx) -> dict:
                 break
 
     def on_public(line: str) -> None:
+        if line.startswith("**"):
+            return  # 发言已由 on_payload 卡片渲染过一次，公开日志行是重复（game/42 复盘修复）
         print(f"\x1b[92m{line}\x1b[0m")
 
     def on_result(name: str, ok: bool, detail: str) -> None:
