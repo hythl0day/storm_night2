@@ -146,6 +146,8 @@ class TestHallCamping(unittest.TestCase):
         self.assertTrue(eng.state["stage_murder_used"])
         self.assertIsNone(eng.state["last_murder_day"])  # 不再重置无杀倒计时
         self.assertFalse(eng.state["cases"])
+        # v3.5 复盘修复：守夜邀请成立对主人私密可见（黑暗中也知道应邀者到来）
+        self.assertIn("接受了你的守夜邀请", ev["private"].get("C", ""))
 
 
 class TestDealVillainGuarantees(unittest.TestCase):

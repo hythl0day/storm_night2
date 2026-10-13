@@ -492,9 +492,11 @@ class Orchestrator:
         pos_line = f"你现在的位置：{pos}"
         meeting_hall = pos == HALL and self.state["phase"]["stage"] in MEETING_STAGES
         if pos and not meeting_hall:
-            pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
             if is_dark(self.state, pos):
+                # 黑暗房间不报"同房者：无"（明明有人却报无，曾与谋杀菜单目标矛盾、误导 AI——game/42 复盘）
                 pos_line += "（房间黑暗：你看不见这里有谁，也无法交谈）"
+            else:
+                pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
         lines.append(f"## 当前局面\n{pos_line}")
         lines.append("")
         lines.append("## 截至目前的关键记录（主持人档案：既定事实流水，不含任何发言内容——发言与推理要点请记在你的笔记里）")
@@ -891,6 +893,9 @@ class Orchestrator:
         for t, v in pending_invite.items():
             if t in assignments and v in assignments and assignments[t] == assignments[v]:
                 invited[t] = v
+        for t, v in invited.items():
+            # 邀请成立对邀请者私密可见（黑暗房间中也知道应邀者到来——game/42 复盘：索尔不知桑娜已到而放弃谋杀）
+            self.tell(v, f"{t} 接受了你的同入邀请，进入了{self.state['positions'].get(t, '?')}——即使房间黑暗，你也知道 TA 来了。")
         ev = self.eng.finish_room_entries()  # 延时装置在全员进入后统一判定
         if ev["ok"]:
             self.route(ev)

@@ -389,6 +389,11 @@ class TestCivilianWinEnding(MockGameTestBase):
                                   content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"},
                                                                       {"type": "declare_blackout"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "选房" in title and day == 2 and name == "C":
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"},
+                                                                      {"type": "invite", "target": "D"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "晚间休息" in title and "密谈" not in title and "夜袭" not in title:
                 acts = []
                 if name == "C" and day == 2:
@@ -419,6 +424,9 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertTrue(any("C的卧室密谈" in m and "密谈内容" in m for m in s["orch"]["hist"]["C"]))
         self.assertTrue(any("听到了他们的密谈" in m for m in s["orch"]["hist"]["A"]))
         self.assertFalse(any("旁听" in m or "听到" in m for m in s["orch"]["hist"]["C"]))
+        # v3.5 复盘修复：同入/守夜邀请成立对邀请者私密可见（索尔不知桑娜已到而放弃谋杀的教训）
+        self.assertTrue(any("接受了你的同入邀请" in m for m in s["orch"]["hist"]["C"]))   # 白天选房邀请
+        self.assertTrue(any("接受了你的守夜邀请" in m for m in s["orch"]["hist"]["C"]))   # 夜间守夜邀请
         # 黑暗中守夜对（2 名非反派）仍被杀手袭击：C 的急救箱自动防下（未遂）
         self.assertTrue(s["attempts"])
 

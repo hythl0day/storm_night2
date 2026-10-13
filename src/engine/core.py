@@ -458,6 +458,10 @@ class Engine:
                         private[name] = f"你用{means}进入了{want}"
                 else:
                     placed = want
+                    if is_invited:
+                        # 守夜邀请成立对主人私密可见（停电黑暗中也知道应邀者到来——与白天同入邀请同口径）
+                        private[owner] = (private.get(owner, "") + "；" if private.get(owner) else "") + \
+                            f"{name} 接受了你的守夜邀请，进入了你的卧室——即使房间黑暗，你也知道 TA 来了。"
             elif want == HALL:
                 # v3.4：会客室夜宿——夜间上锁（停电时锁失效可直接进入；第 4 天起全开）；
                 # 【暴力破解】开锁后当夜他人可随入，夜锁每日重新落下。人数不限，亮房谋杀条件。
