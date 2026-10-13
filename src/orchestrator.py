@@ -5,12 +5,15 @@
     python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（席位行动粒度）
 
 一天流程：开局准备（仅第 1 天：反派建筑师确认密道、窃听器持有者声明放置）→ 公共发言
-（第 1 天改为侦探竞选：声明轮短发言+参选宣告 → 密封退选 → 未参选者投票；第 2 天起为常规发言，
-侦探末置发言、一票计 1.5）→ 交换环节 → 投票（第 2 天起：收票/记忆植入/
-遗言先于身份公布/封存道具与警徽遗嘱/无人出局时武装指认）→ 自由活动（会客室/书房/监控室/地下室
-四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；引擎结算；房间交谈；房间行动；
-阶段末毁证窗口）→ 晚间休息（守夜邀请与守夜密谈/夜间房间行动/密道/收听窃听器/杀手夜袭，
-互相不可见选择）→ advance() 进入次日案件调查（清晨公告含状态行/调查自荐/死者字条遗嘱）。
+（第 1 天改为侦探竞选：声明轮短发言+参选宣告 → 密封退选 → 未参选者投票；v3.5 起当选者获桌上凶器作侦探佩枪；
+第 2 天起为常规发言，侦探末置发言、一票计 1.5）→ 交换环节 → 投票（第 2 天起：收票/记忆植入/
+遗言先于身份公布/封存道具与警徽遗嘱——v3.5 遗嘱道具当天可用、未指定或拒收放回会客室桌上/
+无人出局时武装指认——v3.5 有侦探时仅侦探可指认，无侦探时持械平民或临时取用桌上凶器）→
+自由活动（会客室/书房/监控室/地下室四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；
+v3.5 顺序结算：逐人选择即结算进入（进入即开锁、失败者滞留会客室、靠后者可见先前结果）；房间交谈；
+房间行动；阶段末毁证窗口）→ 晚间休息（守夜邀请与守夜密谈/夜间房间行动/密道/收听窃听器/
+取桌上物品（独处会客室限定）/杀手夜袭，互相不可见选择）→ advance() 进入次日案件调查
+（清晨公告含状态行/桌上物品变动/调查自荐/死者字条遗嘱）。
 终局（任一胜负条件满足）自动收束并落盘结局。
 
 消息结构：system = render(game_system.md)（人设+规则书+私密卡），user = 当次简报（增量公告 +
@@ -55,9 +58,11 @@ from .engine.state import (
     HALL,
     MEETING_STAGES,
     PUBLIC_ROOMS,
+    ROOM_CAPACITY,
     bedroom_of,
     bedroom_owner,
     current_period,
+    door_locked,
     held_item,
     held_item_names,
     is_bedroom,
@@ -660,7 +665,8 @@ class Orchestrator:
                     "- 声明写在 speech 字段（简短表态；可顺带宣告你的职业与道具——可以撒谎，但谎言会留档）"]
             briefing = self.build_briefing(
                 p, f"第{day}天 · 侦探竞选声明", menu,
-                "现在竞选侦探。侦探职权：公共发言末置发言、投票时一票计 1.5 票；出局时警徽按遗嘱传承（可指定归属或销毁）。"
+                "现在竞选侦探。侦探职权：当选即获得会客室桌上凶器（侦探佩枪）、公共发言末置发言、投票时一票计 1.5 票、"
+                "垄断武装指认（有侦探时仅侦探可指认）；出局时警徽按遗嘱传承（可指定归属或销毁），佩枪按普通道具处理。"
                 "若留任候选人超过一人，由未参选者投票决出（参选者与退选者均无投票权）。")
             payload = self.call_ai(p, "竞选声明", briefing)
             speech = str(payload.get("speech") or "").strip()
@@ -819,9 +825,11 @@ class Orchestrator:
         assignments: dict[str, str] = dict(w["assignments"])
         pending_invite: dict[str, str] = dict(w["invites"])
         alive_names = [p["name"] for p in self.alive()]
+        if not w["done"]:
+            self.state["positions"] = {}  # v3.5 顺序结算：选房轮开始时重置位置账本（续跑保留已结算部分）
         rooms_menu = (
             [f'- 选择房间（必选一项）：{{"type": "choose_room", "room": "房间名"}}；合法去向只有四种：{"、".join(ROOM_CHOICES)}',
-             '- 注意：白天卧室一律清场不开放（含你自己的）；会客室夜间不开放。不作选择或选择无效将默认滞留会客室',
+             '- 注意：白天卧室一律清场不开放（含你自己的）。满员、上锁而无手段、被封闭空间挡住或选择无效者一律滞留会客室',
              '- 邀请一名顺序在你之后的玩家同入（对方可改选）：{"type": "invite", "target": "玩家名"}']
         )
         for i, name in enumerate(self.state["order"]):
@@ -830,9 +838,21 @@ class Orchestrator:
                 continue
             menu = list(rooms_menu)
             if is_villain(p) and unlock_means(self.state, name) is not None:
-                menu.append('- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——破门而入/万能钥匙/螺丝起子任一；停电中门锁失效、监控空白、除会客室外全部黑暗）：{"type": "declare_blackout"}')
+                menu.append('- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——职业技能/「万能钥匙」/「螺丝起子」任一；停电中门锁失效、监控缺失、除会客室外全部黑暗）：{"type": "declare_blackout"}')
             later = [n for n in self.state["order"][i + 1:] if n in alive_names]
             extra = f"你可以邀请顺序在你之后的玩家同入：{'、'.join(later) if later else '无'}。"
+            settled = self.state["positions"]
+            if settled:
+                bits = []
+                for r in ROOM_CHOICES:
+                    occ = [n for n, rr in settled.items() if rr == r]
+                    occ_s = "、".join(occ) if occ else "（空）"
+                    if r == HALL:
+                        bits.append(f"{r}（不限人数）：{occ_s}")
+                    else:
+                        lock_s = "，门仍上锁" if door_locked(self.state, r) else ""
+                        bits.append(f"{r}（{len(occ)}/{ROOM_CAPACITY[r]} 人{lock_s}）：{occ_s}")
+                extra += "\n截至目前各房间进入情况（顺序结算，规则书 §6）：" + "；".join(bits) + "。"
             inviters = [v for t, v in pending_invite.items() if t == name]
             for v in inviters:
                 extra += f"\n{v} 邀请你同往 {assignments.get(v, '（未知）')}——接受就把 choose_room 选为同一房间，不接受就自选。"
@@ -855,6 +875,12 @@ class Orchestrator:
                     ev = self.eng.declare_blackout(name)
                     self.route(ev) if ev["ok"] else self.reject_note(p, ev)
             assignments[name] = room
+            ev = self.eng.choose_room_one(name, room)  # v3.5：选择即结算（进入即开锁；失败滞留会客室）
+            if ev["ok"]:
+                self.route(ev)
+                self.script_private(ev)
+            else:
+                self.reject_note(p, ev)
             w["done"].append(name)
             w["assignments"] = dict(assignments)
             w["invites"] = dict(pending_invite)
@@ -864,34 +890,18 @@ class Orchestrator:
         for t, v in pending_invite.items():
             if t in assignments and v in assignments and assignments[t] == assignments[v]:
                 invited[t] = v
-        for _ in range(len(alive_names) + 2):
-            ev = self.eng.enter_rooms(assignments, invited)
-            if ev["ok"]:
-                self.route(ev)
-                self.script_line("- 选房结果：" + "、".join(f"{n}→{r}" for n, r in assignments.items()))
-                if invited:
-                    self.script_line("  同入邀请成立：" + "、".join(f"{t} 随 {v}（{assignments[t]}）" for t, v in invited.items()))
-                self.script_private(ev)
-                for v in ev.get("device_triggers", []):
-                    self.script_line(f"  延时装置触发：{v}")
-                self.save_state()
-                return
-            bad_room = next((r for r in ROOM_CHOICES if r in ev.get("error", "")), None)
-            if bad_room is None:
-                stranger = [n for n in alive_names if assignments.get(n) not in ROOM_CHOICES]
-                for n in stranger:
-                    assignments[n] = HALL
-                if stranger:
-                    continue
-                print(f"  选房结算失败且无法回退：{ev.get('error')}")
-                return
-            movable = [n for n in reversed(self.state["order"]) if n in alive_names
-                       and assignments.get(n) == bad_room]
-            if not movable:
-                print(f"  选房结算失败且无法回退：{ev.get('error')}")
-                return
-            assignments[movable[0]] = HALL  # 满员/无法开锁者顺延滞留会客室（不限人数）
-        print("  选房结算多次失败，已按回退处理")
+        ev = self.eng.finish_room_entries()  # 延时装置在全员进入后统一判定
+        if ev["ok"]:
+            self.route(ev)
+            self.script_private(ev)
+            self.script_line("- 选房结果：" + "、".join(f"{n}→{self.state['positions'].get(n, HALL)}" for n in assignments))
+            if invited:
+                self.script_line("  同入邀请成立：" + "、".join(f"{t} 随 {v}（{assignments[t]}）" for t, v in invited.items()))
+            for v in ev.get("device_triggers", []):
+                self.script_line(f"  延时装置触发：{v}")
+            self.save_state()
+        else:
+            print(f"  选房收尾失败：{ev.get('error')}")
 
     def all_rooms(self) -> list[str]:
         return list(ROOM_CHOICES)
@@ -996,12 +1006,13 @@ class Orchestrator:
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         w = self.wip(f"{day}:晚间休息:归宿", done=[], assignments={}, night_do={}, invites={},
-                     invited={}, settled=False, passages={}, listens=[],
-                     listen_done=[], passage_done=[], ndo_done=[], murder_done=False)
+                     invited={}, settled=False, passages={}, listens=[], takes={},
+                     listen_done=[], passage_done=[], ndo_done=[], take_done=[], murder_done=False)
         assignments: dict[str, str] = dict(w["assignments"])
         night_do: dict[str, str] = dict(w["night_do"])
         passages: dict[str, dict] = {k: dict(v) for k, v in w.get("passages", {}).items()}
         listens: list[str] = list(w.get("listens", []))
+        takes: dict[str, str] = dict(w.get("takes", {}))  # 取桌上物品的夜间意图（v3.5）
         if not w["settled"]:
             if self.state["night_assigned"] == period:
                 return  # 旧格式存档：已结算但无席位粒度断点，夜间行动无法安全恢复，按旧语义跳过
@@ -1019,6 +1030,9 @@ class Orchestrator:
                     '- 不回卧室，夜间前往书房/监控室/地下室执行一项行动：{"type": "night_room", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock"}',
                     '- 夜宿会客室（大厅过夜：夜间上锁——需【暴力破解】手段进入，停电时或第 4 天起免费；人数不限、始终明亮、无密谈，清晨公开夜宿名单）：{"type": "night_hall"}',
                 ]
+                if self.state.get("table_items"):
+                    items_desc = "、".join(f"「{e['name']}」（剩 {e['uses_left']} 次）" for e in self.state["table_items"])
+                    menu.append(f'- 若你今晚夜宿会客室，且归宿结算后会客室只有你自己，可悄悄取走桌上一物品（当前桌上：{items_desc}；取用无人看见，明早会公告物品不见了）：{{"type": "take_table", "item": "物品名"}}')
                 extra = "夜间行动互相不可见。每个夜间房间只能进入 1 人（顺序靠后冲突者失败，默认回自己卧室）。会客室夜间不开放。"
                 extra += "\n注意：上面「当前局面」里的位置是你自由活动结束时的实际位置；本环节决定的是**今晚去哪过夜**——不回卧室就选 night_room，什么都不做默认回自己卧室。"
                 extra += "\n守夜邀请成立且房内恰好你们两人时，睡前有一轮密谈（仅彼此可见）。"
@@ -1046,12 +1060,14 @@ class Orchestrator:
                         assignments[name] = bedroom_of(pending_invite[name])
                         invited[name] = pending_invite[name]
                         passages.pop(name, None)
+                        takes.pop(name, None)
                     elif at == "night_room":
                         room = str(act.get("room", ""))
                         if room in PUBLIC_ROOMS:
                             assignments[name] = room
                             night_do[name] = str(act.get("do", ""))
                             passages.pop(name, None)
+                            takes.pop(name, None)
                     elif at == "night_hall":
                         assignments[name] = HALL
                         passages.pop(name, None)
@@ -1060,6 +1076,11 @@ class Orchestrator:
                         if is_bedroom(room) and bedroom_owner(room) != name:
                             assignments[name] = room
                             passages.pop(name, None)
+                            takes.pop(name, None)
+                    elif at == "take_table":
+                        item = str(act.get("item", ""))
+                        if item:
+                            takes[name] = item
                     elif at == "use_passage":
                         room = str(act.get("room", ""))
                         if room in PUBLIC_ROOMS and name not in assignments:
@@ -1074,6 +1095,7 @@ class Orchestrator:
                 w["invited"] = dict(invited)
                 w["passages"] = {k: dict(v) for k, v in passages.items()}
                 w["listens"] = list(listens)
+                w["takes"] = dict(takes)
                 self.save_state()
                 self.check_stop()
             ev = self.eng.night_assign(assignments, invited)
@@ -1091,6 +1113,17 @@ class Orchestrator:
             self.save_state()
         else:
             invited = dict(w["invited"])
+            takes = dict(w.get("takes", {}))
+        for name in self.state["order"]:
+            if name not in takes or name in w.get("take_done", []):
+                continue
+            w["take_done"].append(name)
+            p = self.player(name)
+            if p is not None and p["alive"]:
+                ev = self.eng.take_table_item(name, takes[name])  # v3.5：独处会客室才可取走（否则驳回，不公开）
+                self.script_action(name, {"type": "take_table", "item": takes[name]}, ev)
+                self.route(ev) if ev["ok"] else self.reject_note(p, ev)
+            self.save_state()
         self.sleep_talks(day, invited)
         for name in listens:
             if name in w.get("listen_done", []):
@@ -1133,9 +1166,8 @@ class Orchestrator:
 
     def sleep_talks(self, day: int, invited: dict[str, str]) -> None:
         """守夜密谈（v3）：守夜成立且房内恰好两人的卧室，睡前密谈一轮；夜袭进入的卧室不交谈。
-        v3.2：黑暗房间无法交谈——停电期间卧室黑暗，密谈取消。"""
-        if not invited:
-            return
+        v3.2：黑暗房间无法交谈——停电期间卧室黑暗，卧室密谈取消。
+        v3.5：夜宿会客室者（≥2 名存活）睡前围炉夜谈一轮，内容仅当夜夜宿者知晓；大厅永不黑暗，停电也照常。"""
         w = self.wip(f"{day}:晚间休息:密谈", done=[])
         positions = self.state["positions"]
         for guest, host in invited.items():
@@ -1170,6 +1202,37 @@ class Orchestrator:
                         f.write(f"\n## 第{day}天 · {room}密谈\n\n" + "\n".join(transcript) + "\n")
                     self.tell(occ_name, f"{room}密谈：" + "；".join(transcript))
             w["done"].append(room)
+            self.save_state()
+            self.check_stop()
+        # v3.5：会客室围炉夜谈（≥2 名存活夜宿者；大厅永不黑暗，停电不取消）
+        if HALL not in w["done"]:
+            occ = [n for n in self.state["order"]
+                   if positions.get(n) == HALL and (self.player(n) or {}).get("alive")]
+            if len(occ) >= 2:
+                transcript = []
+                for occ_name in occ:
+                    p = self.player(occ_name)
+                    others = [n for n in occ if n != occ_name]
+                    menu = ["- 本环节是会客室夜谈：speech 只有今晚夜宿会客室的人能听到；actions 为 []"]
+                    extra = (f"深夜的会客室，壁炉还亮着。今晚在大厅过夜的有：{'、'.join(occ)}。"
+                             "睡前你们可以围炉夜谈一轮——内容只有在场的人知道。")
+                    if transcript:
+                        extra += "\n之前的发言：\n" + "\n".join(transcript)
+                    briefing = self.build_briefing(p, f"第{day}天 · 晚间休息（会客室夜谈）", menu, extra)
+                    payload = self.call_ai(p, "晚间休息-夜谈-会客室", briefing)
+                    speech = str(payload.get("speech") or "").strip()
+                    if speech:
+                        transcript.append(f"{occ_name}：{speech}")
+                if transcript:
+                    self.script_line(f"- 会客室夜谈（{'、'.join(occ)}）：")
+                    for line in transcript:
+                        self.script_line(f"    {line}")
+                    for occ_name in occ:
+                        seat = self.seat(self.player(occ_name))
+                        with open(self.dir / "private" / seat / "log.md", "a", encoding="utf-8") as f:
+                            f.write(f"\n## 第{day}天 · 会客室夜谈\n\n" + "\n".join(transcript) + "\n")
+                        self.tell(occ_name, "会客室夜谈：" + "；".join(transcript))
+            w["done"].append(HALL)
             self.save_state()
             self.check_stop()
 
@@ -1391,10 +1454,6 @@ class Orchestrator:
         mapping = {it: tg for it, tg in mapping.items() if it in owned}
         replies: dict[str, dict[str, bool]] = {k: dict(v) for k, v in w["replies"].items()}
         targets = list(dict.fromkeys([t for t in mapping.values() if t] + ([badge_to] if badge_to else [])))
-        owner_p = self.player(owner)
-        heir = None
-        if owner_p is not None and owner_p["identity"] == "杀手":
-            heir = next((q["name"] for q in self.alive() if q["identity"] == "杀手"), None)
         for tgt in targets:
             if tgt in w["replied"]:
                 continue
@@ -1403,8 +1462,8 @@ class Orchestrator:
                 continue
             items = [it for it, t in mapping.items() if t == tgt]
             gets_badge = badge_to == tgt
-            avail = "当天即可用" if tgt == heir else "次日起可用"
-            menu = [f'- 逐件回应（接受则{avail}；拒绝则销毁）：{{"type": "bequest_reply", "decisions": {{"道具名": "接受|拒绝"}}}}']
+            menu = ['- 逐件回应（接受则当天即可用；拒绝则放回会客室桌上——夜间独处会客室的人可取走）：'
+                    '{"type": "bequest_reply", "decisions": {"道具名": "接受|拒绝"}}']
             extra = (f"{owner} 的遗嘱把以下留给你：{'、'.join(items + (['侦探徽章'] if gets_badge else []))}。"
                      "此事全员公开——收下可能带来信任也可能带来嫌疑，由你判断。")
             if gets_badge:
@@ -1435,11 +1494,14 @@ class Orchestrator:
         self.save_state()
 
     def run_armed_accusation(self) -> None:
-        """武装指认（v3：第 2 天首次投票起，本轮投票无人出局）：按顺序询问持武器平民；每次投票至多一次指认。"""
+        """武装指认（rules-6 §7.3，本轮投票无人出局）：有侦探时仅侦探（须持有武器）；
+        无侦探时持武器平民可指认，桌上凶器仍在时任意平民可临时取用。每次投票至多一次指认。"""
         day = self.state["phase"]["day"]
         w = self.wip(f"{day}:投票:武装指认", done=[], fired=False)
         if w["fired"]:
             return
+        det = self.state.get("detective")
+        table_armed = any(e["name"] in ARMED_WEAPONS for e in self.state.get("table_items", []))
         for name in self.state["order"]:
             if self.state["winner"]:
                 return
@@ -1448,13 +1510,24 @@ class Orchestrator:
             p = self.player(name)
             if not p or not p["alive"] or p["identity"] != "平民":
                 continue
-            if not (held_item_names(p, day) & set(ARMED_WEAPONS)):
-                continue
+            armed = bool(held_item_names(p, day) & set(ARMED_WEAPONS))
+            if det is not None:
+                if name != det or not armed:
+                    continue  # 有侦探：仅侦探本人且须持有武器（侦探为反派时无人可指认）
+            elif not armed and not table_armed:
+                continue  # 无侦探：持武器平民，或桌上凶器仍在时的任意平民（临时取用）
             others = [q["name"] for q in self.alive() if q["name"] != name]
-            menu = [f'- 武装指认某人为杀手（指对平民立即获胜；指错你直接出局）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
-                    "- 不指认则 actions 为 []"]
-            briefing = self.build_briefing(p, f"第{day}天 · 武装指认", menu,
-                                           "本轮投票无人出局。你持有武器，可以选择武装指认——机会只有一次，慎重。")
+            if armed:
+                menu = [f'- 武装指认某人为杀手（指对平民立即获胜；指错你直接出局）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
+                        "- 不指认则 actions 为 []"]
+                hint = "本轮投票无人出局。你持有武器，可以选择武装指认——机会只有一次，慎重。"
+                if name == det:
+                    hint = "本轮投票无人出局。你是侦探——本局仅你可行使武装指认；你持有武器，可以选择指认——机会只有一次，慎重。"
+            else:
+                menu = [f'- 临时拿起会客室桌上的凶器，武装指认某人为杀手（指对平民立即获胜；指错你直接出局，凶器仍在桌上）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
+                        "- 不指认则 actions 为 []"]
+                hint = "本轮投票无人出局。桌上凶器仍在会客室桌上，你可以临时取用进行武装指认——机会只有一次，慎重。"
+            briefing = self.build_briefing(p, f"第{day}天 · 武装指认", menu, hint)
             payload = self.call_ai(p, "武装指认", briefing)
             fired = False
             for act in payload["actions"]:

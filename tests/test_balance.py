@@ -1,7 +1,7 @@
 """M5 平衡场景回归（v3 版）：平民扎堆（恒同室）与会客室蹲守，及反制路径（停电/舞台魔术/延时装置/开锁夜袭/密道）。
 
 对照 docs/dev-plan.md M5 验收与 docs/rules-6.md v3：两种"龟缩"打法都必须存在可触发的反制。
-v3 起白天卧室清场，蹲守的唯一去处是会客室（不限容、不设监控、永不黑暗）。
+v3 起白天卧室清场，蹲守的唯一去处是会客室（不限容、永不黑暗；v3.5 起纳入监控）。
 引擎级确定性测试，不经 API；机制单点用例见 test_engine.py，本文件做场景化串联。
 
 运行：python -m unittest discover -s tests -v
@@ -17,7 +17,7 @@ import unittest
 
 from src.deal import ROOT, VALVE_PROFESSIONS, deal, load_personas, validate
 from src.engine import Engine
-from src.gamedata import VILLAIN_ITEMS, WEAPONS
+from src.gamedata import ITEMS_GENERAL, TABLE_WEAPON, VILLAIN_ITEMS, VILLAIN_WEAPON_POOL, WEAPONS
 from src.providers import load_config
 from test_engine import P, default_players, goto, mk_state, player
 
@@ -33,12 +33,19 @@ class TestCivilianStacking(unittest.TestCase):
     """场景 A：平民扎堆——多名平民每个自由活动都挤同一间房。"""
 
     def test_a1_full_room_excludes_killer(self):
-        """3 平民占满书房（上限 3）后，杀手连门都进不去——扎堆的第一层保护来自容量。"""
-        eng = Engine(mk_state())
+        """3 平民占满书房（上限 3）后，杀手连门都进不去——扎堆的第一层保护来自容量。
+
+        v3.5 顺序结算：容量挡下的是顺序靠后者，故本例把杀手放在行动顺序队尾。
+        """
+        # v3.5 顺序结算：容量挡下的是顺序靠后者。行动顺序每天轮转——
+        # 初始顺序队首 F 在第 2 天移到队尾，当天顺序为 C→D→E→B→A→F，杀手 A 晚于三位平民。
+        eng = Engine(mk_state(order=["F", "C", "D", "E", "B", "A"]))
         stack_day2(eng, {"A": "会客室", "B": "会客室", "C": "书房", "D": "书房", "E": "书房", "F": "会客室"})
         ev = eng.enter_rooms({"A": "书房", "B": "会客室", "C": "书房", "D": "书房", "E": "书房", "F": "会客室"})
-        self.assertFalse(ev["ok"])
-        self.assertIn("人数超过上限", ev["error"])
+        self.assertTrue(ev["ok"])
+        self.assertEqual(ev["positions"]["A"], "会客室")  # 书房已满 3 人，靠后的杀手滞留会客室
+        self.assertIn("A", ev.get("stranded", {}))
+        self.assertIn("满员", ev["private"]["A"])
 
     def test_a2_vanilla_murder_rejected_in_lit_room(self):
         """亮房里 2 名平民在场，普通谋杀被驳回（在场非反派 >1）。"""
@@ -51,12 +58,12 @@ class TestCivilianStacking(unittest.TestCase):
     def test_a3_counter_blackout(self):
         """反制·停电：反派用开锁手段拉电闸，书房变黑暗，谋杀人数限制放宽到 ≤2，两人扎堆被撕开。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2)  # v3.2：破门而入可拉电闸
+        players[1] = P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2)  # v3.2：暴力破解可拉电闸
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         ev = eng.declare_blackout("B")
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(eng.state["skill_uses"]["B"]["破门而入"], 0)  # 停电消耗一次开锁手段
+        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 0)  # 停电消耗一次开锁手段
         stack_day2(eng, {"A": "书房", "B": "会客室", "C": "书房", "D": "会客室", "E": "书房", "F": "会客室"})
         self.assertTrue(eng.state["power_out"])
         ev = eng.murder("A", "E", weapon="刀")
@@ -101,15 +108,15 @@ class TestHallCamping(unittest.TestCase):
         self.assertEqual(ev["case"]["room"], "会客室")
 
     def test_b2_counter_unlock_night_raid(self):
-        """反制·开锁夜袭：杀手用【破门而入】夜闯独居卧室，完成击杀（夜间机制不变）。"""
+        """反制·开锁夜袭：杀手用【暴力破解】夜闯独居卧室，完成击杀（夜间机制不变）。"""
         players = default_players()
-        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)  # 黑客通用技能【破门而入】
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)  # 黑客通用技能【暴力破解】
         eng = Engine(mk_state(players=players))
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"A": "E的卧室"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["A"], "E的卧室")
-        self.assertEqual(eng.state["skill_uses"]["A"]["破门而入"], 0)
+        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 0)
         ev = eng.murder("A", "E", weapon="刀")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["case"]["victim"], "E")
@@ -142,8 +149,8 @@ class TestHallCamping(unittest.TestCase):
 
 
 class TestDealVillainGuarantees(unittest.TestCase):
-    """deal 平衡保证（v3.2）：杀手固定「万能钥匙」；反派队功能覆盖（舞台魔术/延时装置/记忆植入/信号干扰，保密）；
-    平民车道保底（螺丝起子 1 人 + 可指认凶器 1 人）；四凶器严格必现。"""
+    """deal 平衡保证（v3.5）：杀手固定「万能钥匙」；反派队功能覆盖（舞台魔术/延时装置/记忆植入/信号干扰，保密）；
+    平民车道（螺丝起子 1 人 + 通用池 5 抽 3）；桌上凶器固定「左轮手枪」（不进反派车道）；四凶器严格必现。"""
 
     @classmethod
     def setUpClass(cls):
@@ -159,18 +166,29 @@ class TestDealVillainGuarantees(unittest.TestCase):
             self.assertIn("万能钥匙", killer.get("extra_items", []), f"seed={seed} 杀手未固定持有万能钥匙")
             self.assertEqual(len(accom.get("extra_items", [])), 1, f"seed={seed} 帮凶反派道具数错误")
             self.assertIn(accom["extra_items"][0], VILLAIN_ITEMS, f"seed={seed} 帮凶反派道具非法")
+            # v3.5：反派凶器池为 刀/棒球棍/不明药剂 3 选 2，左轮手枪固定上桌
+            self.assertIn(killer["item"], VILLAIN_WEAPON_POOL, f"seed={seed} 杀手凶器非法")
+            self.assertIn(accom["item"], VILLAIN_WEAPON_POOL, f"seed={seed} 帮凶凶器非法")
+            self.assertNotEqual(killer["item"], accom["item"], f"seed={seed} 反派凶器重复")
+            self.assertEqual(st["table_items"], [{"name": TABLE_WEAPON, "uses_left": 1}],
+                             f"seed={seed} 桌上凶器缺失")
             civs = [p for p in st["players"] if p["identity"] == "平民"]
             for p in civs:
                 self.assertNotIn(p["item"], ["万能钥匙"] + VILLAIN_ITEMS,
                                  f"seed={seed} 平民 {p['name']} 抽到 {p['item']}（禁入平民车道）")
-            # v3.2 平民车道：螺丝起子恰好 1 人、保底可指认凶器至少 1 人、四凶器严格必现
+            # v3.5 平民车道：螺丝起子恰好 1 人；其余为通用池道具或（保险箱抽中反派道具时的）剩余凶器
             self.assertEqual(sum(1 for p in civs if p["item"] == "螺丝起子"), 1,
                              f"seed={seed} 螺丝起子车道错误")
-            self.assertTrue(any(p["item"] in ("消音手枪", "刀", "棒球棍") for p in civs),
-                            f"seed={seed} 平民无保底凶器")
+            for p in civs:
+                if p["item"] == "螺丝起子":
+                    continue
+                self.assertTrue(p["item"] in ITEMS_GENERAL or p["item"] in VILLAIN_WEAPON_POOL,
+                                f"seed={seed} 平民 {p['name']} 持有车道外道具 {p['item']}")
+            # 四凶器严格必现：反派 2 件 + 桌上 1 件 + 保险箱或第四平民 1 件
             weapons_in_play = [p["item"] for p in st["players"] if p["item"] in WEAPONS]
             if st["safe_item"] in WEAPONS:
                 weapons_in_play.append(st["safe_item"])
+            weapons_in_play.append(TABLE_WEAPON)
             self.assertEqual(sorted(weapons_in_play), sorted(WEAPONS), f"seed={seed} 四凶器未全部入场")
             profs = {p["profession"] for p in st["players"] if p["identity"] in ("杀手", "帮凶")}
             self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无功能性主动技能")

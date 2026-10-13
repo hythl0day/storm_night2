@@ -47,7 +47,7 @@ def default_players():
     ]
 
 
-def mk_state(players=None, order=None, day=1, stage="开局准备", safe_item="消音手枪"):
+def mk_state(players=None, order=None, day=1, stage="开局准备", safe_item="左轮手枪"):
     players = players if players is not None else default_players()
     return {
         "seed": 1,
@@ -103,7 +103,7 @@ class TestSampleState(unittest.TestCase):
             self.assertTrue(skills, f"{p['name']} 缺少技能台账")
             self.assertTrue(all(n > 0 for n in skills.values()))
         killer = next(p for p in st["players"] if p["identity"] == "杀手")
-        self.assertIn(killer["items"][0]["name"], {"消音手枪", "刀", "棒球棍", "不明药剂"})
+        self.assertIn(killer["items"][0]["name"], {"左轮手枪", "刀", "棒球棍", "不明药剂"})
 
     def test_sample_day1_flow_and_rotation(self):
         eng = Engine(load_state(FIXTURE))
@@ -143,20 +143,24 @@ class TestStageFlow(unittest.TestCase):
         self.assertTrue(eng.state["locks"]["A的卧室"])
 
     def test_hall_rules_v3(self):
-        """v3 会客室：不限容、不设监控、永不黑暗、不可封闭；白天卧室清场；大厅谋杀受人数约束。"""
+        """v3 会客室：不限容、永不黑暗、不可封闭；v3.5 起监控覆盖其门口；白天卧室清场；大厅谋杀受人数约束。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({n: "会客室" for n in ["A", "B", "C", "D", "E", "F"]})
         self.assertTrue(ev["ok"], ev)  # 不限容
-        self.assertNotIn("会客室", eng.state["monitoring"].get("第1天自由活动", {}))  # 无监控
+        # v3.5：会客室纳入监控（rules-6 §9.1"覆盖所有房间门口"）
+        self.assertEqual(set(eng.state["monitoring"]["第1天自由活动"]["会客室"]),
+                         {"A", "B", "C", "D", "E", "F"})
         self.assertFalse(is_dark(eng.state, "会客室"))  # 永不黑暗
         self.assertFalse(eng.seal_room("F")["ok"])  # 大厅没有可锁的门（F 是建筑师）
 
         eng2 = Engine(mk_state())
         goto(eng2, "自由活动", day=1)
         ev = eng2.enter_rooms({"A": "书房", "B": "监控室", "C": "C的卧室", "D": "会客室", "E": "会客室", "F": "会客室"})
-        self.assertFalse(ev["ok"])  # 白天卧室清场
-        self.assertIn("清场", ev["error"])
+        self.assertTrue(ev["ok"])  # v3.5 顺序结算：选择无效不再整体驳回，滞留会客室
+        self.assertEqual(eng2.state["positions"]["C"], "会客室")  # 白天卧室清场 → 滞留会客室
+        self.assertIn("清场", ev["private"]["C"])
+        self.assertEqual(ev.get("stranded"), {"C": "会客室"})
 
         eng3 = Engine(mk_state())
         free2(eng3, {"A": "会客室", "E": "会客室", "C": "会客室", "B": "监控室", "D": "书房", "F": "书房"})
@@ -292,7 +296,7 @@ class TestSelfDefense(unittest.TestCase):
     def test_knife_vs_club_defended_weapon_not_consumed(self):
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
-        eng = Engine(mk_state(players=players, safe_item="消音手枪"))
+        eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
         self.rooms_for(eng)
         ev = eng.murder("A", "E", weapon="刀")
         self.assertTrue(ev["ok"])
@@ -305,12 +309,12 @@ class TestSelfDefense(unittest.TestCase):
         self.assertIn("幸存", ev["private"]["E"])
 
     def test_club_vs_knife_and_gun_defended(self):
-        for weapon, defender in [("棒球棍", "刀"), ("棒球棍", "消音手枪"), ("刀", "消音手枪")]:
+        for weapon, defender in [("棒球棍", "刀"), ("棒球棍", "左轮手枪"), ("刀", "左轮手枪")]:
             players = default_players()
             players[0] = P("A", "杀手", "魔术师", weapon, gender="男", physique=4)
             players[4] = P("E", "平民", "黑客", defender, gender="男", physique=2)
-            safe = "不明药剂" if weapon != "不明药剂" and defender != "不明药剂" else "消音手枪"
-            if defender == "消音手枪" or weapon == "消音手枪":
+            safe = "不明药剂" if weapon != "不明药剂" and defender != "不明药剂" else "左轮手枪"
+            if defender == "左轮手枪" or weapon == "左轮手枪":
                 safe = "不明药剂"
             eng = Engine(mk_state(players=players, safe_item=safe))
             self.rooms_for(eng)
@@ -320,11 +324,11 @@ class TestSelfDefense(unittest.TestCase):
 
     def test_gun_attack_no_weapon_defense(self):
         players = default_players()
-        players[0] = P("A", "杀手", "魔术师", "消音手枪", gender="男", physique=4)
+        players[0] = P("A", "杀手", "魔术师", "左轮手枪", gender="男", physique=4)
         players[4] = P("E", "平民", "黑客", "刀", gender="男", physique=2)
         eng = Engine(mk_state(players=players, safe_item="棒球棍"))
         self.rooms_for(eng)
-        ev = eng.murder("A", "E", weapon="消音手枪")
+        ev = eng.murder("A", "E", weapon="左轮手枪")
         self.assertEqual(ev["type"], "murder", ev)
 
     def test_poison_as_medicine_self_defense(self):
@@ -585,7 +589,7 @@ class TestVote(unittest.TestCase):
         self.assertFalse(ev["ok"])
 
     def test_armed_accusation_poison_not_a_weapon(self):
-        """不明药剂不能用于武装指认（rules-6 §7.3：仅消音手枪/刀/棒球棍可威慑指认）。"""
+        """不明药剂不能用于武装指认（rules-6 §7.3：仅左轮手枪/刀/棒球棍可威慑指认）。"""
         players = default_players()
         players[4] = P("E", "平民", "黑客", "不明药剂", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
@@ -595,36 +599,40 @@ class TestVote(unittest.TestCase):
         self.assertFalse(ev["ok"])
         self.assertIn("武器", ev["error"])
 
-    def test_bequest_grant_and_destroy(self):
-        """v3.2 遗嘱制：出局者指定归属 + 接收人接受 → 次日可用；拒收/未指定 → 销毁。"""
+    def test_bequest_grant_and_table_fallback(self):
+        """v3.5 遗嘱制：接受 → 当天即可用；拒收/未指定 → 不销毁，放回会客室桌上。"""
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})  # A（杀手·魔术师·刀）出局
         self.assertEqual([e["name"] for e in eng.state["sealed_items"] if e.get("from") == "A"], ["刀"])
         ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": True}})
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(items_of(eng, "C")["刀"]["available_day"], 3)  # 次日起可用
+        self.assertEqual(items_of(eng, "C")["刀"]["available_day"], 2)  # v3.5：当天即可用
         self.assertEqual(eng.state["sealed_items"], [])
         self.assertIn("→ C", ev["public"]["announcements"][0])
+        self.assertIn("当天即可用", ev["public"]["announcements"][0])
 
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
-        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": False}})  # 拒收 → 销毁
+        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": False}})  # 拒收 → 放回桌上（v3.5 不销毁）
         self.assertTrue(ev["ok"])
         self.assertNotIn("刀", items_of(eng, "C"))
-        self.assertIn("拒收", ev["public"]["announcements"][0])
+        self.assertIn({"name": "刀", "uses_left": 1}, eng.state["table_items"])
+        self.assertIn("放回会客室桌上", ev["public"]["announcements"][0])
 
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
-        ev = eng.bequest("A", {}, {})  # 未指定 → 销毁
+        ev = eng.bequest("A", {}, {})  # 未指定 → 放回桌上
         self.assertTrue(ev["ok"])
         self.assertIn("未指定归属", ev["public"]["announcements"][0])
+        self.assertIn("放回会客室桌上", ev["public"]["announcements"][0])
         self.assertEqual(eng.state["sealed_items"], [])
+        self.assertIn({"name": "刀", "uses_left": 1}, eng.state["table_items"])
 
-    def test_bequest_succession_immediate(self):
-        """v3.4：杀手被票出局时，继任帮凶从该遗嘱中接受的道具当天即可用；其他接收人仍次日起可用。"""
+    def test_bequest_same_day_for_all(self):
+        """v3.5：遗嘱道具一律当天即可用（不再只有继任帮凶例外）。"""
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})  # A（杀手）出局 → B（帮凶）继任
@@ -637,9 +645,9 @@ class TestVote(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
-        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": True}})  # 平民接收人仍次日起可用
-        self.assertEqual(items_of(eng, "C")["刀"]["available_day"], 3)
-        self.assertIn("次日起可用", ev["public"]["announcements"][0])
+        ev = eng.bequest("A", {"刀": "C"}, {"C": {"刀": True}})  # 平民接收人同样当天即可用
+        self.assertEqual(items_of(eng, "C")["刀"]["available_day"], 2)
+        self.assertIn("当天即可用", ev["public"]["announcements"][0])
 
 
 class TestHallNightSleep(unittest.TestCase):
@@ -656,9 +664,9 @@ class TestHallNightSleep(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"E": "会客室", "F": "会客室"}, {})
-        self.assertEqual(ev["positions"]["E"], "会客室")   # E 黑客以破门而入开锁
+        self.assertEqual(ev["positions"]["E"], "会客室")   # E 黑客以暴力破解开锁
         self.assertEqual(ev["positions"]["F"], "会客室")   # 锁开后 F 随入
-        self.assertEqual(eng.state["skill_uses"]["E"]["破门而入"], 0)
+        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
 
     def test_hall_night_blackout_free_entry(self):
         eng = Engine(mk_state())
@@ -1004,7 +1012,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         recs = eng.state["monitoring"]["第1天自由活动"]
         self.assertEqual(set(recs["书房"]), {"A", "C"})
         self.assertEqual(recs["监控室"], ["B"])
-        self.assertNotIn("会客室", recs)  # v3：会客室不设监控
+        self.assertEqual(set(recs["会客室"]), {"D", "E", "F"})  # v3.5：会客室纳入监控
         self.assertEqual(recs, eng.state["monitoring_true"]["第1天自由活动"])
 
     def test_tamper_monitoring(self):
@@ -1044,8 +1052,8 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"E": "监控室", "A": "书房", "B": "书房", "C": "会客室", "D": "会客室", "F": "会客室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(eng.state["locks"]["监控室"])  # v3.2：监控室上锁，破门而入开后永久开启
-        self.assertEqual(eng.state["skill_uses"]["E"]["破门而入"], 0)
+        self.assertFalse(eng.state["locks"]["监控室"])  # v3.2：监控室上锁，暴力破解开后永久开启
+        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
         goto(eng, "自由活动", day=2)
         self.assertFalse(eng.state["locks"]["监控室"])
 
@@ -1053,34 +1061,44 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=1)
         ev = eng.night_assign({"E": "C的卧室"})
-        self.assertEqual(ev["positions"]["E"], "C的卧室")  # E 黑客以【破门而入】开锁进入
+        self.assertEqual(ev["positions"]["E"], "C的卧室")  # E 黑客以【暴力破解】开锁进入
         self.assertFalse(eng.state["locks"]["C的卧室"])
         eng.advance()
         self.assertTrue(eng.state["locks"]["C的卧室"])
 
-    def test_enter_locked_room_without_means_rejected(self):
-        """v3.2：监控室上锁——进入者都没有开锁手段时整体驳回且状态不变。"""
+    def test_enter_locked_room_without_means_stranded(self):
+        """v3.5 顺序结算：选择上锁房间而无开锁手段 → 滞留会客室（不再整体驳回），门保持上锁。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
-        snap = copy.deepcopy(eng.state)
         ev = eng.enter_rooms({"A": "监控室", "B": "书房", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
-        self.assertFalse(ev["ok"])
-        self.assertEqual(eng.state, snap)
+        self.assertTrue(ev["ok"])
+        self.assertEqual(eng.state["positions"]["A"], "会客室")  # A（杀手·魔术师）无开锁手段
+        self.assertEqual(ev.get("stranded"), {"A": "会客室"})
+        self.assertIn("上锁", ev["private"]["A"])
+        self.assertTrue(eng.state["locks"]["监控室"])  # 门没被打开
+        self.assertNotIn("监控室", eng.state["monitoring"].get("第1天自由活动", {}))  # 无人进入则无记录
 
-    def test_room_capacity_rejected(self):
+    def test_room_capacity_latecomer_stranded(self):
+        """v3.5 顺序结算：房间满员后，顺序靠后者滞留会客室（不再整体驳回）。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"A": "书房", "B": "书房", "C": "书房", "D": "书房", "E": "会客室", "F": "会客室"})
-        self.assertFalse(ev["ok"])
-        self.assertIn("上限", ev["error"])
+        self.assertTrue(ev["ok"])
+        self.assertEqual([n for n, r in eng.state["positions"].items() if r == "书房"], ["A", "B", "C"])
+        self.assertEqual(eng.state["positions"]["D"], "会客室")  # 第 4 人（顺序靠后）被容量挡下
+        self.assertIn("满员", ev["private"]["D"])
 
     def test_monitoring_room_capacity_two(self):
-        """v3.2：监控室人数上限降为 2。"""
+        """v3.2 监控室人数上限 2 + v3.5 顺序结算：无手段者滞留，有手段者开锁，靠后者随入。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"D": "监控室", "E": "监控室", "F": "监控室", "A": "书房", "B": "书房", "C": "会客室"})
-        self.assertFalse(ev["ok"])
-        self.assertIn("上限", ev["error"])
+        self.assertTrue(ev["ok"])
+        self.assertEqual(eng.state["positions"]["D"], "会客室")   # D（运动员）无开锁手段，滞留
+        self.assertEqual(eng.state["positions"]["E"], "监控室")   # E 以职业技能【暴力破解】开门（优先于道具）
+        self.assertEqual(eng.state["positions"]["F"], "监控室")   # 门已开，F 随入（第 2 个，满员）
+        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
+        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 2)  # 道具未被消耗
 
     def test_transfer_keeps_uses_and_limits(self):
         eng = Engine(mk_state())
@@ -1101,15 +1119,15 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         eng.enter_rooms({"E": "书房", "A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
         ev = eng.open_safe("E")
         self.assertTrue(ev["ok"], ev)
-        self.assertIn("消音手枪", items_of(eng, "E"))
+        self.assertIn("左轮手枪", items_of(eng, "E"))
         self.assertIn("打开了保险箱", ev["private"]["A"])
-        self.assertIn("消音手枪", ev["private"]["A"])  # v3.3：内容开局已公告，同房者看得见取走的是哪件
+        self.assertIn("左轮手枪", ev["private"]["A"])  # v3.3：内容开局已公告，同房者看得见取走的是哪件
         self.assertFalse(eng.open_safe("E")["ok"])
 
     def test_open_safe_dark_no_witness(self):
         """v3.3：停电（黑暗）中开保险箱，同房者收不到开箱通知（rules-6 §7.5 黑暗不可见）。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)  # 破门而入 → 可拉电闸
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)  # 暴力破解 → 可拉电闸
         eng = Engine(mk_state(players=players))
         goto(eng, "公共发言", day=1)
         ev = eng.declare_blackout("B")
@@ -1118,7 +1136,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         eng.enter_rooms({"E": "书房", "A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
         ev = eng.open_safe("E")
         self.assertTrue(ev["ok"], ev)
-        self.assertIn("消音手枪", items_of(eng, "E"))
+        self.assertIn("左轮手枪", items_of(eng, "E"))
         self.assertNotIn("A", ev["private"])
 
     def test_flashlight_and_blackout(self):
@@ -1148,10 +1166,10 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertFalse(eng.state["power_out"])
 
     def test_blackout_civilian_rejected(self):
-        """v3.2：平民即使持有开锁手段（黑客的破门而入）也不能拉电闸停电。"""
+        """v3.2：平民即使持有开锁手段（黑客的暴力破解）也不能拉电闸停电。"""
         eng = Engine(mk_state())
         goto(eng, "公共发言", day=2)
-        ev = eng.declare_blackout("E")  # E 是平民黑客，持【破门而入】
+        ev = eng.declare_blackout("E")  # E 是平民黑客，持【暴力破解】
         self.assertFalse(ev["ok"])
         self.assertIn("反派", ev["error"])
 
@@ -1178,8 +1196,8 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players, order=["C", "D", "A", "B", "E", "F"]))
         goto(eng, "投票", day=2)
-        self.assertTrue(eng.declare_blackout("B")["ok"])           # 消耗 B 的破门而入
-        self.assertEqual(eng.state["skill_uses"]["B"]["破门而入"], 0)
+        self.assertTrue(eng.declare_blackout("B")["ok"])           # 消耗 B 的暴力破解
+        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 0)
         goto(eng, "自由活动", day=2)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
         self.assertNotIn("第2天自由活动", eng.state["monitoring"])  # 停电期间监控空白
@@ -1218,19 +1236,20 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertFalse(eng.see_through("F", "C", {"profession": "医师"})["ok"])
 
     def test_see_through_unverifiable_not_counted(self):
-        """v3.2 修复（game/42 误判）：占位符名目/无监控房间 → "无法验证"，不污染谎言聚合。"""
+        """v3.2 修复（game/42 误判）：占位符名目/无效房间 → "无法验证"，不污染谎言聚合。
+        v3.5 起监控覆盖所有房间门口（含会客室），"无监控房间"情形只剩无效房间名。"""
         players = default_players()
         players[5] = P("F", "平民", "心理医生", "窃听器", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "公共发言", day=1)
-        # C 是医师：职业声明属实；占位符道具名与会客室行踪均为"无法验证"
-        ev = eng.see_through("F", "C", {"profession": "医师", "item": "无声称", "visited_rooms": ["会客室"]})
+        # C 是医师：职业声明属实；占位符道具名与无效房间名均为"无法验证"
+        ev = eng.see_through("F", "C", {"profession": "医师", "item": "无声称", "visited_rooms": ["厨房"]})
         self.assertTrue(ev["ok"], ev)
         msg = ev["private"]["F"]
         self.assertFalse(msg["lies"])
         self.assertEqual(msg["verdicts"]["职业声明「医师」"], "属实")
         self.assertTrue(msg["verdicts"]["道具声明「无声称」"].startswith("无法验证"))
-        self.assertTrue(msg["verdicts"]["去过会客室"].startswith("无法验证"))
+        self.assertTrue(msg["verdicts"]["去过厨房"].startswith("无法验证"))
         self.assertIn("全部属实", msg["conclusion"])
         # 谎言仍会被抓：C 不是化学家
         ev = eng.see_through("F", "C", {"profession": "化学家"})
@@ -1336,7 +1355,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(recs, ["E"])  # 监控里只有受害者——凶手无痕
 
     def test_bug(self):
-        """v3 窃听器：可放会客室（唯一监视大厅的手段）；收听改晚间卧室；收听 ×2。"""
+        """v3 窃听器：可放会客室（唯一能听到大厅交谈的手段）；收听改晚间卧室；收听 ×2。"""
         eng = Engine(mk_state())
         ev = eng.place_bug("F", "书房")
         self.assertTrue(ev["ok"], ev)
@@ -1355,6 +1374,184 @@ class TestMonitoringLocksLedger(unittest.TestCase):
 
         eng2 = Engine(mk_state())
         self.assertTrue(eng2.place_bug("F", "会客室")["ok"])  # 会客室可放置
+
+
+class TestTableWeapon(unittest.TestCase):
+    """v3.5 桌上凶器（rules-6 §2/§5/§7.3/§7.4/§7.7）：侦探佩枪、夜间独处取用、武装指认资格。"""
+
+    def mk_table(self, **kw):
+        st = mk_state(**kw)
+        st["table_items"] = [{"name": "左轮手枪", "uses_left": 1}]
+        return st
+
+    def test_detective_elected_gets_gun(self):
+        """侦探当选即获得桌上凶器（侦探佩枪，公开公告）。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "公共发言", day=1)
+        ev = eng.elect_detective(["C"], ["C"], {})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["detective"], "C")
+        self.assertEqual(eng.state["table_items"], [])
+        self.assertEqual(items_of(eng, "C")["左轮手枪"]["available_day"], 1)  # 当天即可用
+        self.assertIn("佩枪", ev["public"]["announcements"][0])
+
+    def test_no_detective_gun_stays_on_table(self):
+        """竞选流产 → 凶器留在桌上。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "公共发言", day=1)
+        ev = eng.elect_detective([], [], {})
+        self.assertTrue(ev["ok"])
+        self.assertIsNone(eng.state["detective"])
+        self.assertEqual(eng.state["table_items"], [{"name": "左轮手枪", "uses_left": 1}])
+
+    def test_accusation_monopoly_with_detective(self):
+        """有侦探时仅侦探可指认（持械平民也不行）；侦探持佩枪可指认。"""
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
+        eng = Engine(self.mk_table(players=players))
+        goto(eng, "公共发言", day=1)
+        eng.elect_detective(["C"], ["C"], {})  # C（平民）当选并持佩枪
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})  # 平票，无人出局
+        ev = eng.armed_accusation("E", "A")
+        self.assertFalse(ev["ok"])
+        self.assertIn("侦探", ev["error"])  # 有侦探时仅侦探本人
+        ev = eng.armed_accusation("C", "A")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev.get("winner"), "平民")
+
+    def test_accusation_detective_needs_weapon(self):
+        """侦探须持有武器才能指认（佩枪被缴获/送出后指认能力悬空）。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "公共发言", day=1)
+        eng.elect_detective(["C"], ["C"], {})
+        cp = player(eng, "C")
+        cp["items"] = [e for e in cp["items"] if e["name"] != "左轮手枪"]  # 模拟佩枪离场
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})
+        ev = eng.armed_accusation("C", "A")
+        self.assertFalse(ev["ok"])
+        self.assertIn("武器", ev["error"])
+
+    def test_accusation_villain_detective_cannot(self):
+        """侦探若为反派则无法指认（武装指认仅限平民）。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "公共发言", day=1)
+        eng.elect_detective(["B"], ["B"], {})  # B 是帮凶
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "A", "E": "B", "F": "C"})  # 无人过半
+        ev = eng.armed_accusation("B", "C")
+        self.assertFalse(ev["ok"])
+        self.assertIn("平民", ev["error"])
+
+    def test_accusation_temp_grab_without_detective(self):
+        """无侦探且桌上凶器仍在：平民可临时取用指认（不进入道具栏）。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "投票", day=2)  # 未举行竞选，detective=None
+        eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})
+        ev = eng.armed_accusation("C", "A")  # C 手无武器，临时取用桌上凶器
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev.get("winner"), "平民")
+        self.assertIn("桌上的凶器", ev["public"]["announcements"][0])
+
+    def test_accusation_temp_grab_wrong_keeps_gun_on_table(self):
+        """临时取用指认错误：指认者出局，凶器仍在桌上（不入道具栏、不进遗物）。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})
+        ev = eng.armed_accusation("C", "B")  # 指认帮凶 → 错误
+        self.assertTrue(ev["ok"])
+        self.assertFalse(player(eng, "C")["alive"])
+        self.assertIn({"name": "左轮手枪", "uses_left": 1}, eng.state["table_items"])
+        self.assertNotIn("左轮手枪", [e["name"] for e in eng.state["sealed_items"]])
+
+    def test_accusation_no_weapon_no_table_rejected(self):
+        """无侦探、桌上无凶器、手无武器 → 不能指认。"""
+        eng = Engine(mk_state())
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})
+        ev = eng.armed_accusation("C", "A")
+        self.assertFalse(ev["ok"])
+        self.assertIn("武器", ev["error"])
+
+    def test_take_table_item_night_alone(self):
+        """夜间独处会客室可取走桌上物品：当夜即可用，变动次日清晨公告。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"E": "会客室"}, {})  # E 开锁进大厅（独占）
+        self.assertEqual(ev["positions"]["E"], "会客室")
+        ev = eng.take_table_item("E", "左轮手枪")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["table_items"], [])
+        self.assertEqual(items_of(eng, "E")["左轮手枪"]["uses_left"], 1)
+        self.assertEqual(items_of(eng, "E")["左轮手枪"]["available_day"], 2)  # 当夜即可用
+        ev = eng.advance()  # 次日清晨
+        self.assertTrue(any("左轮手枪" in a and "不见" in a for a in ev["public"]["announcements"]))
+        self.assertEqual(eng.state["table_events"], [])  # 公告后清空
+
+    def test_take_table_item_not_alone_rejected(self):
+        """会客室还有其他人时无法悄悄取用。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"E": "会客室", "F": "会客室"}, {})  # E 开锁，F 随入
+        self.assertEqual(ev["positions"]["F"], "会客室")
+        ev = eng.take_table_item("E", "左轮手枪")
+        self.assertFalse(ev["ok"])
+        self.assertIn("其他人", ev["error"])
+        self.assertEqual(len(eng.state["table_items"]), 1)
+
+    def test_take_table_item_daytime_rejected(self):
+        """白天（含自由活动滞留会客室）不可取桌上物品。"""
+        eng = Engine(self.mk_table())
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({n: "会客室" for n in ["A", "B", "C", "D", "E", "F"]})
+        ev = eng.take_table_item("E", "左轮手枪")
+        self.assertFalse(ev["ok"])
+        self.assertIn("夜间", ev["error"])
+
+    def test_take_table_item_blackout_no_trace(self):
+        """停电夜偷枪：门锁失效自由进入，监控缺失不留进入记录。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        eng = Engine(self.mk_table(players=players))
+        goto(eng, "投票", day=2)
+        self.assertTrue(eng.declare_blackout("B")["ok"])
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"C": "会客室"}, {})  # 停电锁失效，C 直接进
+        self.assertEqual(ev["positions"]["C"], "会客室")
+        ev = eng.take_table_item("C", "左轮手枪")
+        self.assertTrue(ev["ok"], ev)
+        self.assertNotIn("第2天晚间休息", eng.state["monitoring_true"])  # 停电期间监控缺失
+
+    def test_table_fallback_keeps_uses(self):
+        """遗嘱回桌的道具保留剩余次数；夜间取走后次数不变、当夜可用。"""
+        eng = Engine(mk_state())
+        player(eng, "A")["items"].append({"name": "万能钥匙", "uses_left": 1, "available_day": 1})
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
+        ev = eng.bequest("A", {}, {})  # 刀与万能钥匙（剩 1 次）都未指定 → 回桌
+        self.assertTrue(ev["ok"])
+        self.assertIn({"name": "万能钥匙", "uses_left": 1}, eng.state["table_items"])
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"E": "会客室"}, {})
+        ev = eng.take_table_item("E", "万能钥匙")
+        self.assertTrue(ev["ok"], ev)
+        uses = sorted(e["uses_left"] for e in player(eng, "E")["items"] if e["name"] == "万能钥匙")
+        self.assertEqual(uses, [1, 2])  # 原有的 ×2（开锁消耗的是职业技能）+ 取走的 ×1
+
+    def test_detective_gun_lootable_on_murder(self):
+        """v3.5：佩枪是普通道具——侦探遇害且现场无其他非反派时，杀手缴获佩枪。"""
+        players = default_players()
+        players[2] = P("C", "平民", "医师", "测谎仪", gender="女", physique=2)  # 无防御道具
+        eng = Engine(self.mk_table(players=players))
+        goto(eng, "公共发言", day=1)
+        eng.elect_detective(["C"], ["C"], {})  # C 当选并持佩枪
+        free2(eng, {"A": "书房", "C": "书房", "B": "监控室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "C")  # 空手（体格 4≥2）；佩枪防不了空手
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder")
+        self.assertIn("左轮手枪", ev["case"]["looted"])
+        self.assertIn("左轮手枪", items_of(eng, "A"))
 
 
 if __name__ == "__main__":

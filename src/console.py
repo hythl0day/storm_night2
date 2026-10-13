@@ -235,6 +235,8 @@ def fmt_action(a: dict) -> str:
         return f"武装指认 → {a.get('target', '?')}"
     if t == "night_raid":
         return f"夜袭 → {a.get('room', '?')}"
+    if t == "take_table":
+        return f"取桌上物品：「{a.get('item', '?')}」"
     return json.dumps(a, ensure_ascii=False)
 
 
@@ -243,6 +245,8 @@ def day_roster(orch: Orchestrator) -> str:
     s = orch.state
     safe = f"  保险箱：「{s.get('safe_item', '?')}」" + ("（已打开）" if s.get("safe_open") else "（未打开）")
     safe += f"｜侦探：{s.get('detective') or '无'}"
+    table = "、".join(f"「{e['name']}」×{e['uses_left']}" for e in s.get("table_items", [])) or "（空）"
+    safe += f"｜桌上：{table}"
     if s.get("power_out"):
         safe += "｜停电中"
     rows = morning_roster_rows(s, orch.orch.get("out_day", {}))

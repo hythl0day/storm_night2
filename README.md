@@ -28,7 +28,7 @@ python -m src.orchestrator --game game/42   # 无头模式（供批量跑局）
 # 查看存档（只读，与跑局解耦）
 python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/peek/inner/host/follow
 
-# 测试（引擎 + 平衡回归 + 编排 mock 集成，85 用例）
+# 测试（引擎 + 平衡回归 + 编排 mock 集成，135 用例）
 python -m unittest discover -s tests
 ```
 

@@ -166,7 +166,7 @@ class TestMainGodEnding(MockGameTestBase):
         self.assertIn("## 背景", script)
         self.assertIn("## 阵容与分配（全剧透）", script)
         self.assertIn("| A | 男 | 魁梧 | 中国 | 杀手 | 魔术师 | 刀×1 |", script)
-        self.assertIn("书房保险箱：消音手枪（开局公告已公开）", script)
+        self.assertIn("书房保险箱：左轮手枪（开局公告已公开）", script)
         self.assertIn("- 选房结果：", script)
         self.assertIn("- 晚间归宿：", script)
         self.assertIn("- 投票明细：", script)
@@ -219,7 +219,7 @@ class TestMainGodEnding(MockGameTestBase):
 
 class TestCivilianWinEnding(MockGameTestBase):
     def players(self):
-        # 职业不重复；A/B 都有开锁手段（黑客/机械师的【破门而入】）用于潜入他人卧室；
+        # 职业不重复；A/B 都有开锁手段（黑客/机械师的【暴力破解】）用于潜入他人卧室；
         # 受害者 E/F 均无自卫手段（C 的急救箱、D 的侧写都挡不了谋杀，故不选他们做目标）。
         return [
             P("A", "杀手", "黑客", "刀", gender="男", physique=4),
@@ -334,6 +334,43 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("无杀倒计时：", log)
         self.assertIn("侦探：C", log)                        # v3.3：竞选产生的侦探列入清晨公告
         self.assertTrue(any("窃听器录音" in m for m in s["orch"]["hist"]["F"]))  # 私密历史留痕
+
+    def test_hall_night_talk(self):
+        """v3.5：夜宿会客室者（≥2 人）睡前围炉夜谈——内容仅当夜夜宿者知晓，其他席位收不到。"""
+        d = write_game_dir(self.root, self.players())
+        base = make_fake_chat(False)
+
+        def chat_hall(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "晚间休息" in title and "夜谈" not in title and "夜袭" not in title:
+                # 第 2 夜 E（万能钥匙开锁）与 F（随入）夜宿会客室
+                acts = [{"type": "night_hall"}] if name in ("E", "F") and day == 2 else []
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "夜谈" in title:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech=f"{name} 的夜谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_hall)
+        s = orch.state
+        self.assertEqual(s["winner"], "平民")  # 消极局照常倒计时收尾
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("- 会客室夜谈（E、F）：", script)
+        self.assertIn("E 的夜谈内容", script)
+        self.assertIn("F 的夜谈内容", script)
+        # 仅当夜夜宿者可见：E/F 私密历史有夜谈记录，C（卧室过夜）没有
+        self.assertTrue(any("会客室夜谈" in m for m in s["orch"]["hist"]["E"]))
+        self.assertTrue(any("会客室夜谈" in m for m in s["orch"]["hist"]["F"]))
+        self.assertFalse(any("夜谈" in m for m in s["orch"]["hist"].get("C", [])))
+        # 夜宿名单清晨照常公开（夜谈不影响公开口径）
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("夜宿会客室公开：E、F", log)
 
 
 class TestInterruptAndResume(MockGameTestBase):

@@ -4,8 +4,10 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 
 - locks: {房间: bool}                   门锁（True=上锁）；卧室键为 "<名字>的卧室"；初始监控室与各卧室上锁（v3.2：地下室去锁、监控室上锁）
 - safe_open: bool                       书房保险箱是否已被打开
+- table_items: [{name,uses_left}]       会客室桌上物品（v3.5：开局为桌上凶器「左轮手枪」；遗嘱未指定/拒收的道具放回桌上）
+- table_events: [str]                   待清晨公告的桌上物品变动（夜间被取走等）
 - positions: {名字: 房间}               当前阶段所在房间；白天会议阶段为 "会客室"
-- monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被【信号干扰】/「病毒U盘」篡改）
+- monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被【信号干扰】/「病毒U盘」篡改；v3.5 起覆盖会客室）
 - monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
 - skill_uses: {名字: {技能: 剩余}}      技能台账（通用+反派技能都登记；反派技能使用时校验身份）
 - cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/伪造状态/证物是否可毁/是否已封存
@@ -33,7 +35,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 玩家道具从 deal 的 item/item_uses_left 扩展为列表：
   player["items"] = [{"name", "uses_left", "available_day"}]
   deal 还可用 extra_items 额外配发（如杀手固定持有的「万能钥匙」，rules-6 §2），ensure 时并入。
-  杀手可缴获多件道具；available_day 之前不可用（投票分配次日可用）；转手不改变剩余次数。
+  杀手可缴获多件道具；available_day 之前不可用（v3.5：遗嘱分配当天即可用）；转手不改变剩余次数。
 """
 from __future__ import annotations
 
@@ -43,7 +45,7 @@ from pathlib import Path
 from ..gamedata import ITEM_USES
 
 PUBLIC_ROOMS = ["书房", "监控室", "地下室"]  # 功能房：监控覆盖，夜间开放（每房限 1 人）
-HALL = "会客室"  # 大厅：白天会议场所，自由活动同样开放；永不黑暗、不设监控、不可封闭、不限人数；夜间不开放
+HALL = "会客室"  # 大厅：白天会议场所，自由活动同样开放；永不黑暗、不可封闭、不限人数；桌上物品所在地
 FREE_ROOMS = [HALL] + PUBLIC_ROOMS  # 自由活动合法去向（白天卧室清场，见 rules-6 §5）
 ENV_WEAPON = {"书房": "雕像", "地下室": "电线"}
 ROOM_CAPACITY = {"书房": 3, "监控室": 2, "地下室": 3}  # 会客室不限人数；v3.2 监控室降为 2
@@ -53,7 +55,7 @@ ACTION_STAGES = ("自由活动", "晚间休息")
 
 WOUND_LABEL = {
     "空手": "空手",
-    "消音手枪": "枪",
+    "左轮手枪": "枪",
     "刀": "利器",
     "棒球棍": "钝器",
     "不明药剂": "毒或药物",
@@ -67,11 +69,11 @@ GENERAL_SKILLS = {
     "医师": {"现场调查": 2},
     "化学家": {"现场调查": 2},
     "运动员": {"敏捷闪避": 1},
-    "黑客": {"破门而入": 1},
+    "黑客": {"暴力破解": 1},
     "犯罪侧写师": {"犯罪侧写": 1},
     "心理医生": {"看破伪装": 2},
     "建筑师": {"封闭空间": 1},
-    "机械师": {"破门而入": 1},
+    "机械师": {"暴力破解": 1},
     "魔术师": {"看破伪装": 2},
 }
 VILLAIN_SKILLS = {
@@ -115,6 +117,8 @@ def ensure(state: dict) -> dict:
     """幂等补齐引擎扩展字段；同时把 deal 的单道具扩展为 items 列表。"""
     s = state
     s.setdefault("safe_open", False)
+    s.setdefault("table_items", [])  # v3.5 桌上物品；deal 写入初始桌上凶器
+    s.setdefault("table_events", [])
     s.setdefault("positions", {})
     s.setdefault("monitoring", {})
     s.setdefault("monitoring_true", {})
@@ -155,6 +159,10 @@ def ensure(state: dict) -> dict:
             skills = dict(GENERAL_SKILLS.get(p["profession"], {}))
             skills.update(VILLAIN_SKILLS.get(p["profession"], {}))
             s["skill_uses"][p["name"]] = skills
+        # v3.5 存档迁移：旧档技能键「破门而入」统一改名「暴力破解」
+        skills = s["skill_uses"].get(p["name"], {})
+        if "破门而入" in skills:
+            skills["暴力破解"] = skills.pop("破门而入")
     return s
 
 
@@ -202,8 +210,11 @@ def door_locked(state: dict, room: str) -> bool:
 
 
 def record_entry(state: dict, name: str, room: str) -> None:
-    """监控只记录"某时间段谁进入了某场所"，不记离开；停电期间监控空白（不记录）；经密道者不留记录；会客室不设监控。"""
-    if name in state["passage_stealth"] or room == HALL or state["power_out"]:
+    """监控只记录"某时间段谁进入了某场所"，不记离开；停电期间监控缺失（不记录）；经密道者不留记录。
+
+    v3.5：监控覆盖所有房间门口（含会客室，rules-6 §9.1）。
+    """
+    if name in state["passage_stealth"] or state["power_out"]:
         return
     period = current_period(state)
     state["monitoring"].setdefault(period, {}).setdefault(room, []).append(name)
@@ -241,12 +252,12 @@ def grant_item(p: dict, name: str, uses_left: int, available_day: int) -> None:
 
 
 def unlock_means(state: dict, name: str) -> str | None:
-    """可用开锁手段（v3.2 三种）：优先职业技能【破门而入】，其次道具「万能钥匙」「螺丝起子」。"""
+    """可用开锁手段（v3.5 三种）：优先职业技能【暴力破解】，其次道具「万能钥匙」「螺丝起子」。"""
     p = get_player(state, name)
     if p is None or not p["alive"]:
         return None
-    if skill_left(state, name, "破门而入") > 0:
-        return "破门而入"
+    if skill_left(state, name, "暴力破解") > 0:
+        return "暴力破解"
     day = state["phase"]["day"]
     for item in ("万能钥匙", "螺丝起子"):
         if held_item(p, item, day) is not None:
@@ -255,8 +266,8 @@ def unlock_means(state: dict, name: str) -> str | None:
 
 
 def consume_unlock_means(state: dict, name: str, means: str) -> None:
-    if means == "破门而入":
-        consume_skill(state, name, "破门而入")
+    if means == "暴力破解":
+        consume_skill(state, name, "暴力破解")
     else:
         p = get_player(state, name)
         consume_item_entry(p, held_item(p, means, state["phase"]["day"]))

@@ -1,4 +1,4 @@
-"""开局生成器（M1）：从阵容池选取席位，随机分配身份/职业/道具/行动顺序/保险箱，输出 game/<seed>/ 目录。
+"""开局生成器（M1）：从阵容池选取席位，随机分配身份/职业/道具/行动顺序/保险箱/桌上凶器，输出 game/<seed>/ 目录。
 
 用法：
     python -m src.deal                       # 随机种子，输出 game/<seed>/
@@ -6,9 +6,9 @@
     python -m src.deal --seed 42 --seats gpt,claude,gemini,deepseek,kimi,glm   # 手动指定 6 席
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
 
-随机调用顺序（影响复现，勿随意调整）：
-    席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器 → 帮凶反派道具
-    → 平民保底凶器（选凶器 → 选持有人）→ 螺丝起子持有人 → 保险箱抽池 → 平民道具池 → 行动顺序
+随机调用顺序（影响复现，勿随意调整；v3.5 起保底凶器车道改为桌上凶器，不再选持有人）：
+    席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
+    → 帮凶反派道具 → 保险箱抽池 → 螺丝起子持有人 →（保险箱抽中反派道具时）第四平民凶器 → 平民道具池 → 行动顺序
     （反派功能覆盖保证为无随机的确定性后处理，插在职业抽取与反派凶器之间；万能钥匙预留无随机消耗）
 """
 from __future__ import annotations
@@ -22,14 +22,15 @@ import tomllib
 from pathlib import Path
 
 from .gamedata import (
-    ARMED_WEAPONS,
     ITEMS,
     ITEM_USES,
     ITEMS_GENERAL,
     PROFESSION_SKILLS_GENERAL,
     PROFESSION_SKILLS_VILLAIN,
     PROFESSIONS,
+    TABLE_WEAPON,
     VILLAIN_ITEMS,
+    VILLAIN_WEAPON_POOL,
     WEAPONS,
     physique_desc,
 )
@@ -51,16 +52,16 @@ VALVE_PROFESSIONS = ("魔术师", "机械师", "心理医生", "黑客")
 IDENTITY_BRIEF = {
     "平民": "你是平民。找出杀手与帮凶，把他们送上投票席；活下去。",
     "帮凶": "你是帮凶。你不能杀人；杀手被投票出局时你立即继任杀手（仅私下通知你，不公开）。"
-            "若你持有任一【暴力破解】手段（技能【破门而入】/「万能钥匙」/「螺丝起子」），可在自由活动开始前"
-            "消耗一次秘密拉电闸停电：门锁失效、监控空白、除会客室外全部黑暗（规则书 §7.5）。",
+            "若你持有任一【暴力破解】手段（职业技能/「万能钥匙」/「螺丝起子」），可在自由活动开始前"
+            "消耗一次秘密拉电闸停电：门锁失效、监控缺失、除会客室外全部黑暗（规则书 §7.5）。",
     "杀手": "你是杀手。你是唯一拥有杀人能力的人。每阶段最多一次谋杀机会。"
             "你固定持有的「万能钥匙」除开门外，还可在自由活动开始前消耗一次【暴力破解】秘密拉电闸停电"
-            "（门锁失效、监控空白、除会客室外全部黑暗）——停电是抹掉监控记录、免开锁进卧室、撕开守夜的核心手段（规则书 §7.5）。",
+            "（门锁失效、监控缺失、除会客室外全部黑暗）——停电是抹掉监控记录、免开锁进卧室、撕开守夜的核心手段（规则书 §7.5）。",
 }
 
 
 def announcement(safe_item: str) -> str:
-    """开局公告（主人字条）：保险箱内容公开（v3.2 §2.5）。"""
+    """开局公告（主人字条）：保险箱内容公开（v3.2 §2.5）+ 桌上凶器公开（v3.5 §2）。"""
     return f"""# 开局公告
 
 欢迎来到暴风夜。
@@ -68,6 +69,8 @@ def announcement(safe_item: str) -> str:
 你们是六名失去记忆的客人。规则书就放在大厅的桌上，自己读。
 
 对了，书房保险箱里，我留了一件礼物：「{safe_item}」。谁先打开，就是谁的。
+
+大厅的桌上还有我年轻时的收藏：「{TABLE_WEAPON}」。光天化日之下别去碰它——大家都看着。夜里嘛……看你们的本事。
 
 —— 主人
 """
@@ -98,7 +101,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
         seats = rng.sample(us, 3) + rng.sample(cn, 3)
         rng.shuffle(seats)
     if len(seats) != len(IDENTITIES):
-        raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前 {len(seats)} 席")
+        raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前有 {len(seats)} 席")
     if seat_keys:
         nat = [personas.get(p.name, {}).get("nationality") for p in seats]
         if nat.count("美国") != 3 or nat.count("中国") != 3:
@@ -123,40 +126,36 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
     rng.shuffle(identities)
     # 3. 职业
     professions = rng.sample(PROFESSIONS, len(seats))
-    # 4. 反派凶器（杀手先、帮凶后，互不重复）
+    # 4. 反派凶器（杀手先、帮凶后，互不重复；v3.5：左轮手枪固定在桌上，反派池为 刀/棒球棍/不明药剂 3 选 2）
     killer_idx = identities.index("杀手")
     accom_idx = identities.index("帮凶")
     # 反派保证（无随机后处理）：反派队均无功能性主动技能时，杀手与首位持 valve 职业者互换职业
     if professions[killer_idx] not in VALVE_PROFESSIONS and professions[accom_idx] not in VALVE_PROFESSIONS:
         donor = next(i for i, pr in enumerate(professions) if pr in VALVE_PROFESSIONS)
         professions[donor], professions[killer_idx] = professions[killer_idx], professions[donor]
-    villain_weapons = rng.sample(WEAPONS, 2)
+    villain_weapons = rng.sample(VILLAIN_WEAPON_POOL, 2)
     accom_gear = rng.choice(VILLAIN_ITEMS)  # 帮凶固定配发的反派道具（v3.2：裹尸袋/可疑的粉末/病毒U盘 3 选 1）
-    # 5. 平民保底凶器（限枪/刀/棍——药剂不能武装指认；四凶器必现）
-    remaining_weapons = [w for w in WEAPONS if w not in villain_weapons]
-    civ_weapon = rng.choice([w for w in remaining_weapons if w in ARMED_WEAPONS])
-    leftover_weapon = next(w for w in remaining_weapons if w != civ_weapon)
-    # 6. 保险箱抽池：剩余凶器 + 帮凶未抽到的反派道具 抽 1；内容随开局公告公开
+    # 5. 保险箱抽池：剩余凶器 + 帮凶未抽到的反派道具 抽 1；内容随开局公告公开
+    leftover_weapon = next(w for w in VILLAIN_WEAPON_POOL if w not in villain_weapons)
     safe_pool = [leftover_weapon] + [i for i in VILLAIN_ITEMS if i != accom_gear]
     safe_item = rng.choice(safe_pool)
-    # 7. 平民车道：保底凶器 1 人 + 螺丝起子 1 人（不同人）+ 通用池抽 2 人
+    # 6. 平民车道（v3.5）：螺丝起子 1 人 + 通用池 5 抽 3（保底凶器改为桌上凶器，不再配发给平民）
     civ_idxs = [i for i, idn in enumerate(identities) if idn == "平民"]
-    weapon_civ = rng.choice(civ_idxs)
-    screw_civ = rng.choice([i for i in civ_idxs if i != weapon_civ])
-    pool_civs = [i for i in civ_idxs if i not in (weapon_civ, screw_civ)]
+    screw_civ = rng.choice(civ_idxs)
+    pool_civs = [i for i in civ_idxs if i != screw_civ]
     civilian_pool = list(ITEMS_GENERAL)
     fourth_civ = None
-    if safe_item not in WEAPONS:  # 保险箱抽中反派道具 → 第 4 件凶器直接发给剩余平民之一（四凶器严格必现）
+    if safe_item not in WEAPONS:  # 保险箱抽中反派道具 → 剩余凶器直接发给剩余平民之一（四凶器严格必现）
         fourth_civ = rng.choice(pool_civs)
     civilian_items = rng.sample(civilian_pool, len(pool_civs) - (1 if fourth_civ is not None else 0))
     unused_items = ([i for i in civilian_pool if i not in civilian_items]
                     + [i for i in VILLAIN_ITEMS if i not in (accom_gear, safe_item)])
-    # 8. 首日行动顺序
+    # 7. 首日行动顺序
     order = [r["name"] for r in roster]
     rng.shuffle(order)
 
     items_by_idx = {killer_idx: villain_weapons[0], accom_idx: villain_weapons[1],
-                    weapon_civ: civ_weapon, screw_civ: "螺丝起子"}
+                    screw_civ: "螺丝起子"}
     if fourth_civ is not None:
         items_by_idx[fourth_civ] = leftover_weapon
     for i, it in zip([i for i in pool_civs if i != fourth_civ], civilian_items):
@@ -183,6 +182,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
         "phase": {"day": 1, "stage": "开局准备"},
         "order": order,
         "safe_item": safe_item,
+        "table_items": [{"name": TABLE_WEAPON, "uses_left": ITEM_USES[TABLE_WEAPON]}],  # v3.5 桌上凶器
         "unused_professions": [p for p in PROFESSIONS if p not in professions],
         "unused_items": unused_items,
         "players": players_state,
@@ -206,6 +206,8 @@ def validate(state: dict) -> list[str]:
     for p in players:
         if p["identity"] in ("杀手", "帮凶") and p["item"] not in WEAPONS:
             problems.append(f"{p['name']}（{p['identity']}）未持有凶器")
+        if p["identity"] in ("杀手", "帮凶") and p["item"] == TABLE_WEAPON:
+            problems.append(f"{p['name']}（{p['identity']}）持有桌上凶器「{TABLE_WEAPON}」（v3.5 不进反派车道）")
     villain_profs = [p["profession"] for p in players if p["identity"] in ("杀手", "帮凶")]
     if not any(pr in VALVE_PROFESSIONS for pr in villain_profs):
         problems.append("反派队无功能性主动技能（舞台魔术/延时装置/记忆植入/信号干扰）")
@@ -221,21 +223,23 @@ def validate(state: dict) -> list[str]:
     for p in players:
         if p["identity"] == "平民" and (p["item"] == "万能钥匙" or p["item"] in VILLAIN_ITEMS):
             problems.append(f"{p['name']}（平民）持有禁入平民车道的道具：{p['item']}")
-    # v3.2 平民车道保底：恰好一名平民持螺丝起子；至少一名平民持可指认凶器（枪/刀/棍）
+    # v3.5 平民车道：恰好一名平民持螺丝起子（保底凶器改为桌上凶器，不再配发平民）
     screw = [p for p in players if p["item"] == "螺丝起子"]
     if len(screw) != 1 or screw[0]["identity"] != "平民":
         problems.append("螺丝起子车道错误：应恰好一名平民开局持有")
-    if not any(p["identity"] == "平民" and p["item"] in ARMED_WEAPONS for p in players):
-        problems.append("平民无保底凶器（枪/刀/棍）")
+    if state.get("table_items") != [{"name": TABLE_WEAPON, "uses_left": ITEM_USES[TABLE_WEAPON]}]:
+        problems.append(f"桌上凶器缺失：会客室桌上应固定放有「{TABLE_WEAPON}」")
     if state["safe_item"] in items:
         problems.append("保险箱道具与玩家道具冲突")
     if state["safe_item"] not in WEAPONS and state["safe_item"] not in VILLAIN_ITEMS:
         problems.append("保险箱道具非法（应为剩余凶器或未分配的反派道具）")
+    # 四凶器必现（v3.5）：反派 2 件 + 桌上 1 件 + 保险箱或第四平民 1 件
     all_weapons = [p["item"] for p in players if p["item"] in WEAPONS]
     if state["safe_item"] in WEAPONS:
         all_weapons.append(state["safe_item"])
+    all_weapons.append(TABLE_WEAPON)
     if sorted(all_weapons) != sorted(WEAPONS):
-        problems.append("四凶器未全部入场（杀手/帮凶/平民保底/保险箱或第四平民）")
+        problems.append("四凶器未全部入场（杀手/帮凶/桌上凶器/保险箱或第四平民）")
     if len(state["order"]) != len(players):
         problems.append("行动顺序人数不符")
     return problems
@@ -275,7 +279,7 @@ def write_card(player: dict, players: list) -> str:
     if p["profession"] == "建筑师" and p["identity"] in ("杀手", "帮凶"):
         lines += ["", "## 开局准备", "你是反派建筑师：开局准备阶段确认密道网即可（无需选定出口）；晚间休息时可经密道前往书房/监控室/地下室之一。"]
     if p["item"] == "窃听器":
-        lines += ["", "## 开局准备", "你持有窃听器：需在开局准备阶段秘密选定一个非卧室房间放置（含会客室——它是唯一能监视会客室的手段）。"]
+        lines += ["", "## 开局准备", "你持有窃听器：需在开局准备阶段秘密选定一个非卧室房间放置（含会客室——它是唯一能听到会客室交谈的手段）。"]
     return "\n".join(lines) + "\n"
 
 
@@ -293,7 +297,7 @@ def write_roster(players: list) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--seed", type=int, default=None, help="随机种子（缺省随机生成）")
+    ap.add_argument("--seed", type=int, default=None, help="随机种子，缺省随机生成")
     ap.add_argument("--players", type=int, default=6, help="局人数（当前仅支持 6）")
     ap.add_argument("--seats", default=None, help="手动指定席位：id 或名字，逗号分隔")
     ap.add_argument("--config", default="players.toml")
@@ -343,7 +347,7 @@ def main() -> None:
     # 主持人视角汇总（含身份，勿外发）
     print(f"seed = {seed}  →  {out}/")
     print("行动顺序：" + " → ".join(state["order"]))
-    print(f"保险箱：{state['safe_item']}（开局公告已公开）")
+    print(f"保险箱：{state['safe_item']}（开局公告已公开）｜桌上：{TABLE_WEAPON}（开局公告已公开）")
     print()
     print(f"{'席位':<10}{'身份':<6}{'职业':<10}{'道具':<10}")
     order_key = {name: i for i, name in enumerate(state["order"])}

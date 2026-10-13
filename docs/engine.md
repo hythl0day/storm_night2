@@ -6,11 +6,11 @@
 
 | 模块 | 职责 |
 | ---- | ---- |
-| `state.py` | 状态装载与扩展字段（`ensure()` 幂等初始化）、房间/黑暗/门锁/监控/台账等共享助手、`load_state`/`save_state` |
+| `state.py` | 状态装载与扩展字段（`ensure()` 幂等初始化，含旧档技能键迁移）、房间/黑暗/门锁/监控/台账等共享助手、`load_state`/`save_state` |
 | `murder.py` | 谋杀判定（§7.6/§7.7）：条件校验、自卫矩阵、延时装置设置与触发、舞台魔术 |
-| `vote.py` | 投票结算、记忆植入、帮凶继任、武装指认、封存道具分配 |
-| `ledger.py` | 开锁/保险箱/赠送/停电/发电机/监控/调查/伪造/移尸/侧写/看破伪装/封闭空间/密道/窃听器 |
-| `core.py` | `Engine` 类：阶段流转（翻日轮转、清晨公告、倒计时与主神判定）、`enter_rooms`/`night_assign` 归宿结算 |
+| `vote.py` | 投票结算、记忆植入、帮凶继任、武装指认（v3.5 侦探垄断）、侦探竞选与佩枪授予、遗嘱落账（v3.5 当天可用/未指定拒收回桌） |
+| `ledger.py` | 开锁/保险箱/赠送/停电/发电机/监控/调查/伪造/移尸/侧写/看破伪装/封闭空间/密道/窃听器/取桌上物品（v3.5） |
+| `core.py` | `Engine` 类：阶段流转（翻日轮转、清晨公告、倒计时与主神判定）、`choose_room_one`/`finish_room_entries`/`enter_rooms` 选房顺序结算（v3.5）、`night_assign` 归宿结算 |
 
 ## 2. 事件契约
 
@@ -22,15 +22,16 @@
  "private": {...}}   # 仅特定玩家可见的信息（供编排器按席位分发）
 ```
 
-非法动作（次数耗尽、条件不满足、阶段不符）被驳回时**不改变任何状态**且驳回事实不公开（对应规则书 §9.7）。
+非法动作（次数耗尽、条件不满足、阶段不符）被驳回时**不改变任何状态**且驳回事实不公开（对应规则书 §9.8）。
 
 ## 3. 公共 API（Engine 方法）
 
 阶段与流转：
-- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序、清晨公告（死亡/职业/监控宣读/封存道具 + 状态行：存活数/无杀倒计时/封存数；存活侦探列名提醒）、第 4 天门锁全开、无杀倒计时与主神胜利判定
+- `advance()` — 推进到下一阶段；阶段末发死亡/未遂公告、翻日轮转行动顺序、清晨公告（死亡/职业/监控宣读/封存道具 + 状态行：存活数/无杀倒计时/封存数 + v3.5 桌上物品变动；存活侦探列名提醒）、第 4 天门锁全开、无杀倒计时与主神胜利判定
 - `engine.winner` — `None` / `"平民"` / `"反派"` / `"主神"`
-- `enter_rooms(assignments, invited=None)` — 自由活动选房结算（合法去向：会客室/书房/监控室/地下室，白天卧室清场；会客室不限容不设监控；容量/自动开锁付费/封闭空间/装置触发）
-- `night_assign(assignments=None, invited=None)` — 晚间归宿（守夜邀请、夜间房间行动、杀手夜袭、按顺序冲突处理；会客室夜间不开放）
+- `choose_room_one(name, room)` / `finish_room_entries()` — v3.5 自由活动选房的逐人交错结算（供编排器）：选择即结算、进入即开锁（自动消耗手段）、满员/无手段/被封闭空间挡住者滞留会客室；`finish` 落结算标记并统一判定延时装置（触发时机不变）
+- `enter_rooms(assignments, invited=None)` — 上述顺序结算的批量便捷入口（测试用；不再整体驳回）；`invited` 仅存档兼容
+- `night_assign(assignments=None, invited=None)` — 晚间归宿（守夜邀请、夜间房间行动、杀手夜袭、会客室夜宿、按顺序冲突处理）
 
 谋杀：
 - `murder(killer, target, weapon=None, savior=None)` — 空手/凶器/环境凶器裁决；`savior` = 同房用急救箱/不明药剂（药用）施救者
@@ -38,33 +39,36 @@
 - `stage_magic(user, target)` — 魔术师【舞台魔术】（占用当阶段谋杀机会）
 
 投票：
-- `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；侦探一票计 1.5（v3.3）；`implant={"user":..,"victim":..,"target":..}` 为记忆植入改票
-- `armed_accusation(accuser, suspect)` — 武装指认（v3：第 2 天首次投票起、未产生出局者的投票后、持武器平民；武器口径 = 枪/刀/棍，不含不明药剂）
-- `elect_detective(ran, stay, votes)` — 侦探竞选裁决（v3.3：仅第 1 天竞选时段一次；平票/无人报名/全员参选则本局无侦探）
-- `bequest(owner, mapping, replies)` / `bequest_badge(owner, to, accept)` — 遗嘱制（v3.2）：封存道具逐件指定归属、接收人可拒收、次日可用；v3.3 起警徽同走遗嘱（拒收/未指定则销毁，不补选）
+- `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；侦探一票计 1.5（v3.3）；`implant={"by":..,"voter":..,"target":..}` 为记忆植入改票
+- `armed_accusation(accuser, suspect)` — 武装指认（v3.5：第 2 天首次投票起、未产生出局者的投票后；仅限平民。有侦探时仅侦探本人且须持武器；无侦探时持武器平民可指认，桌上凶器仍在时平民可临时取用指认——临时取用不入道具栏，指错出局后凶器仍在桌上。武器口径 = 枪/刀/棍，不含不明药剂）
+- `elect_detective(ran, stay, votes)` — 侦探竞选裁决（v3.3：仅第 1 天竞选时段一次；平票/无人报名/全员参选则本局无侦探）；v3.5 当选时桌上凶器归侦探（侦探佩枪，公开公告）
+- `bequest(owner, mapping, replies)` / `bequest_badge(owner, to, accept)` — 遗嘱制（v3.5）：封存道具逐件指定归属、接收人可拒收、**接受当天即可用**；未指定/拒收的道具不销毁，放回会客室桌上；警徽同走遗嘱（拒收/未指定则销毁，不补选；佩枪是普通道具，随遗嘱/缴获正常流转）
 
 房间与道具台账：
 - `unlock(user, room)` / `open_safe(user)` / `transfer(giver, receiver, item, accept=True)` / `use_flashlight(user)`
 - `declare_blackout(user)` / `fix_generator(user)`
-- `place_bug(user, room)`（可放会客室）/ `bug_listen(user)`（v3：晚间休息在卧室收听，×2 次）
-- `seal_room(user, allowed=None)`（建筑师【封闭空间】，不能对会客室）、`set_passage(user)` / `use_passage(user, room)`（v3 密道：仅晚间休息，出口书房/监控室/地下室任选，进入条件=谋杀人数条件，失败不损毁，成功一次后损毁）
+- `take_table_item(user, item)` — v3.5 取桌上物品：仅晚间休息、身处会客室且室内无其他存活者；物品保留剩余次数、当夜即可用；变动记入 `table_events`，次日清晨公告
+- `place_bug(user, room)`（可放会客室——唯一能听到大厅交谈的手段）/ `bug_listen(user)`（v3：晚间休息在卧室收听，×2 次）
+- `seal_room(user, allowed=None)`（建筑师【封闭空间】，不能对会客室；第 4 天门锁全开后仍可用）、`set_passage(user)` / `use_passage(user, room)`（v3 密道：仅晚间休息，出口书房/监控室/地下室任选，进入条件=谋杀人数条件，失败不损毁，成功一次后损毁）
 
 监控与调查：
-- `view_monitoring(user)` — 查看公开监控（篡改后的口径）；v3 起恒为全量返回（不接参数，杜绝格式幻觉）
+- `view_monitoring(user)` — 查看公开监控（篡改后的口径）；v3 起恒为全量返回（不接参数，杜绝格式幻觉）；v3.5 起监控覆盖所有房间门口（含会客室）
 - `tamper_monitoring(user, period, room, op, name, new_name=None)` — 【信号干扰】/「病毒U盘」，`op` ∈ `add`/`remove`/`replace`
 - `investigate(user, case_id, choice)` — 【现场调查】/「鲁米诺试剂」，`choice` ∈ `武器伤痕`/`死亡时间`/`尸体转移`
 - `falsify(user, case_id, kind)` — 伪造类反派技能（`kind` 区分伪造痕迹/销毁证物/伪造证物）
 - `move_body(user, case_id, to_room)` — 【转移尸体】/「裹尸袋」
 - `profile(user, case_id, aspect)` — 【犯罪侧写】，`aspect` ∈ `性别`/`国籍`/`体格`
-- `see_through(user, target, claims)` — 【看破伪装】/「测谎仪」，以**真实**监控记录验证行踪声明
+- `see_through(user, target, claims)` — 【看破伪装】/「测谎仪」，以**真实**监控记录验证行踪声明（v3.5 起所有房间可验证；无效房间名仍为"无法验证"）
 
 ## 4. 状态扩展字段
 
 引擎在 deal.py 产出的 state 上扩展（完整注释见 `state.py` 模块 docstring）：
 
-`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
+`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
 
-玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、分配次日可用、转手不改变次数；deal 可用 `extra_items` 额外配发（杀手的固定万能钥匙、帮凶的固定反派道具），ensure 时并入。
+玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、遗嘱/桌上取用当天即可用（v3.5）、转手不改变次数；deal 可用 `extra_items` 额外配发（杀手的固定万能钥匙、帮凶的固定反派道具），ensure 时并入。
+
+门锁口径（v3.5 rules-6 §3.1/§5）：书房/监控室/地下室的门与保险箱打开后永久开启；卧室被他人开锁后下一阶段复锁；会客室夜锁每天重新落下（第 4 天起全开）；停电期间门锁失效（保险箱除外）。
 
 ## 5. 裁决细则备忘（规则书未明说处的实现裁定）
 
@@ -77,18 +81,19 @@
 7. 武装指认错误出局后，同样复查"只剩 1 平民反派胜"。
 8. 记忆植入直接改写选票，公告只说"票数被更改过"。
 9. 延时装置的"拆除"规则书未定义动作，未实现（需要补规则后再加）。
-10. 夜间归宿由引擎按行动顺序自动结算：失败者回自己卧室且只知"无法进入"；夜袭已满 2 人的卧室记为谋杀失败一次（耗机会+重置倒计时）。
+10. 夜间归宿由引擎按行动顺序自动结算：失败者回自己卧室且只知"无法进入"；夜袭已满 2 人的卧室消耗当夜机会，但不计为谋杀行为、不重置无杀倒计时（v3.2）。
 11. v3 密道：进入条件与谋杀人数条件同（亮房非反派 ≤1、暗房 ≤2），故密道永远不能撞进人堆；出口有人但不超条件时可进入（杀手可借道谋杀，由编排器夜间谋杀窗口提供）。
-12. v3 会客室无监控的裁定：保持位置账本永远对不齐（苟大厅 = 无不在场证明）；窃听器可放会客室，是唯一监视大厅的手段。
+12. v3.5 选房顺序结算：逐人即时结算，被锁房间在进入瞬间由该玩家付手段开门——被锁房间此刻必然为空（门开前无人能进），故不存在"同房者目击开门"的通知对象；靠后者从选房门前的实时简报得知门已开。延时装置触发仍在全员结算后统一判定（"结伴进入可防"的平衡不变）。
+13. v3.5 桌上物品：取用判定为"归宿结算后会客室仅此 1 名存活者"（含夜宿者——夜宿名单次日公开，独宿取物等于自首）；停电不放宽独处要求（会客室永不黑暗）；盗贼道具回桌后反派夜里仍可取回（自取无害）。
 
 ## 6. 测试
 
 ```bash
-python -m unittest discover -s tests -v   # 92 用例（引擎 + 平衡回归 + 编排集成）
+python -m unittest discover -s tests -v   # 134 用例（引擎 + 平衡回归 + 编排集成）
 ```
 
-覆盖：第 1 天禁杀、明暗人数条件、空手四条件与黑暗豁免、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改、锁规则、赠送次数保留、封存次日可用、驳回不改状态（deepcopy 对比）。
+覆盖：第 1 天禁杀、明暗人数条件、空手四条件与黑暗豁免、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改（含会客室监控覆盖）、锁规则、赠送次数保留、遗嘱当天可用与回桌、桌上凶器生命周期（侦探佩枪/夜间取用/停电无痕/临时指认/缴获）、选房顺序结算、驳回不改状态（deepcopy 对比）。
 
 ## 7. 编排器侧职责（已在 orchestrator.py 实现）
 
-自由发言/交谈内容生成与分发、守夜邀请的交互收集、**守夜密谈**（守夜两人睡前一轮）、窃听器收听内容下发（v3 起真实投递房内交谈存档）、监控下发扁平化（今日新增置顶 + 历史平铺，替代嵌套 JSON）、密道夜间使用的收集与执行、侦探竞选（v3.3：声明轮/密封退选/未参选者投票）与遗嘱流程（道具+警徽的指定归属与接收人回应）、动作菜单生成与三通道 JSON 解析。其中两处编排侧裁定：遗嘱不立讨论轮（出局者一次指定、接收人逐一回应）；每次无人出局的投票至多接受一次武装指认。
+自由发言/交谈内容生成与分发、守夜邀请的交互收集、**守夜密谈**（守夜两人与会客室夜宿者（≥2 人）睡前各一轮，v3.5 起；卧室密谈停电取消，会客室夜谈照常）、窃听器收听内容下发（v3 起真实投递房内交谈存档）、监控下发扁平化（今日新增置顶 + 历史平铺，替代嵌套 JSON）、密道夜间使用的收集与执行、侦探竞选（v3.3：声明轮/密封退选/未参选者投票）与遗嘱流程（道具+警徽的指定归属与接收人回应）、取桌上物品意图的收集与执行（v3.5）、选房简报的实时占用/门锁信息（v3.5 顺序结算配套）、动作菜单生成与三通道 JSON 解析。其中两处编排侧裁定：遗嘱不立讨论轮（出局者一次指定、接收人逐一回应）；每次无人出局的投票至多接受一次武装指认。

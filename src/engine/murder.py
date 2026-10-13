@@ -32,7 +32,7 @@ from .state import (
     skill_left,
 )
 
-WEAPON_DEFENSE = {"刀": {"消音手枪", "棒球棍"}, "棒球棍": {"消音手枪", "刀"}}
+WEAPON_DEFENSE = {"刀": {"左轮手枪", "棒球棍"}, "棒球棍": {"左轮手枪", "刀"}}
 UNDEFENDABLE = ("延时装置", "舞台魔术")
 
 

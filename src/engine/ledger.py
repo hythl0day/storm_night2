@@ -67,9 +67,10 @@ def _roommates(state: dict, room: str, exclude: str) -> list[str]:
 
 
 def unlock(state: dict, user: str, room: str) -> dict:
-    """打开一扇上锁的房门（手段：【破门而入】/「万能钥匙」/「螺丝起子」）。
+    """打开一扇上锁的房门（手段：职业技能【暴力破解】/「万能钥匙」/「螺丝起子」）。
 
-    门开后永久开启；例外：卧室被他人开锁后下一时间阶段恢复上锁（登记 bedroom_relock）。
+    v3.5 门锁口径：功能房（书房/监控室/地下室）的门与保险箱打开后永久开启；
+    卧室被他人开锁后下一时间阶段恢复上锁（登记 bedroom_relock）；会客室夜锁每天重新落下。
     停电期间所有门锁失效，无需也无法开锁。
     """
     s = state
@@ -183,7 +184,7 @@ def use_flashlight(state: dict, user: str) -> dict:
 
 
 def declare_blackout(state: dict, user: str) -> dict:
-    """拉电闸制造过载（v3.2）：反派消耗一次任一开锁手段（【破门而入】/「万能钥匙」/「螺丝起子」）声明，当天自由活动停电。
+    """拉电闸制造过载（v3.2）：反派消耗一次任一开锁手段（职业技能【暴力破解】/「万能钥匙」/「螺丝起子」）声明，当天自由活动停电。
 
     声明窗口：公共发言/投票阶段，或自由活动阶段内选房结算之前（进入房间后才向众人公布）。
     停电期间：会客室外所有房间黑暗（含夜间卧室）、所有门锁失效（保险箱除外）、监控不记录；
@@ -205,7 +206,7 @@ def declare_blackout(state: dict, user: str) -> dict:
         return reject("declare_blackout", "只有反派能发动停电")
     means = unlock_means(s, user)
     if means is None:
-        return reject("declare_blackout", "拉电闸需要消耗一次【暴力破解】（【破门而入】/「万能钥匙」/「螺丝起子」任一）")
+        return reject("declare_blackout", "拉电闸需要消耗一次【暴力破解】（职业技能/「万能钥匙」/「螺丝起子」任一）")
     consume_unlock_means(s, user, means)
     s["power_out"] = True
     if s["phase"]["day"] not in s["blackout_days"]:
@@ -429,7 +430,7 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     claims 由使用者从目标发言中提取（须引用对方实际声称过的内容）：
     {"profession", "item", "skill", "visited_rooms": [...], "denied_rooms": [...]}。
     每项裁决为三态：属实 / 谎言 / 无法验证（无效名目、对方未作此类声明、或房间无监控覆盖），
-    "无法验证"不计入谎言判定。行踪以真实监控记录（monitoring_true）验证；会客室不设监控。
+    "无法验证"不计入谎言判定。行踪以真实监控记录（monitoring_true）验证（v3.5 起监控覆盖所有房间门口，含会客室）。
     """
     s = state
     day = s["phase"]["day"]
@@ -452,7 +453,7 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
         return any(target in rooms.get(room, []) for rooms in s["monitoring_true"].values())
 
     def monitorable(room: str) -> bool:
-        return room in PUBLIC_ROOMS or is_bedroom(room)
+        return room in FREE_ROOMS or is_bedroom(room)  # v3.5：监控覆盖所有房间门口（含会客室）
 
     verdicts: dict[str, str] = {}
     if claims.get("profession"):
@@ -586,7 +587,7 @@ def use_passage(state: dict, user: str, room: str) -> dict:
 
 
 def place_bug(state: dict, user: str, room: str) -> dict:
-    """「窃听器」：开局前秘密放置于一个非卧室房间（含会客室——唯一能监视会客室的手段）。"""
+    """「窃听器」：开局前秘密放置于一个非卧室房间（含会客室——唯一能听到会客室交谈的手段；监控只记进入）。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
@@ -626,3 +627,31 @@ def bug_listen(state: dict, user: str) -> dict:
         "private": {user: f"你收听了{s['bug_room']}当天自由活动时段的全部交谈（内容由编排器下发）"},
         "room": s["bug_room"],
     }
+
+
+def take_table_item(state: dict, user: str, item: str) -> dict:
+    """取桌上物品（v3.5 rules-6 §5/§7.7）：晚间休息、身处会客室且室内无其他存活者时，取走一件桌上物品。
+
+    白天（含自由活动滞留会客室）不可取——开放大厅众目睽睽；取用行为无人看见，
+    但桌上物品的变动记入 table_events，次日清晨公告。桌上物品保留各自剩余次数。
+    """
+    s = state
+    p = get_player(s, user)
+    if p is None or not p["alive"]:
+        return reject("take_table_item", "玩家不存在或已死亡")
+    if s["phase"]["stage"] != "晚间休息":
+        return reject("take_table_item", "只有夜间才能取桌上物品（白天众目睽睽）")
+    if s["positions"].get(user) != HALL:
+        return reject("take_table_item", "你不在会客室")
+    others = [q["name"] for q in s["players"]
+              if q["alive"] and q["name"] != user and s["positions"].get(q["name"]) == HALL]
+    if others:
+        return reject("take_table_item", f"会客室里还有其他人（{'、'.join(others)}），无法悄悄取用")
+    entry = next((e for e in s["table_items"] if e["name"] == item), None)
+    if entry is None:
+        return reject("take_table_item", "桌上没有这件物品")
+    s["table_items"].remove(entry)
+    grant_item(p, entry["name"], entry["uses_left"], s["phase"]["day"])
+    s["table_events"].append(f"会客室桌上的「{entry['name']}」不见了")
+    return {"ok": True, "type": "take_table_item", "public": None,
+            "private": {user: f"你悄悄取走了会客室桌上的「{entry['name']}」（剩余 {entry['uses_left']} 次；明早众人会发现它不见了）"}}

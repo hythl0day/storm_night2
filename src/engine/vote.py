@@ -2,11 +2,14 @@
 
 - 第 2 天起每天投票；得票超过存活人数一半者出局；平票或无人过半则无人出局。
 - v3.3：侦探（第 1 天竞选产生）一票计 1.5 票；侦探出局时警徽按遗嘱传承或销毁，不补选。
+- v3.5：侦探当选时获得桌上凶器「左轮手枪」（侦探佩枪）；有侦探时仅侦探可武装指认。
 - 出局者公布身份与职业；出局者是杀手时帮凶私下继任杀手。
 - 投票后存活平民只剩 1 人 → 反派立即获胜；反派全部出局 → 平民获胜。
 - 【记忆植入】：反派心理医生强迫一名玩家改投指定对象；公告只说"票数被更改过"。
-- 武装指认（第 2 天首次投票起）：持武器平民在一次未产生出局者的投票后指认杀手；
+- 武装指认（第 2 天首次投票起）：未产生出局者的投票后——有侦探时仅侦探（须持有武器）；
+  无侦探时持武器平民可指认，桌上凶器仍在时平民也可临时取用指认。
   正确→平民立即获胜；指认为帮凶/平民→指认者出局（揭示身份职业，并复査平民人数）。
+- v3.5 遗嘱制：接受的道具当天即可用；未指定/被拒收的道具不销毁，放回会客室桌上。
 """
 from __future__ import annotations
 
@@ -97,7 +100,7 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
             heir = next((p for p in s["players"] if p["alive"] and p["identity"] == "帮凶"), None)
             if heir is not None:
                 heir["identity"] = "杀手"
-                private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）；你从遗嘱中接受的道具当天即可用"
+                private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）"
     s["last_vote"] = {"day": day, "out": out}
     check_winner(s)
     if not s["winner"] and _civilian_count(s) <= 1:
@@ -111,7 +114,14 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
 
 
 def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
-    """武装指认（v3：第 2 天首次投票起）：持武器平民在一次未产生出局者的投票后指认杀手。"""
+    """武装指认（rules-6 §7.3）：第 2 天首次投票起，一次未产生出局者的投票后。
+
+    资格（v3.5）：
+    - 仅限平民；有侦探时仅侦探本人（且须持有武器——枪/刀/棍）；
+    - 无侦探时，持有武器的平民可指认；桌上仍有凶器（枪/刀/棍）时任何平民可临时取用指认
+      （临时取用不进入道具栏，指认错误出局后凶器仍在桌上）。
+    指认正确 → 平民立即获胜；指认为帮凶/平民 → 指认者出局（揭示身份职业，并复查平民人数）。
+    """
     s = state
     if s["winner"]:
         return reject("armed_accusation", "游戏已结束")
@@ -124,18 +134,31 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
     ap = get_player(s, accuser)
     if ap is None or not ap["alive"] or ap["identity"] != "平民":
         return reject("armed_accusation", "只有存活平民能武装指认")
-    if not (held_item_names(ap, day) & set(ARMED_WEAPONS)):
-        return reject("armed_accusation", "指认者必须持有武器（消音手枪/刀/棒球棍）")
+    det = s.get("detective")
+    temp_grab = False
+    if det is not None:
+        if accuser != det:
+            return reject("armed_accusation", "有侦探时，仅侦探本人可武装指认")
+        if not (held_item_names(ap, day) & set(ARMED_WEAPONS)):
+            return reject("armed_accusation", "侦探须持有武器（左轮手枪/刀/棒球棍）才能武装指认")
+    else:
+        if held_item_names(ap, day) & set(ARMED_WEAPONS):
+            pass
+        elif any(e["name"] in ARMED_WEAPONS for e in s["table_items"]):
+            temp_grab = True  # 临时取用桌上凶器
+        else:
+            return reject("armed_accusation", "指认需要持有武器（左轮手枪/刀/棒球棍），或桌上凶器仍在会客室桌上")
     sp = get_player(s, suspect)
     if sp is None or not sp["alive"]:
         return reject("armed_accusation", "指认对象必须是存活玩家")
+    grab_note = f"{accuser} 拿起会客室桌上的凶器，" if temp_grab else ""
     if sp["identity"] == "杀手":
         s["winner"] = "平民"
         s["win_reason"] = "武装指认杀手成功"
         return {
             "ok": True,
             "type": "armed_accusation",
-            "public": {"announcements": [f"{accuser} 武装指认 {suspect} 为杀手——指认正确，平民获胜"]},
+            "public": {"announcements": [f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认正确，平民获胜"]},
             "private": {},
             "winner": s["winner"],
             "win_reason": s["win_reason"],
@@ -145,7 +168,8 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
         s["profession_public"].append(accuser)
     _seal_player_items(s, ap)
     public = {"announcements": [
-        f"{accuser} 武装指认 {suspect} 为杀手——指认错误，{accuser} 出局。身份：{ap['identity']}；职业：{ap['profession']}"
+        f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误，{accuser} 出局。身份：{ap['identity']}；职业：{ap['profession']}"
+        + ("（桌上凶器仍在会客室桌上）" if temp_grab else "")
     ]}
     check_winner(s)
     if not s["winner"] and _civilian_count(s) <= 1:
@@ -159,19 +183,15 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
 
 
 def bequest(state: dict, owner: str, mapping: dict, replies: dict) -> dict:
-    """遗嘱落账（v3.2 rules-6 §7.3）：出局者/死者的封存道具由本人逐件指定归属，接收人可拒绝。
+    """遗嘱落账（rules-6 §7.3，v3.5）：出局者/死者的封存道具由本人逐件指定归属，接收人可拒绝。
 
-    mapping: {道具名: 接收人名}（本人指定；未指定的销毁）。
-    replies: {接收人名: {道具名: bool}}（拒绝或无回应 → 销毁）。
-    道具次日起可用——例外（v3.4）：杀手被投票出局时，继任帮凶从该遗嘱中接受的道具当天即可用。
+    mapping: {道具名: 接收人名}（本人指定）；replies: {接收人名: {道具名: bool}}（拒绝或无回应 → 见下）。
+    接受的道具**当天即可用**；未指定归属或被拒收的道具**不销毁**，放回会客室桌上
+    （桌上物品夜间可被独处会客室者取走，见 ledger.take_table_item）。
     公告公开道具名、来源与去向（信任信号即推理素材）。
     """
     s = state
     day = s["phase"]["day"]
-    op = get_player(s, owner)
-    heir = None
-    if op is not None and op["identity"] == "杀手":
-        heir = next((p for p in s["players"] if p["alive"] and p["identity"] == "杀手"), None)
     owned = [e for e in s["sealed_items"] if e.get("from") == owner]
     announcements: list[str] = []
     for e in list(owned):
@@ -180,13 +200,14 @@ def bequest(state: dict, owner: str, mapping: dict, replies: dict) -> dict:
         tp = get_player(s, to) if to else None
         s["sealed_items"].remove(e)
         if tp is not None and tp["alive"] and bool(replies.get(to, {}).get(name)):
-            immediate = heir is not None and tp["name"] == heir["name"]
-            grant_item(tp, name, e["uses_left"], day if immediate else day + 1)
-            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）→ {to}（{'当天即可用' if immediate else '次日起可用'}）")
-        elif tp is not None and tp["alive"]:
-            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）被 {to} 拒收，销毁")
+            grant_item(tp, name, e["uses_left"], day)
+            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）→ {to}（当天即可用）")
         else:
-            announcements.append(f"遗嘱：「{name}」（{owner} 遗留）未指定归属，销毁")
+            s["table_items"].append({"name": name, "uses_left": e["uses_left"]})
+            if tp is not None and tp["alive"]:
+                announcements.append(f"遗嘱：「{name}」（{owner} 遗留）被 {to} 拒收，放回会客室桌上")
+            else:
+                announcements.append(f"遗嘱：「{name}」（{owner} 遗留）未指定归属，放回会客室桌上")
     return {"ok": True, "type": "bequest", "public": {"announcements": announcements}, "private": {}}
 
 
@@ -196,6 +217,7 @@ def elect_detective(state: dict, ran: list[str], stay: list[str], votes: dict[st
     ran: 声明参选者（按行动顺序）；stay: 密封退选后仍留任者（⊆ ran）；
     votes: {投票人: 留任候选人或 None(弃权)}——自始未参选的存活者才有投票权（退选者无）。
     无人报名 / 全员退选 / 全员参选（无合格投票人）/ 平票 → 本局不设侦探，且不补选。
+    v3.5：侦探当选时获得桌上凶器「左轮手枪」（侦探佩枪，公开公告）。
     """
     s = state
     if s["winner"]:
@@ -212,6 +234,16 @@ def elect_detective(state: dict, ran: list[str], stay: list[str], votes: dict[st
     def done(announcements: list[str]) -> dict:
         return {"ok": True, "type": "elect_detective", "public": {"announcements": announcements}, "private": {}}
 
+    def grant_gun(name: str) -> str:
+        """侦探佩枪：桌上凶器归侦探持有（v3.5）。"""
+        gun = next((e for e in s["table_items"] if e["name"] in ARMED_WEAPONS), None)
+        if gun is None:
+            return ""
+        s["table_items"].remove(gun)
+        dp = get_player(s, name)
+        grant_item(dp, gun["name"], gun["uses_left"], s["phase"]["day"])
+        return f"；侦探佩枪：桌上凶器「{gun['name']}」归 {name} 持有"
+
     if not ran:
         return done(["侦探竞选：无人报名参选，本局不设侦探"])
     if not stay:
@@ -219,7 +251,8 @@ def elect_detective(state: dict, ran: list[str], stay: list[str], votes: dict[st
     if len(stay) == 1:
         s["detective"] = stay[0]
         return done([f"侦探竞选：{stay[0]} 为唯一候选人，直接当选侦探"
-                     "（公共发言末置发言，投票计 1.5 票；出局时警徽按遗嘱传承）"])
+                     "（公共发言末置发言，投票计 1.5 票，垄断武装指认；出局时警徽按遗嘱传承）"
+                     + grant_gun(stay[0])])
     voters = [n for n in alive if n not in ran]
     if not voters:
         return done(["侦探竞选：全员参选，无人持有投票权，本局不设侦探"])
@@ -236,7 +269,8 @@ def elect_detective(state: dict, ran: list[str], stay: list[str], votes: dict[st
     s["detective"] = cands[0]
     detail = "、".join(f"{t} {c}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
     return done([f"侦探竞选：{cands[0]} 当选侦探（{detail}）"
-                 "（公共发言末置发言，投票计 1.5 票；出局时警徽按遗嘱传承）"])
+                 "（公共发言末置发言，投票计 1.5 票，垄断武装指认；出局时警徽按遗嘱传承）"
+                 + grant_gun(cands[0])])
 
 
 def bequest_badge(state: dict, owner: str, to: str | None, accept: bool) -> dict:

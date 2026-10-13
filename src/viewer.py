@@ -30,6 +30,8 @@ def render_status(game_dir: Path) -> str:
         head += f"｜已结束：{s['winner']}（{s.get('win_reason', '')}）"
     safe = f"保险箱：「{s.get('safe_item', '?')}」" + ("（已打开）" if s.get("safe_open") else "（未打开）")
     safe += f"｜侦探：{s.get('detective') or '无'}"
+    table = "、".join(f"「{e['name']}」×{e['uses_left']}" for e in s.get("table_items", [])) or "（空）"
+    safe += f"｜桌上：{table}"
     if s.get("power_out"):
         safe += "｜停电中"
     lines = [head, safe]
