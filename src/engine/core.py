@@ -403,7 +403,8 @@ class Engine:
 
         assignments 缺省回自己卧室。规则要点：
         - 每个夜间房间（书房/监控室/地下室）只能进入 1 人，靠后者失败；
-        - 卧室满 2 人后他人无法进入；被邀请者无法进入杀手已进入的卧室；
+        - 卧室满 2 人后他人无法进入（不按房内身份拦截——v3.6 起杀手当房主的卧室应邀可入，
+          守夜即与虎谋皮：密谈照常，深夜谋杀照 §7.6 判定，尸体在杀手卧室形成自曝制衡）；
         - 杀手夜袭他人卧室需开锁手段（停电期间门锁失效除外）；若卧室已有 2 人：停电黑暗中
           杀手可潜入并袭击其一；否则无法进入——当夜谋杀机会消耗，但不计为谋杀行为（不重置无杀倒计时）。
         - 停电期间所有门锁失效（door_locked 统一裁定）。
@@ -432,14 +433,9 @@ class Engine:
             elif is_bedroom(want):
                 owner = bedroom_owner(want)
                 occupants = [n for n, r in positions.items() if r == want]
-                killer_inside = any(get_player(s, n)["identity"] == "杀手" for n in occupants)
                 is_invited = invited.get(name) == owner and positions.get(owner) == want
                 is_night_raid = p["identity"] == "杀手" and not s["stage_murder_used"] and not is_invited
-                if killer_inside and p["identity"] != "杀手":
-                    note = "无法进入（不知原因）"
-                    killers = "、".join(n for n in occupants if get_player(s, n)["identity"] == "杀手")
-                    host.append(f"{name} 未能进入{want}（真实原因：杀手 {killers} 已在房内）")
-                elif len(occupants) >= BEDROOM_CAPACITY:
+                if len(occupants) >= BEDROOM_CAPACITY:
                     if is_night_raid and is_dark(s, want):
                         # 停电黑暗中卧室满员也可潜入（v3.2 破守夜）；谋杀条件在深夜判定（黑暗 ≤2）
                         placed = want

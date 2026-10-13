@@ -897,20 +897,36 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertEqual(ev["positions"]["D"], "D的卧室")
         self.assertIn("无法进入", ev["private"]["D"])
 
-    def test_killer_inside_blocks_invitee(self):
+    def test_invitee_enters_killer_hosted_bedroom(self):
+        """v3.6：应邀可进入杀手当房主的卧室——只按 2 人上限拦截，不按房内身份拦截。
+        守夜由此成为"与虎谋皮"通道：密谈照常，深夜谋杀照 §7.6 判定；尸体在杀手卧室形成自曝制衡。
+        （v3.5 二跑索尔案：杀手邀平民守夜被旧规则静默拒之门外，双方与 host 均不知原因。）"""
         order = ["F", "A", "B", "C", "D", "E"]
         players = default_players()
-        players[0]["items"] = [{"name": "刀", "uses_left": 1, "available_day": 1}]
         eng = Engine(mk_state(players=players, order=order))
         goto(eng, "晚间休息", day=2)
         self.assertEqual(eng.state["order"], ["A", "B", "C", "D", "E", "F"])
-        eng.state["players"][0]["items"].append({"name": "万能钥匙", "uses_left": 2, "available_day": 1})
+        # A（杀手）当房主守在自己卧室，邀请顺序在后的 D 来守夜
+        ev = eng.night_assign({"D": "A的卧室"}, invited={"D": "A"})
+        self.assertEqual(ev["positions"]["A"], "A的卧室")
+        self.assertEqual(ev["positions"]["D"], "A的卧室")  # 旧规则下 D 被静默拒之门外
+        self.assertIn("接受了你的守夜邀请", ev["private"].get("A", ""))  # 邀请成立对主人可见
+        self.assertFalse(ev.get("host"))  # 无拦截即无 host 备注
+
+    def test_invitee_blocked_by_full_bedroom(self):
+        """应邀者到达时卧室已满 2 人（杀手先夜袭潜入 + 房主在内）→ 按容量拦截（不再按杀手身份）；
+        玩家仅知"不知原因"，host 备注给出满员实情。"""
+        order = ["F", "A", "B", "C", "D", "E"]
+        players = default_players()
+        players[0]["items"] = [{"name": "刀", "uses_left": 1, "available_day": 1},
+                               {"name": "万能钥匙", "uses_left": 2, "available_day": 1}]
+        eng = Engine(mk_state(players=players, order=order))
+        goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"A": "C的卧室", "D": "C的卧室"}, invited={"D": "C"})
-        self.assertEqual(ev["positions"]["A"], "C的卧室")
-        self.assertEqual(ev["positions"]["D"], "D的卧室")
-        # host 备注给出真实原因（对玩家仍是"不知原因"）——v3.5 二跑复盘：host 档案不能自己也不知道
+        self.assertEqual(ev["positions"]["A"], "C的卧室")  # 杀手先夜袭进入
+        self.assertEqual(ev["positions"]["D"], "D的卧室")  # 房内已 2 人，应邀者被容量拦下
         self.assertIn("无法进入（不知原因）", ev["private"]["D"])
-        self.assertTrue(any("杀手 A 已在房内" in n for n in ev.get("host", [])), ev.get("host"))
+        self.assertTrue(any("满员" in n for n in ev.get("host", [])), ev.get("host"))
 
 
 class TestMorningReportAndInvestigation(unittest.TestCase):
