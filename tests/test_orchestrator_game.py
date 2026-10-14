@@ -757,5 +757,108 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
         self.assertFalse(next(p for p in s["players"] if p["name"] == "F")["alive"])
 
 
+class TestSpeechRouting(MockGameTestBase):
+    """v3.8 附言公开：交换/受赠回应/竞选退选/竞选投票/武装指认/死者字条；私密环节简报明示不发言。"""
+
+    def test_election_remarks_published(self):
+        """密封退选与竞选投票的附言随结果/开票一齐公开。"""
+        d = write_game_dir(self.root, default_players())
+        self.run_game(d, killer_script=False)  # C/D 参选并留任，A/B/E/F 投 C
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("（退选揭晓）", log)
+        self.assertIn("（竞选投票）", log)
+
+    def test_exchange_speech_public(self):
+        """交换附言与受赠回应公开可见（此前 speech 被静默丢弃）。"""
+        d = write_game_dir(self.root / "g7", default_players())
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            title = messages[-1]["content"].splitlines()[0]
+            if "交换环节" in title and "赠送要约" not in title and "第1天" in title and name == "C":
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech="D，这个急救箱给你防身。", notes="x",
+                                                  actions=[{"type": "gift", "to": "D", "item": "急救箱"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "赠送要约" in title and name == "D":
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech="谢了，我会记住的。", notes="x",
+                                                  actions=[{"type": "accept"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        self.run_game_with(d, chat_fn)
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("**C**（交换环节）：D，这个急救箱给你防身。", log)
+        self.assertIn("**D**（回应 C）：谢了，我会记住的。", log)
+        self.assertIn("把一件道具交给了 D", log)  # 公开口径仍不含道具名
+
+    def test_armed_accusation_declaration_public(self):
+        """武装指认宣言公开，且先于指认结果上屏。"""
+        players = default_players()
+        players[3] = P("D", "平民", "运动员", "棒球棍", gender="男", physique=3)  # 持武器平民
+        d = write_game_dir(self.root / "g8", players)
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            title = messages[-1]["content"].splitlines()[0]
+            if "竞选声明" in title:  # 全员不参选 → 本局不设侦探（无垄断，持械平民可指认）
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech="我不参选。", notes="x",
+                                                  actions=[{"type": "declare", "run": False}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "武装指认" in title and name == "D":
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech="我看穿你了，A——你就是杀手。", notes="x",
+                                                  actions=[{"type": "armed_accuse", "target": "A"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fn)
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("**D**（武装指认宣言）：我看穿你了，A——你就是杀手。", log)
+        self.assertEqual(orch.state["winner"], "平民")  # 指认正确（A 是杀手）→ 平民立即获胜
+        self.assertLess(log.index("武装指认宣言"), log.index("指认正确"))  # 宣言先于裁决结果公开
+
+    def test_bequest_note_speech_public(self):
+        """死者字条附言公开（被谋杀者的留言不再是黑洞）。"""
+        d = write_game_dir(self.root / "g9", default_players())
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            title = messages[-1]["content"].splitlines()[0]
+            acts = None
+            speech = None
+            if "选房" in title and "第2天" in title and name in ("A", "E", "F"):
+                acts = [{"type": "choose_room", "room": "地下室"}]  # 黑暗房 ≤2 非反派可杀；F 目击→不缴获→封存
+            elif "房间行动" in title and "第2天" in title and name == "A":
+                acts = [{"type": "murder", "target": "E", "weapon": "刀"}]
+            elif "死者字条" in title and name == "E":
+                speech = "黑暗里我听见电线滋滋作响……万能钥匙给 D，替我查下去。"
+                acts = [{"type": "bequeath", "mapping": {"万能钥匙": "D"}}]
+            if acts is None and speech is None:
+                return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+            return ChatResult(player.name, ok=True,
+                              content=payload(speech=speech or "", notes="x", actions=acts or []),
+                              latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+
+        self.run_game_with(d, chat_fn)
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("**E 的死者字条**：黑暗里我听见电线滋滋作响", log)
+        self.assertIn("万能钥匙", log)  # 遗嘱归属公开
+
+    def test_secret_phases_told_not_to_speak(self):
+        """纯私密环节简报明示不发言（投票/归宿），避免 AI 对着虚空白写。"""
+        d = write_game_dir(self.root / "g10", default_players())
+        self.run_game(d, killer_script=False)
+        vote_briefing = (d / "inbox" / "A" / "day2-投票.md").read_text(encoding="utf-8")
+        self.assertIn("本环节不发言", vote_briefing)
+        night_briefing = (d / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("本环节不发言", night_briefing)
+
+
 if __name__ == "__main__":
     unittest.main()

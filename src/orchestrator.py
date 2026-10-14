@@ -89,6 +89,9 @@ PERSONAS_PATH = Path(__file__).resolve().parent.parent / "personas.toml"
 
 ROOM_CHOICES = FREE_ROOMS  # 选房菜单：会客室/书房/监控室/地下室（v3：白天卧室清场）
 
+# 纯私密动作环节的固定提示（v3.8）：speech 在这些环节不会被任何人看到，明示避免 AI 白写
+NO_SPEECH_NOTE = "本环节不发言——speech 返回空字符串（你的话不会被任何人看到；内心独白照常写 inner）"
+
 
 def _fmt_votes(x) -> str:
     """票数显示：整票不带小数点，侦探加权的半票保留 .5。"""
@@ -790,7 +793,7 @@ class Orchestrator:
             if not menu:
                 continue
             briefing = self.build_briefing(p, "开局准备 · 秘密布置", menu,
-                                           "开局前的秘密布置环节。这是你的开局义务，现在声明。")
+                                           f"开局前的秘密布置环节。这是你的开局义务，现在声明。\n{NO_SPEECH_NOTE}")
             payload = self.call_ai(p, "开局准备", briefing)
             for act in payload["actions"]:
                 if act.get("type") == "set_passage":
@@ -814,7 +817,7 @@ class Orchestrator:
         """
         day = self.state["phase"]["day"]
         w = self.wip(f"{day}:公共发言:竞选", declared=[], ran=[], decided={}, withdrew=False,
-                     stay=[], voted=[], votes={}, resolved=False)
+                     stay=[], voted=[], votes={}, resolved=False, speeches={}, vote_speeches={})
         alive_names = [p["name"] for p in self.alive()]
         for name in self.state["order"]:
             p = self.player(name)
@@ -840,6 +843,7 @@ class Orchestrator:
             self.check_stop()
         if len(w["ran"]) >= 2 and not w["withdrew"]:
             decided: dict[str, bool] = dict(w["decided"])
+            speeches: dict[str, str] = dict(w["speeches"])
             for name in w["ran"]:
                 if name in decided:
                     continue
@@ -848,11 +852,15 @@ class Orchestrator:
                         '- 退选（退选者同样无投票权）：{"type": "withdraw"}']
                 briefing = self.build_briefing(
                     p, f"第{day}天 · 侦探竞选退选", menu,
-                    f"参选者：{'、'.join(w['ran'])}。留任/退选决定在所有人作答后一齐公布。"
-                    "若最终留任多人，由未参选者投票；平票或全员退选则本局不设侦探。")
+                    f"参选者：{'、'.join(w['ran'])}。留任/退选决定在所有人作答后一齐公布——你可以在 speech 里附一句理由，"
+                    "将随结果一齐公开。若最终留任多人，由未参选者投票；平票或全员退选则本局不设侦探。")
                 payload = self.call_ai(p, "竞选退选", briefing)
+                sp = str(payload.get("speech") or "").strip()
+                if sp:
+                    speeches[name] = sp
                 decided[name] = not any(a.get("type") == "withdraw" for a in payload["actions"])
                 w["decided"] = dict(decided)
+                w["speeches"] = dict(speeches)
                 self.save_state()
                 self.check_stop()
             w["stay"] = [n for n in w["ran"] if decided.get(n, True)]
@@ -860,11 +868,15 @@ class Orchestrator:
             dropped = [n for n in w["ran"] if n not in w["stay"]]
             self.log_line(f"退选结果：{('、'.join(dropped) + ' 退选；') if dropped else '无人退选；'}"
                           f"留任候选人：{'、'.join(w['stay']) or '无'}")
+            for n in w["ran"]:  # 密封的是决定而非内容：附言随结果一齐公开（v3.8）
+                if speeches.get(n):
+                    self.log_line(f"**{n}**（退选揭晓）：{speeches[n]}")
             self.save_state()
         stay = list(w["stay"]) if w["withdrew"] else list(w["ran"])
         voters = [n for n in alive_names if n not in w["ran"]]
         if len(stay) >= 2 and voters and not w["resolved"]:
             votes: dict[str, str | None] = dict(w["votes"])
+            vote_speeches: dict[str, str] = dict(w["vote_speeches"])
             for name in self.state["order"]:
                 if name not in voters or name in w["voted"]:
                     continue
@@ -873,13 +885,18 @@ class Orchestrator:
                         '- 弃权：{"type": "abstain"}']
                 briefing = self.build_briefing(
                     p, f"第{day}天 · 侦探竞选投票", menu,
-                    f"留任候选人：{'、'.join(stay)}。未参选者投票，简单多数当选；平票则本局不设侦探。")
+                    f"留任候选人：{'、'.join(stay)}。未参选者投票，简单多数当选；平票则本局不设侦探。"
+                    "票型不公开，但你可以在 speech 里附一句理由，开票后公开。")
                 payload = self.call_ai(p, "竞选投票", briefing)
+                sp = str(payload.get("speech") or "").strip()
+                if sp:
+                    vote_speeches[name] = sp
                 votes[name] = None
                 for act in payload["actions"]:
                     if act.get("type") == "elect" and str(act.get("target", "")) in stay:
                         votes[name] = str(act["target"])
                 w["votes"] = dict(votes)
+                w["vote_speeches"] = dict(vote_speeches)
                 w["voted"].append(name)
                 self.save_state()
                 self.check_stop()
@@ -894,6 +911,9 @@ class Orchestrator:
                 self.route(ev)
             else:
                 self.log_line(f"侦探竞选未能结算：{ev.get('error', '')}（按本局不设侦探继续）")
+            for n in self.state["order"]:  # 竞选投票附言随开票公开（v3.8）
+                if w["vote_speeches"].get(n):
+                    self.log_line(f"**{n}**（竞选投票）：{w['vote_speeches'][n]}")
             w["resolved"] = True
             self.save_state()
 
@@ -943,8 +963,12 @@ class Orchestrator:
                     "- 不赠送则 actions 为 []"]
             briefing = self.build_briefing(
                 p, f"第{day}天 · 交换环节", menu,
-                f"你当前持有道具：{'、'.join(held) if held else '无'}。可向一名玩家发起赠送（对方可拒绝）。")
+                f"你当前持有道具：{'、'.join(held) if held else '无'}。可向一名玩家发起赠送（对方可拒绝）。"
+                "赠送与否都可以在 speech 里附一句话——公开，全员可闻。")
             payload = self.call_ai(p, "交换环节", briefing)
+            speech = str(payload.get("speech") or "").strip()
+            if speech:
+                self.log_line(f"**{name}**（交换环节）：{speech}")  # 交换附言公开（v3.8）
             for act in payload["actions"]:
                 if act.get("type") != "gift":
                     self.dispatch(p, act)
@@ -956,8 +980,11 @@ class Orchestrator:
                 ask = self.build_briefing(
                     target, f"第{day}天 · 交换环节（赠送要约）",
                     ['- 接受：{"type": "accept"}', '- 拒绝：{"type": "decline"}'],
-                    f"{name} 想把「{item}」赠送给你。是否接受？")
+                    f"{name} 想把「{item}」赠送给你。是否接受？可在 speech 里附一句回应——公开，全员可闻。")
                 reply = self.call_ai(target, f"交换环节-回复{name}", ask)
+                r_speech = str(reply.get("speech") or "").strip()
+                if r_speech:
+                    self.log_line(f"**{target['name']}**（回应 {name}）：{r_speech}")  # 受赠回应公开（v3.8）
                 accept = any(a.get("type") == "accept" for a in reply["actions"])
                 ev = self.eng.transfer(name, target["name"], item, accept)
                 self.script_line(f"- {name} 向 {target['name']} 赠送「{item}」→ "
@@ -1001,7 +1028,8 @@ class Orchestrator:
             if unlock_means(s, name) is None:
                 continue
             menu = ['- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——职业技能/「万能钥匙」/「螺丝起子」任一；停电中门锁失效、监控缺失、除会客室外全部黑暗；进入房间后才向众人公布）：{"type": "declare_blackout"}',
-                    '- 不声明则 actions 为 []（本环节只有这一项决定，speech 可留空）']
+                    '- 不声明则 actions 为 []（本环节只有这一项决定，speech 可留空）',
+                    f'- {NO_SPEECH_NOTE}']
             briefing = self.build_briefing(p, f"第{day}天 · 自由活动（停电声明）", menu,
                                            "自由活动即将开始。你可以在进入任何房间之前秘密拉电闸。")
             payload = self.call_ai(p, "自由活动-停电声明", briefing)
@@ -1029,7 +1057,8 @@ class Orchestrator:
         rooms_menu = (
             [f'- 选择房间（必选一项）：{{"type": "choose_room", "room": "房间名"}}；合法去向只有四种：{"、".join(ROOM_CHOICES)}',
              '- 注意：白天卧室一律清场不开放（含你自己的）。满员、上锁而无手段、被封闭空间挡住或选择无效者一律滞留会客室',
-             '- 邀请一名顺序在你之后的玩家同入（对方可改选）：{"type": "invite", "target": "玩家名"}']
+             '- 邀请一名顺序在你之后的玩家同入（对方可改选）：{"type": "invite", "target": "玩家名"}',
+             f'- {NO_SPEECH_NOTE}']
         )
         for i, name in enumerate(self.state["order"]):
             p = self.player(name)
@@ -1159,7 +1188,7 @@ class Orchestrator:
             menu = self.action_menu(p, day)
             if not menu:
                 continue
-            extra = "现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。"
+            extra = f"现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。\n{NO_SPEECH_NOTE}"
             briefing = self.build_briefing(p, f"第{day}天 · 自由活动（房间行动）", menu, extra)
             payload = self.call_ai(p, "自由活动-房间行动", briefing)
             self.apply_actions(p, payload["actions"], retry={
@@ -1236,7 +1265,7 @@ class Orchestrator:
                 if self.state.get("table_items"):
                     items_desc = "、".join(f"「{e['name']}」（剩 {e['uses_left']} 次）" for e in self.state["table_items"])
                     menu.append(f'- 若你今晚夜宿会客室，且归宿结算后会客室只有你自己，可悄悄取走桌上一物品（当前桌上：{items_desc}；取用无人看见，明早会公告物品不见了）：{{"type": "take_table", "item": "物品名"}}')
-                extra = "夜间行动互相不可见。每个夜间房间只能进入 1 人（顺序靠后冲突者失败，默认回自己卧室）。会客室夜间不开放。"
+                extra = "夜间行动互相不可见。每个夜间房间只能进入 1 人（顺序靠后冲突者失败，默认回自己卧室）。会客室夜间不开放。\n" + NO_SPEECH_NOTE
                 extra += "\n注意：上面「当前局面」里的位置是你自由活动结束时的实际位置；本环节决定的是**今晚去哪过夜**——不回卧室就选 night_room，什么都不做默认回自己卧室。"
                 extra += "\n守夜邀请成立且房内恰好你们两人时，睡前有一轮密谈（仅彼此可见）。"
                 if later:
@@ -1479,7 +1508,7 @@ class Orchestrator:
         menu = [f'- 谋杀（本次不用则本阶段机会作废）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(kp, room)}；空手需满足体格/性别条件，在目标自己卧室偷袭门槛放宽）']
         if kp["profession"] == "魔术师" and skill_left(self.state, kp["name"], "舞台魔术") > 0:
             menu.append(f'- 舞台魔术（不可防御）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
-        extra = "夜深人静，机会只有一次。动手，或按兵不动（actions 为 []）。"
+        extra = f"夜深人静，机会只有一次。动手，或按兵不动（actions 为 []）。\n{NO_SPEECH_NOTE}"
         briefing = self.build_briefing(kp, f"第{day}天 · 晚间休息（夜袭）", menu, extra)
         payload = self.call_ai(kp, "晚间休息-夜袭", briefing)
         self.apply_actions(kp, payload["actions"], retry={
@@ -1533,6 +1562,7 @@ class Orchestrator:
                 continue
             extra = "已发生的案件：\n" + "\n".join(case_lines)
             extra += "\n调查结果仅你本人可见——是否公布、隐瞒或撒谎，由你在发言中决定。"
+            extra += f"\n{NO_SPEECH_NOTE}"
             briefing = self.build_briefing(p, f"第{day}天 · 案件调查", menu, extra)
             payload = self.call_ai(p, "案件调查", briefing)
             self.apply_actions(p, payload["actions"], retry={
@@ -1567,7 +1597,8 @@ class Orchestrator:
                 det_note = f"；侦探（{det}）一票计 1.5 票" if det in alive_names else ""
                 briefing = self.build_briefing(
                     p, f"第{day}天 · 投票", menu,
-                    f"现在投票。得票超过存活人数（{len(alive_names)} 人）一半者出局{det_note}；平票或无人过半则无人出局。")
+                    f"现在投票。得票超过存活人数（{len(alive_names)} 人）一半者出局{det_note}；平票或无人过半则无人出局。"
+                    f"\n{NO_SPEECH_NOTE}")
                 payload = self.call_ai(p, "投票", briefing)
                 for act in payload["actions"]:
                     at = act.get("type")
@@ -1666,6 +1697,11 @@ class Orchestrator:
         if has_badge:
             extra += "你是侦探——侦探徽章也在遗嘱之列（mapping 里以「警徽」为键指定一名存活玩家继任；不指定则销毁，本局不再设侦探）。"
         payload = self.call_ai(p, title, self.build_briefing(p, title, menu, extra))
+        speech = str(payload.get("speech") or "").strip()
+        if speech:
+            # 遗嘱/死者字条附言公开（v3.8）——"字条"在设定上就是死者留下的公开文件
+            label = "死者字条" if "死者字条" in title else "遗嘱"
+            self.log_line(f"**{p['name']} 的{label}**：{speech}")
         for act in payload["actions"]:
             if act.get("type") == "bequeath" and isinstance(act.get("mapping"), dict):
                 return {str(k): (None if v in (None, "销毁") else str(v)) for k, v in act["mapping"].items()}
@@ -1695,7 +1731,8 @@ class Orchestrator:
             menu = ['- 逐件回应（接受则当天即可用；拒绝则放回会客室桌上——夜间独处会客室的人可取走）：'
                     '{"type": "bequest_reply", "decisions": {"道具名": "接受|拒绝"}}']
             extra = (f"{owner} 的遗嘱把以下留给你：{'、'.join(items + (['侦探徽章'] if gets_badge else []))}。"
-                     "此事全员公开——收下可能带来信任也可能带来嫌疑，由你判断。")
+                     "此事全员公开——收下可能带来信任也可能带来嫌疑，由你判断。"
+                     f"\n{NO_SPEECH_NOTE}")
             if gets_badge:
                 extra += "接受侦探徽章即继任侦探（末置发言、一票计 1.5）。"
             payload = self.call_ai(p, "遗嘱回应", self.build_briefing(p, f"第{day}天 · 遗嘱回应", menu, extra))
@@ -1764,6 +1801,9 @@ class Orchestrator:
                 if act.get("type") == "armed_accuse" and not fired:
                     ev = self.eng.armed_accusation(name, str(act.get("target", "")))
                     if ev["ok"]:
+                        speech = str(payload.get("speech") or "").strip()
+                        if speech:
+                            self.log_line(f"**{name}**（武装指认宣言）：{speech}")  # 指认宣言公开（v3.8）
                         self.route(ev)
                         fired = True
                         if not self.player(name)["alive"]:
@@ -1819,7 +1859,8 @@ class Orchestrator:
                 menu.append('- 伪造证物（该案件除尸体转移外的调查结果全部出错）：{"type": "falsify", "case_id": 案件编号, "kind": "伪造证物"}')
             if skill_left(s, p["name"], "转移尸体") > 0 or held_item(p, "裹尸袋", day) is not None:
                 menu.append('- 转移尸体到另一房间：{"type": "move_body", "case_id": 案件编号, "to_room": "会客室|书房|监控室|地下室|某人的卧室"}')
-            extra = ("以下案件的现场没有其他非反派角色，你可以动手毁证（也可以不动）：\n" + "\n".join(case_lines))
+            extra = ("以下案件的现场没有其他非反派角色，你可以动手毁证（也可以不动）：\n" + "\n".join(case_lines)
+                     + f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)
             payload = self.call_ai(p, "毁证机会", briefing)
             self.apply_actions(p, payload["actions"], retry={
