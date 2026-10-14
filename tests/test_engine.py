@@ -889,6 +889,22 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertIsNone(eng.state["last_murder_day"])              # 但不重置无杀倒计时
         self.assertFalse(any(a["target"] is None for a in eng.state["attempts"]))  # 不再登记"未遂"
 
+    def test_night_raid_empty_bedroom_feedback(self):
+        """v3.10：夜袭空房补结算——机会照常消耗、私下告知杀手、host 留痕；不计谋杀行为（不重置倒计时）。
+        game/8 复盘：狄西夜袭格罗克卧室（房主外出），旧代码全程静默，杀手不知机会已消耗。"""
+        players = default_players()
+        eng = Engine(mk_state(players=players))
+        goto(eng, "晚间休息", day=2)
+        player(eng, "A")["items"].append({"name": "万能钥匙", "uses_left": 2, "available_day": 1})
+        ev = eng.night_assign({"A": "F的卧室", "F": "书房"})  # F 外出，卧室空置
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "F的卧室")
+        self.assertTrue(eng.state["stage_murder_used"])       # 机会照常消耗
+        self.assertIsNone(eng.state["last_murder_day"])       # 不计谋杀行为（不重置倒计时）
+        self.assertIn("空房白跑", ev["private"]["A"])          # 杀手私下得知
+        self.assertTrue(any("空房白跑" in n for n in ev.get("host", [])), ev.get("host"))  # host 留痕
+        self.assertFalse(eng.murder("A", "F")["ok"])          # 机会已消耗，深夜无法再动手
+
     def test_night_room_capacity_one(self):
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=2)

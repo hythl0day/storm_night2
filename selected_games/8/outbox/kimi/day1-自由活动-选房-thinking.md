@@ -1,0 +1,1 @@
+Everyone went to书房， it's full with 豆包、克劳德、格罗克. Options: 会客室 stay, 监控室 locked (I have no 暴力破解—wait, I have 刀 and 粉末, no). So 监控室 locked, 地下室 open, 书房 full. Go 地下室 (dark, can talk there... no, dark rooms can't talk). Staying in 会客室 with 杰米尼—talk could be useful but risky; 杰米尼 is sharp. 地下室 alone dark. I'll go 地下室 to be alone, avoid scrutiny.

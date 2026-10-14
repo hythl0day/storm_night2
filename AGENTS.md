@@ -54,7 +54,7 @@ tests/        unittest（python -m unittest discover -s tests）
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
-python -m unittest discover -s tests   # 174 用例（引擎 + 平衡回归 + 编排 mock 集成：全流程/中断续跑/关键记录/v3.2-v3.8 特性/deal 车道保证 + 评分卡 + providers think 标签解析 + 简报规则速查/host_log usage + game/2 复盘修复：驳回重报/停电前置声明/简报台账与压缩/夜袭口径 + v3.7 夜袭内应破门 + v3.8 附言公开路由）
+python -m unittest discover -s tests   # 177 用例（引擎 + 平衡回归 + 编排 mock 集成：全流程/中断续跑/关键记录/v3.2-v3.8 特性/deal 车道保证 + 评分卡 + providers think 标签解析 + 简报规则速查/host_log usage + game/2 复盘修复：驳回重报/停电前置声明/简报台账与压缩/夜袭口径 + v3.7 夜袭内应破门 + v3.8 附言公开路由 + v3.9 帮凶魔术师舞台魔术菜单修复 + v3.10 夜袭空房补结算与简报「游戏状态」段）
 ```
 
 ## 当前进度与待办

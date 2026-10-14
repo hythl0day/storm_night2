@@ -553,6 +553,38 @@ class Orchestrator:
             return ["仅当现场没有其他非反派角色时：杀手可缴获尸体上的未使用道具、可发动毁证类技能/道具。"]
         return []
 
+    def _game_state_lines(self) -> list[str]:
+        """「游戏状态」段：公开事实速查——角色表（性别/体格/国籍，开局已全员公布）、存活状态、
+        侦探、无杀倒计时。出局者身份职业已公开（§7.3）故列出；被谋杀者只列死亡信息与
+        已公开职业，身份不公开（§9.4）。声称的职业/道具不在此列——那是发言内容，由角色自己记笔记。
+        每阶段重发是为了让 AI 不必从笔记里推算局面（game/8 复盘：角色反复搞错存活与道具台账）。"""
+        s = self.state
+        day = s["phase"]["day"]
+        last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
+        quiet = max(0, day - 1 - last_behavior)
+        alive_n = sum(1 for q in s["players"] if q["alive"])
+        lines = [f"- 进度：第 {day}/5 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
+                 f"｜无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个则平民直接获胜）"]
+        deaths = {c["victim"]: c for c in s["cases"]}
+        out_day = self.orch.get("out_day", {})
+        prof_pub = set(s.get("profession_public", []))
+        roster = []
+        for q in s["players"]:
+            n = q["name"]
+            base = f"{n}（{q['gender']}·{physique_desc(q['physique'])}·{q['nationality']}"
+            if q["alive"]:
+                roster.append(base + "·存活）")
+            elif n in out_day:
+                roster.append(base + f"·第{out_day[n]}天出局：{q['identity']}/{q['profession']}）")
+            elif n in deaths:
+                c = deaths[n]
+                prof = f"，职业已公开：{q['profession']}" if n in prof_pub else ""
+                roster.append(base + f"·第{c['day']}天死亡（{c['room']}）{prof}）")
+            else:
+                roster.append(base + "·出局）")
+        lines.append("- 角色表（开局全员公布）：" + "、".join(roster))
+        return lines
+
     def _status_lines(self, p: dict) -> list[str]:
         """「你的状态」台账段：每阶段由系统明示身份/技能剩余/道具剩余（game/2 复盘：索尔笔记残留
         已消耗的刀 → 误报凶器被驳回。台账以引擎状态为准，不依赖 AI 自己的笔记）。"""
@@ -646,6 +678,8 @@ class Orchestrator:
             else:
                 pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
         lines.append(f"## 当前局面\n{pos_line}")
+        lines.append("")
+        lines.append("## 游戏状态\n" + "\n".join(self._game_state_lines()))
         lines.append("")
         lines.append("## 你的状态\n" + "\n".join(self._status_lines(p)))
         lines.append("")
@@ -1247,13 +1281,15 @@ class Orchestrator:
             menu.append('- 封闭空间（锁死当前房间至下一自由活动；不能对会客室使用）：{"type": "seal_room", "allowed": ["许可留下的人"]}')
         if is_villain(p) and p["profession"] == "机械师" and day >= 2:
             menu.append('- 设置延时装置：{"type": "set_device", "room": "当前房间名"}')
-        if day >= 2 and p["identity"] == "杀手":
+        if day >= 2 and is_villain(p) and not s["stage_murder_used"]:
             targets = [q["name"] for q in self.alive()
                        if q["name"] != name and s["positions"].get(q["name"]) == room and not is_villain(q)]
             if targets:
-                menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
+                if p["identity"] == "杀手":
+                    menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
+                # 舞台魔术是反派技能（rules-6 §3）：帮凶魔术师同样可用；占用反派当阶段谋杀机会（引擎裁决）
                 if p["profession"] == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
-                    menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
+                    menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御；占用反派当阶段谋杀机会）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
         return menu
 
     def run_night(self) -> None:

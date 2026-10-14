@@ -1,0 +1,17 @@
+Need to decide. Countdown: if no murder behavior tonight (day 3), countdown reaches 2 full days → civilians win next morning. Wait: no-kill countdown starts day 2. It says "已连续 1 个完整天无谋杀行为" as of day 3. If day 3 also no murder, day 4 morning civilians win. So tonight MUST have murder attempt. Options: I'm in 会客室 with 豆包, 狄西, 格罗克 — 4 people, can't murder in lit hall. Generator: I could go to basement fix it? But fixing ends blackout, which would prevent 狄西's night raid on 格罗克's dark bedroom (break-in allowed during blackout regardless of occupants). Better: let blackout continue; 狄西 can night-raid 格罗克's bedroom (blacked out, doors unlocked, can slip into 2-person bedroom, attack one). 格罗克 and 豆包 plan to sleep by fireplace? 豆包 said "今晚我还睡壁炉边" — night hall. If 格罗克 also night hall, 狄西 can't kill in hall (lit, >1 non-villain). Hmm. 格罗克 said earlier? Not stated. I should encourage... can't, no speech.
+
+My role: I need to influence without speech. Options: night_hall myself to keep people together? That prevents nothing. Actually if I stay (bedroom), nothing. Could I use night_room to fix generator? That would end blackout — bad. Could I go unlock something? Doors already unlocked in blackout.
+
+Best: stay in my bedroom (default) — or use passage to a room? Passage destroyed ("建造密道（已用完）" in status). So I can't.
+
+Actually killing needs to happen: 狄西 tonight must night-raid someone. If 格罗克 and 豆包 both sleep in hall (lit, 2+ people), raid can't kill. My best move: stay, hope 格罗克 returns to bedroom. But I can't communicate. Alternatively I could invite 豆包 to my bedroom — keeping 豆包 out of hall, so 格罗克 if night hall alone... hall alone with one non-villain — 狄西 could also... wait 狄西 would need to know. Actually 狄西 can just go to hall at night and kill 格罗克 if alone there (lit hall, ≤1 non-villain). That's simpler! If 豆包 sleeps in my bedroom (invite accepted), and 格罗ck sleeps in hall alone, 狄西 enters hall and kills him. But I can't coordinate with 狄西. 狄西's own reasoning likely: raid 格罗克's bedroom. If 格罗克 is in bedroom alone in blackout, fine, kill succeeds, morning: remaining 奇米, 狄西, 豆包 = 2 villains 1 civilian → villains win instantly.
+
+Risk: 豆包 in my bedroom — if 狄西 raids my bedroom? He wouldn't know 豆包 is there; raid declares bedroom by name. He'll raid 格罗克's bedroom. Fine.
+
+But wait — inviting 豆包 to my bedroom: 豆包 might refuse. Also if 格罗ck invites 豆包 to his bedroom (he's before me in order... order today: 格罗克 → 杰米尼 → 奇米 → 狄西 → 豆包; 杰米尼 dead. Order among remaining: 格罗克, 奇米, 狄西, 豆包). 格罗克 could invite 豆包 first. Can't control.
+
+Decision: invite 豆包 to my bedroom — reduces hall crowding, removes 豆包 from being a witness, and keeps 格罗克 potentially alone in hall or his own bedroom. Either way 狄西 has a shot. If 豆包 declines, fine.
+
+Actually alternative: night_hall myself, so I'm a witness? No, I'm villain. If 格罗克 alone in hall and 狄西 comes to kill — if I'm there too, two villains + one civilian, murder condition ≤1 non-villain satisfied. That also works and I witness... but my presence prevents nothing. But it guarantees I'm present to back up. Yet being in hall publicly listed as night-hall sleeper tomorrow — reveals nothing bad.
+
+Hmm, but if both 豆包 and 格罗克 in hall plus me = can't kill. Better to pull 豆包 away via invite. Go with invite 豆包.

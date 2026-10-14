@@ -860,5 +860,81 @@ class TestSpeechRouting(MockGameTestBase):
         self.assertIn("本环节不发言", night_briefing)
 
 
+class TestAccompliceStageMagic(MockGameTestBase):
+    """v3.9 修复：舞台魔术是反派技能——帮凶魔术师的自由活动菜单必须包含舞台魔术，且声明后真正击杀。"""
+
+    def test_accomplice_magician_stage_magic(self):
+        players = default_players()
+        players[1] = P("B", "帮凶", "魔术师", "不明药剂", gender="女", physique=2)
+        d = write_game_dir(self.root / "g11", players)
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if day == 2 and "选房" in title and name in ("B", "E"):
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 2 and "房间行动" in title and name == "B" and '"type": "stage_magic"' in briefing:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "stage_magic", "target": "E"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fn)
+        s = orch.state
+        # 菜单证据：帮凶魔术师的房间行动简报含舞台魔术项，且不含杀手专属的谋杀项
+        inbox = (d / "inbox" / "B" / "day2-自由活动-房间行动.md").read_text(encoding="utf-8")
+        self.assertIn('"type": "stage_magic"', inbox)
+        self.assertNotIn('"type": "murder"', inbox)
+        # 击杀落账：E 死亡，案件方法=舞台魔术，凶手=帮凶 B 本人（独处现场，E 的万能钥匙被 B 缴获）
+        self.assertTrue(any(c["victim"] == "E" and c["method"] == "舞台魔术" and c["culprit"] == "B"
+                            for c in s["cases"]))
+        self.assertFalse(next(p for p in s["players"] if p["name"] == "E")["alive"])
+        bp = next(p for p in s["players"] if p["name"] == "B")
+        self.assertTrue(any(e["name"] == "万能钥匙" for e in bp["items"]))
+
+
+class TestGameStateSection(MockGameTestBase):
+    """v3.10：简报新增「游戏状态」段——公开事实速查（角色表/存活/侦探/倒计时），不含声称信息。"""
+
+    def test_briefing_game_state(self):
+        d = write_game_dir(self.root / "g12", default_players())
+        orch = Orchestrator(d)
+        p = next(q for q in orch.state["players"] if q["name"] == "C")
+        b = orch.build_briefing(p, "第1天 · 公共发言", [], "")
+        self.assertIn("## 游戏状态", b)
+        self.assertIn("第 1/5 天", b)
+        self.assertIn("存活 6 人", b)
+        self.assertIn("侦探：无", b)
+        self.assertIn("无杀倒计时：已连续 0 个完整天", b)
+        self.assertIn("A（男·魁梧·中国·存活）", b)  # 体格转文字，不含数值（硬性约定）
+
+        # 出局者身份职业公开（§7.3）；被谋杀者只公开死亡信息与已公开职业，身份不公开（§9.4）
+        s = orch.state
+        s["phase"] = {"day": 3, "stage": "公共发言"}
+        s["players"][2]["alive"] = False  # C 第 2 天被投票出局
+        s["orch"]["out_day"] = {"C": 2}
+        s["profession_public"] = ["C", "D"]
+        s["players"][3]["alive"] = False  # D 第 2 天被谋杀
+        s["cases"] = [{"id": 1, "victim": "D", "day": 2, "room": "书房"}]
+        s["last_murder_day"] = 2
+        s["detective"] = "E"
+        b2 = orch.build_briefing(p, "第3天 · 公共发言", [], "")
+        self.assertIn("第 3/5 天", b2)
+        self.assertIn("存活 4 人", b2)
+        self.assertIn("侦探：E", b2)
+        self.assertIn("已连续 0 个完整天", b2)  # 第 2 天有谋杀行为，倒计时清零
+        self.assertIn("C（女·健壮·中国·第2天出局：平民/医师）", b2)
+        seg_d = next(x for x in b2.split("、") if x.startswith("D（"))
+        self.assertIn("第2天死亡（书房）", seg_d)
+        self.assertIn("职业已公开：运动员", seg_d)
+        self.assertNotIn("平民", seg_d)  # 被谋杀者身份不公开
+
+
 if __name__ == "__main__":
     unittest.main()

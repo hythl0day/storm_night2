@@ -6,6 +6,13 @@ A scenario-based interactive role-playing reality show featuring AI-powered dedu
 
 自动化跑局管线 + 节目素材生产。
 
+## 文档
+
+- 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v3）/ [docs/rules-8.md](docs/rules-8.md)（8 人局）
+- 工程计划与里程碑：[docs/dev-plan.md](docs/dev-plan.md)
+- 节目规划（两季 + 特别单集）：[screenwriting/show-bible.md](screenwriting/show-bible.md)
+- 脚本使用说明（环境准备、席位配置、连通性测试、跑局与查看器的完整用法）：[docs/usage.md](docs/usage.md)
+
 ## 常用命令
 
 ```bash
@@ -37,15 +44,6 @@ python -m unittest discover -s tests
 ```
 
 对局产物：`game/<id>/script.md` 是主持人侧全记录（含剧透，供整理剧本）；`public/` 为公开口径，`private/` 为各席私密素材（内心独白/笔记），剪辑时注意防剧透。
-
-## 文档
-
-- 脚本使用说明（环境准备、席位配置、连通性测试、跑局与查看器的完整用法）：[docs/usage.md](docs/usage.md)
-- 规则裁决引擎文档：[docs/engine.md](docs/engine.md)
-- 项目约定与当前进度（新 session 入口）：[AGENTS.md](AGENTS.md)
-- 节目规划（两季 + 特别单集）：[screenwriting/show-bible.md](screenwriting/show-bible.md)
-- 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v3）/ [docs/rules-8.md](docs/rules-8.md)（8 人局）
-- 工程计划与里程碑：[docs/dev-plan.md](docs/dev-plan.md)
 
 ## 其他
 

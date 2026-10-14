@@ -415,6 +415,8 @@ class Engine:
           同房有反派（帮凶做内应）则可照常进入，亮房闯入会被房内两人看见（密谈中断，编排器处理）；
           停电黑暗中杀手可潜入已满 2 人的卧室并袭击其一。
         - 停电期间所有门锁失效（door_locked 统一裁定）。
+        夜袭空房补结算（§7.7）：杀手未经邀请进入他人卧室且房内最终无人——机会照常消耗、
+        私下告知杀手并留 host 记录，但不产生谋杀判定、不计入无杀倒计时（v3.10 落实）。
         结算后自动检查延时装置触发。
         """
         s = self.state
@@ -533,6 +535,19 @@ class Engine:
             positions[name] = placed
             record_entry(s, name, placed)
         s["positions"] = positions
+        # 夜袭空房补结算（§7.7）：杀手未经邀请进入他人卧室、房内最终无任何他人——
+        # 当夜机会照常消耗、私下告知并留 host 记录，但不产生谋杀判定、不计入无杀倒计时
+        # （game/8 复盘：狄西夜袭空卧室全程静默，杀手不知机会已消耗）
+        kp = next((p for p in s["players"] if p["alive"] and p["identity"] == "杀手"), None)
+        if kp is not None and day >= 2 and not s["stage_murder_used"]:
+            kroom = positions.get(kp["name"])
+            owner = bedroom_owner(kroom) if kroom and is_bedroom(kroom) else None
+            if owner and owner != kp["name"] and invited.get(kp["name"]) != owner:
+                if not any(n != kp["name"] and r == kroom for n, r in positions.items()):
+                    s["stage_murder_used"] = True
+                    private[kp["name"]] = (private.get(kp["name"], "") + "；" if private.get(kp["name"]) else "") + \
+                        f"你在{kroom}等到深夜，始终没有别人回来——空房白跑，当夜谋杀机会已消耗（不计谋杀行为）"
+                    host.append(f"{kp['name']} 夜袭{kroom}：空房白跑（当夜机会消耗，不计谋杀行为）")
         s["night_assigned"] = current_period(s)
         device_events = murder_mod.trigger_devices(s)
         for dev_ev in device_events:
