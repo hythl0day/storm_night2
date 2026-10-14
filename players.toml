@@ -14,24 +14,24 @@ reasoning_effort = "low"
 
 [[player]]
 id = 'gpt'
-name = "索尔·杰普特"       # ChatGPT
+name = "杰普特"       # ChatGPT
 model = "gpt-6.1-sol"
 base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GPT"
 
 [[player]]
 id = 'claude'
-name = "桑娜·克劳德"       # Claude
-model = "claude-sonnet-5-5"
+name = "克劳德"       # Claude
+model = "claude-opus-5-5"
 base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_CLAUDE"
-api_type = "openai"
-reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模式，budget/effort 一律 400；实测 anthropic 协议 + adaptive 被断连，故例外不设档
+api_type = "anthropic"    # 原生 /v1/messages：usage/缓存字段真实（openai 兼容端点 prompt_tokens 被上游严重低估）；实测流式正常
+reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模式，budget/effort 一律 400；且 adaptive 也不返回思考块（Kiro 反代不吐思考），故不设档
 
 [[player]]
 id = 'gemini'
-name = "杰米娜"     # Gemini
-model = "gemini-3.8-flash"
+name = "杰米尼"     # Gemini
+model = "gemini-4-argon"
 base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GEMINI"
 

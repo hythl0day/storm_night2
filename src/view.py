@@ -3,8 +3,8 @@
 用法：
     python -m src.view status --game game/012345        # 阶段/存活/身份台账/道具技能次数
     python -m src.view log --game game/012345 [-n 30]   # 公开日志末尾 n 行
-    python -m src.view peek 杰米娜 --game game/012345   # 私密卡 + 笔记 + 内心独白
-    python -m src.view inner 杰米娜 --game game/012345  # 仅内心独白
+    python -m src.view peek gemini --game game/012345   # 私密卡 + 笔记 + 内心独白
+    python -m src.view inner gemini --game game/012345  # 仅内心独白
     python -m src.view host --game game/012345 [-n 10]  # API 调用台账（耗时/成败）
     python -m src.view follow --game game/012345 [--interval 5]   # 轮询刷新追局，Ctrl+C 退出
 """

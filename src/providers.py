@@ -2,7 +2,10 @@
 
 按席位配置 api_type 切换协议：
 - "openai"（默认）：OpenAI 兼容 /chat/completions —— 中转站、DeepSeek、Kimi 官方均走这里；
-- "anthropic"：Anthropic 原生 /v1/messages —— 预留给只支持原生协议的渠道。
+- "anthropic"：Anthropic 原生 /v1/messages —— Claude 席位走这里（usage/缓存字段更真实；上游不吐思考块）。
+
+思考落盘：ChatResult.reasoning 汇总隐藏思考（reasoning_content / thinking 块 / <think> 段），
+由编排器写入 outbox 的 *-thinking.md；正文 content 不受影响（<think> 标签仍保留在正文里）。
 
 所有请求不发送 temperature 参数（部分中转站上游只接受默认温度；全席统一不传，保证公平）。
 max_tokens 解析顺序：单个 [[player]] 的 max_tokens > [settings] 的 max_tokens > DEFAULT_MAX_TOKENS。
@@ -56,6 +59,7 @@ class ChatResult:
     usage: dict = field(default_factory=dict)
     error: str = ""
     finish_reason: str = ""  # 归一化为 OpenAI 风格；"length" = 被 max_tokens 截断
+    reasoning: str = ""  # 隐藏思考（reasoning_content / thinking 块 / <think> 段），供落盘素材；正文 content 不受影响
 
 
 def load_config(path: str) -> tuple[list[Player], dict]:
@@ -174,12 +178,14 @@ def _chat_openai(player, messages, stall, wall_limit, on_token, reasoning_effort
     resp.raise_for_status()
     data = resp.json()
     choice = data["choices"][0]
-    return choice["message"]["content"].strip(), data.get("usage", {}), choice.get("finish_reason") or ""
+    reasoning = choice["message"].get("reasoning_content") or ""
+    return choice["message"]["content"].strip(), data.get("usage", {}), choice.get("finish_reason") or "", reasoning
 
 
 def _chat_openai_stream(player, payload, headers, stall, wall_limit, on_token):
     payload = {**payload, "stream": True, "stream_options": {"include_usage": True}}
     parts: list[str] = []
+    rparts: list[str] = []
     usage: dict = {}
     finish = ""
     tagger = _ThinkTagger()
@@ -208,21 +214,28 @@ def _chat_openai_stream(player, payload, headers, stall, wall_limit, on_token):
                     if delta.get("content"):
                         parts.append(delta["content"])
                         for seg, is_think in tagger.feed(delta["content"]):
-                            on_token(seg, is_think)  # <think>…</think> 段按推理内容上报
+                            if is_think:
+                                rparts.append(seg)  # <think> 段同时进思考存档（正文保持完整）
+                            on_token(seg, is_think)
                     elif delta.get("reasoning_content"):
+                        rparts.append(delta["reasoning_content"])
                         on_token(delta["reasoning_content"], True)
                     if choice.get("finish_reason"):
                         finish = choice["finish_reason"]
     for seg, is_think in tagger.flush():
+        if is_think:
+            rparts.append(seg)
         on_token(seg, is_think)
-    return "".join(parts).strip(), usage, finish
+    return "".join(parts).strip(), usage, finish, "".join(rparts).strip()
 
 
 # ---- Anthropic 协议 ----
 
 def _anthropic_usage(raw: dict) -> dict:
     usage = dict(raw)
-    usage["total_tokens"] = raw.get("input_tokens", 0) + raw.get("output_tokens", 0)
+    # kiro 反代上游：input_tokens 恒 0，真实输入在 kiro_actual_input_tokens（含被缓存的部分）
+    inp = raw.get("input_tokens", 0) or raw.get("kiro_actual_input_tokens", 0)
+    usage["total_tokens"] = inp + raw.get("output_tokens", 0)
     return usage
 
 
@@ -256,12 +269,14 @@ def _chat_anthropic(player, messages, stall, wall_limit, on_token, reasoning_eff
     resp.raise_for_status()
     data = resp.json()
     content = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-    return content.strip(), _anthropic_usage(data.get("usage", {})), _anthropic_finish(data.get("stop_reason"))
+    reasoning = "".join(b.get("thinking", "") for b in data.get("content", []) if b.get("type") == "thinking")
+    return content.strip(), _anthropic_usage(data.get("usage", {})), _anthropic_finish(data.get("stop_reason")), reasoning.strip()
 
 
 def _chat_anthropic_stream(player, payload, headers, stall, wall_limit, on_token):
     payload = {**payload, "stream": True}
     parts: list[str] = []
+    rparts: list[str] = []
     raw_usage: dict = {}
     finish = ""
     start = time.monotonic()
@@ -288,13 +303,14 @@ def _chat_anthropic_stream(player, payload, headers, stall, wall_limit, on_token
                         parts.append(delta["text"])
                         on_token(delta["text"], False)
                     elif delta.get("thinking"):
+                        rparts.append(delta["thinking"])
                         on_token(delta["thinking"], True)
                 elif t == "message_delta":
                     raw_usage.update(obj.get("usage", {}))
                     finish = obj.get("delta", {}).get("stop_reason") or finish
                 elif t == "message_stop":
                     break
-    return "".join(parts).strip(), _anthropic_usage(raw_usage), _anthropic_finish(finish)
+    return "".join(parts).strip(), _anthropic_usage(raw_usage), _anthropic_finish(finish), "".join(rparts).strip()
 
 
 def chat(
@@ -320,7 +336,7 @@ def chat(
     stream = on_token is not None
     for attempt in range(max_retries + 1):
         try:
-            content, usage, finish = handler(player, messages, stall, wall_limit, on_token, reasoning_effort)
+            content, usage, finish, reasoning = handler(player, messages, stall, wall_limit, on_token, reasoning_effort)
             return ChatResult(
                 player.name,
                 ok=True,
@@ -328,6 +344,7 @@ def chat(
                 latency=time.monotonic() - start,
                 usage=usage,
                 finish_reason=finish,
+                reasoning=reasoning,
             )
         except httpx.HTTPStatusError as e:
             code = e.response.status_code

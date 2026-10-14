@@ -55,10 +55,9 @@ python -m src.smoke --prompt "你为什么被困在古堡里？"    # 自定义�
 smoke 是多席点名；ping **只测一个席位**，并输出完整诊断信息，用于定位连接问题：
 
 ```bash
-python -m src.ping deepseek                 # 按席位 id 点名
-python -m src.ping 狄西                     # 按席位名点名
-python -m src.ping 杰米娜 --timeout 120     # 调整超时（默认 60s）
-python -m src.ping 格罗克 --insecure        # 跳过 TLS 证书校验（仅调试用，会打印警告）
+python -m src.ping deepseek                 # 按席位 id 点名（一律用 id，不用中文角色名）
+python -m src.ping gemini --timeout 120     # 调整超时（默认 60s）
+python -m src.ping grok --insecure          # 跳过 TLS 证书校验（仅调试用，会打印警告）
 python -m src.ping kimi                                # 指定配置文件用 --config（默认即 players.toml）
 ```
 
@@ -136,8 +135,8 @@ host_log.jsonl           # 每次 API 调用 {ts, player, stage, ok, latency, to
 ```bash
 python -m src.view status --game game/012345        # 阶段/存活/身份台账/道具技能次数
 python -m src.view log --game game/012345 -n 30     # 公开日志末尾 30 行
-python -m src.view peek 杰米娜 --game game/012345   # 私密卡 + 私人笔记 + 内心独白
-python -m src.view inner 杰米娜 --game game/012345  # 仅内心独白
+python -m src.view peek gemini --game game/012345   # 私密卡 + 私人笔记 + 内心独白
+python -m src.view inner gemini --game game/012345  # 仅内心独白
 python -m src.view host --game game/012345          # API 调用台账（耗时/成败）
 python -m src.view follow --game game/012345 --interval 5   # 轮询刷新追局，Ctrl+C 退出
 ```

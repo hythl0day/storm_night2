@@ -311,8 +311,18 @@ class Orchestrator:
         self.script_line(line)
         self._fire("on_public", line)
 
+    def _stamp(self, line: str) -> str:
+        """给事件行打天数·阶段标记〔第N天·阶段〕（game/5 复盘：互赠/停电/投票结果等记录行无日期，
+        跨天后在「关键记录」里极易混淆）。发言行（**名字**：）与"第 N/5 天开始"行自带头绪，不打。"""
+        if line.startswith("**") or "/5 天开始" in line:
+            return line
+        ph = self.state.get("phase", {})
+        tag = f"〔第{ph.get('day')}天·{ph.get('stage')}〕"
+        return "- " + tag + line[2:] if line.startswith("- ") else tag + line
+
     def feed_line(self, line: str) -> None:
         """仅公开口径（feed + public/log.md），不进 script.md——供编排器已自记明细的事件去重。"""
+        line = self._stamp(line)
         self.orch["feed"].append(line)
         with open(self.dir / "public" / "log.md", "a", encoding="utf-8") as f:
             f.write(line + "\n")
@@ -326,6 +336,7 @@ class Orchestrator:
         """私密事件：入队待送达（下次简报"仅你可见"）+ 写入该席私密历史（简报"关键记录"段）。"""
         if not isinstance(msg, str):
             msg = json.dumps(msg, ensure_ascii=False)
+        msg = self._stamp(msg)
         self.orch["private"].setdefault(name, []).append(msg)
         self.orch["hist"].setdefault(name, []).append(msg)
 
@@ -419,6 +430,9 @@ class Orchestrator:
                     self.save_state()
                     raise AbortRun(f"{p['name']} · {label}：API 调用失败（{result.error}）")
                 (seat_dir_out / f"day{day}-{label}.md").write_text(result.content, encoding="utf-8")
+                if result.reasoning:
+                    # 隐藏思考落盘（POV 素材备选；正文解析不受影响）
+                    (seat_dir_out / f"day{day}-{label}-thinking.md").write_text(result.reasoning, encoding="utf-8")
                 err = ""
                 if result.finish_reason == "length":
                     err = "你的上次回复过长被 max_tokens 截断，请大幅压缩 speech/inner/notes 的篇幅"
@@ -780,6 +794,15 @@ class Orchestrator:
 
     def run_prep(self) -> None:
         """开局准备：仅反派建筑师（密道）与窃听器持有者（放置）需要声明。"""
+        if not self.orch["feed"]:
+            # 开局公告（保险箱内容/桌上凶器，§2 公开信息）此前只进 script.md/console，从未送达玩家
+            # （game/5 复盘：全员引用"开局公告"但内容靠编）。新局首发进 feed。
+            ann = self.dir / "public" / "announcement.md"
+            if ann.exists():
+                for ln in ann.read_text(encoding="utf-8").strip().splitlines():
+                    ln = ln.strip()
+                    if ln and not ln.startswith("#"):
+                        self.log_line(ln)
         day = self.state["phase"]["day"]
         w = self.wip(f"{day}:开局准备:布置", done=[])
         for p in self.alive():
@@ -1647,7 +1670,7 @@ class Orchestrator:
             menu = ["- 本环节无动作可做，actions 返回 []"]
             extra = "你被投票出局了。发表你的遗言（可以撒谎）——遗言之后主持人将公布你的身份。"
             if owned or has_badge:
-                menu = ['- 遗嘱：逐件指定遗留归属（未指定的销毁；接收人可拒收；遗嘱公开）：'
+                menu = ['- 遗嘱：逐件指定遗留归属（未指定/被拒收的放回会客室桌上；遗嘱公开）：'
                         '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']
             if owned:
                 extra += f"\n你留下的未使用道具：{'、'.join(owned)}。在遗言中一并指定归属。"
@@ -1667,10 +1690,11 @@ class Orchestrator:
         if not w["routed"]:
             detail = "、".join(f"{t} {_fmt_votes(c)}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
             voters = w.get("voters") or len(self.alive())
+            threshold = f"{voters / 2:g}"  # 过半 = 严格大于一半；侦探 1.5 票下阈值可能带 .5（game/5 审计：// 下取整会误导）
             if out:
-                verdict = f"{out} 过半数出局（存活 {voters} 人，需 >{voters // 2} 票）"
+                verdict = f"{out} 过半数出局（存活 {voters} 人，需 >{threshold} 票）"
             else:
-                verdict = f"无人过半数（存活 {voters} 人，需 >{voters // 2} 票），本轮无人出局"
+                verdict = f"无人过半数（存活 {voters} 人，需 >{threshold} 票），本轮无人出局"
             self.log_line(f"投票结果：{detail or '无人得票'}——{verdict}")
             self.route(ev)  # 出局公告与身份公布、帮凶继任私密通知（遗言之后）
             if out:
@@ -1691,7 +1715,7 @@ class Orchestrator:
         has_badge = p["name"] == self.state.get("detective")
         if not owned and not has_badge:
             return {}
-        menu = ['- 遗嘱：逐件指定遗留归属（未指定的销毁；接收人可拒收；遗嘱公开）：'
+        menu = ['- 遗嘱：逐件指定遗留归属（未指定/被拒收的放回会客室桌上；遗嘱公开）：'
                 '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']
         extra += f"\n你留下的未使用道具：{'、'.join(owned) if owned else '无'}。"
         if has_badge:

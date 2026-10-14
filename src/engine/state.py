@@ -9,7 +9,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - positions: {名字: 房间}               当前阶段所在房间；白天会议阶段为 "会客室"
 - monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被【信号干扰】/「病毒U盘」篡改；v3.5 起覆盖会客室）
 - monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
-- skill_uses: {名字: {技能: 剩余}}      技能台账（通用+反派技能都登记；反派技能使用时校验身份）
+- skill_uses: {名字: {技能: 剩余}}      技能台账（反派技能仅反派登记；使用时仍校验身份与次数）
 - cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/伪造状态/证物是否可毁/是否已封存
 - attempts: [未遂]                      谋杀未遂（含"夜袭未能进入"，target 为 None）；供公告与无杀倒计时
 - last_murder_day: int|None             最近一次谋杀行为（含未遂）的日期；None=倒计时未启动
@@ -158,9 +158,16 @@ def ensure(state: dict) -> dict:
             for extra in p.get("extra_items", []):
                 p["items"].append({"name": extra, "uses_left": ITEM_USES[extra], "available_day": 1})
         if p["name"] not in s["skill_uses"]:
+            # 身份终生不变：反派技能只登记给反派（使用时仍校验身份与次数）
             skills = dict(GENERAL_SKILLS.get(p["profession"], {}))
-            skills.update(VILLAIN_SKILLS.get(p["profession"], {}))
+            if is_villain(p):
+                skills.update(VILLAIN_SKILLS.get(p["profession"], {}))
             s["skill_uses"][p["name"]] = skills
+        # 存档迁移：旧档给平民也登记了反派技能，统一剔除
+        skills = s["skill_uses"].get(p["name"], {})
+        if not is_villain(p):
+            for vsk in VILLAIN_SKILLS.get(p["profession"], {}):
+                skills.pop(vsk, None)
         # v3.5 存档迁移：旧档技能键「破门而入」统一改名「暴力破解」
         skills = s["skill_uses"].get(p["name"], {})
         if "破门而入" in skills:

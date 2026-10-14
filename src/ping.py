@@ -1,8 +1,7 @@
 """最小连通性测试：只测一个席位，输出详细错误（HTTP 状态码 + 响应体），用于定位连接问题。
 
 用法：
-    python -m src.ping deepseek             # 按席位 id 点名
-    python -m src.ping 狄西                 # 按席位名点名
+    python -m src.ping deepseek             # 按席位 id 点名（一律用 id，不用中文角色名）
     python -m src.ping gpt --timeout 120    # 调整超时（默认 60s）
     python -m src.ping gpt --insecure       # 跳过 TLS 证书校验（仅调试用）
     python -m src.ping kimi --config players.toml   # 一般不需要 --config，默认即此路径
