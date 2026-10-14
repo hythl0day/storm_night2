@@ -54,6 +54,7 @@ from pathlib import Path
 
 from .engine import Engine
 from .engine.state import (
+    ENV_WEAPON,
     FREE_ROOMS,
     HALL,
     MEETING_STAGES,
@@ -72,7 +73,7 @@ from .engine.state import (
     unlock_means,
 )
 from .fmt import fmt_action
-from .gamedata import ARMED_WEAPONS, physique_desc
+from .gamedata import ARMED_WEAPONS, WEAPONS, physique_desc
 from .prompts import render
 from .providers import Player, chat, find_player, load_config
 from .smoke import describe, load_personas
@@ -521,8 +522,9 @@ class Orchestrator:
         if "房间行动" in title:
             return ["非黑暗时，房间行动（查监控/开箱/修发电机）会被同房者看见；黑暗中无人知晓是谁做的。"]
         if "夜袭" in title:
-            return ["夜袭目标：有且仅有 1 名非反派角色的房间；持【暴力破解】手段可尝试进入某卧室（已有 2 人则无法进入）。",
-                    "夜袭失败（无法进入）消耗当夜机会，但不计为谋杀行为、不重置无杀倒计时。"]
+            return ["夜袭目标：有且仅有 1 名非反派角色的房间；持【暴力破解】手段可尝试进入某卧室（两名非反派同守则无法进入——同房有帮凶则可照常进入）。",
+                    "夜袭以卧室为目标声明，房内人数不可见——进入空房则白跑一趟。",
+                    "夜袭失败（无法进入）或进入空房：消耗当夜机会与开锁手段，但不计为谋杀行为、不重置无杀倒计时。"]
         if "密谈" in title or "夜谈" in title:
             return ["密谈/夜谈内容只有参与者知道；按行动顺序各发言一次；停电不影响密谈（黑暗中照常进行）。"]
         if "晚间休息" in title:
@@ -533,6 +535,56 @@ class Orchestrator:
         if "毁证机会" in title:
             return ["仅当现场没有其他非反派角色时：杀手可缴获尸体上的未使用道具、可发动毁证类技能/道具。"]
         return []
+
+    def _status_lines(self, p: dict) -> list[str]:
+        """「你的状态」台账段：每阶段由系统明示身份/技能剩余/道具剩余（game/2 复盘：索尔笔记残留
+        已消耗的刀 → 误报凶器被驳回。台账以引擎状态为准，不依赖 AI 自己的笔记）。"""
+        name = p["name"]
+        sk = self.state.get("skill_uses", {}).get(name, {})
+        skills = "、".join(f"{k}×{v}" if v > 0 else f"{k}（已用完）" for k, v in sk.items()) or "无"
+        items = "、".join(f"{e['name']}×{e['uses_left']}" for e in p.get("items", []) if e["uses_left"] > 0) or "无"
+        lines = [f"- 身份：{p['identity']}｜职业：{p['profession']}",
+                 f"- 技能剩余：{skills}",
+                 f"- 道具：{items}"]
+        if self.state.get("detective") == name:
+            lines.append("- 你是侦探：公共发言末置发言、一票计 1.5、垄断武装指认（出局时警徽按遗嘱传承）")
+        return lines
+
+    def _weapon_hint(self, p: dict, room: str | None) -> str:
+        """谋杀菜单的实时凶器提示：持有凶器逐件列出（含次数），无凶器则明示只能空手。"""
+        held = [f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])
+                if e["uses_left"] > 0 and e["name"] in WEAPONS]
+        parts = ["你当前持有凶器：" + "、".join(held) if held
+                 else "你当前未持有凶器（只能空手，空手条件见规则 §7.6）"]
+        env = ENV_WEAPON.get(room or "")
+        if env:
+            parts.append(f"本房间环境凶器：{env}（不限次数）")
+        return "；".join(parts)
+
+    @staticmethod
+    def _compact_public(lines: list[str]) -> list[str]:
+        """关键记录公共段压缩（仅简报呈现层；state/feed/public/script 全量保留）。
+
+        - 竞选仪式折叠：已有竞选结果行时，丢弃宣告参选/不参选与退选结果行（只留结果行）；
+        - 日序/存活/倒计时三类状态行各只保留最新一条；事件行（死亡/投票/遗嘱/监控宣读等）全保留。
+        """
+        has_result = any("侦探竞选：" in x or "本局不设侦探" in x for x in lines)
+        kinds = ("/5 天开始", "目前存活", "无杀倒计时：已连续")
+        last = {k: max((i for i, x in enumerate(lines) if k in x), default=-1) for k in kinds}
+        out = []
+        for i, x in enumerate(lines):
+            if has_result and ("宣告参选侦探" in x or "宣告不参选" in x or "退选结果：" in x):
+                continue
+            if any(k in x and i != last[k] for k in kinds):
+                continue
+            out.append(x)
+        return out
+
+    @staticmethod
+    def _compact_private(lines: list[str]) -> list[str]:
+        """关键记录私密段压缩：监控全量复读（格式本身累计历史）只留最新一条；其余事件全保留。"""
+        last = max((i for i, x in enumerate(lines) if x.startswith("监控记录（公开口径")), default=-1)
+        return [x for i, x in enumerate(lines) if not x.startswith("监控记录（公开口径") or i == last]
 
     def build_briefing(self, p: dict, title: str, menu: list[str], extra: str = "") -> str:
         """简报 = 增量公开事件 + 增量私密事件 + 当前局面 + 关键记录 + notes 回放 + 合法动作菜单。
@@ -558,9 +610,9 @@ class Orchestrator:
                 for q in self.alive()
                 if q["name"] != name and self.state["positions"].get(q["name"]) == pos
             ]
-        pub_hist = [self._bullet(self._clip(x)) for x in feed[:cursor] if not x.startswith("**")]
+        pub_hist = [self._bullet(self._clip(x)) for x in self._compact_public(feed[:cursor]) if not x.startswith("**")]
         hist = self.orch["hist"].get(name, [])
-        priv_hist = hist[: len(hist) - len(private)] if private else hist
+        priv_hist = self._compact_private(hist[: len(hist) - len(private)] if private else hist)
         lines = [f"# {title}", ""]
         lines.append("## 自你上次行动以来的公告")
         lines += [self._bullet(x) for x in new_public] or ["- （无）"]
@@ -577,6 +629,8 @@ class Orchestrator:
             else:
                 pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
         lines.append(f"## 当前局面\n{pos_line}")
+        lines.append("")
+        lines.append("## 你的状态\n" + "\n".join(self._status_lines(p)))
         lines.append("")
         lines.append("## 截至目前的关键记录（主持人档案：既定事实流水，不含任何发言内容——发言与推理要点请记在你的笔记里）")
         lines.append("### 公共记录")
@@ -601,12 +655,31 @@ class Orchestrator:
     def reject_note(self, p: dict, ev: dict) -> None:
         self.tell(p["name"], f"你的动作被驳回：{ev.get('error', '未知原因')}")
 
-    def apply_actions(self, p: dict, actions: list[dict]) -> None:
-        """逐条派发动作到引擎；非法动作驳回并私下告知本人，不影响其余动作。"""
+    def apply_actions(self, p: dict, actions: list[dict], retry: dict | None = None) -> None:
+        """逐条派发动作到引擎；非法动作驳回并私下告知本人，不影响其余动作。
+
+        传 retry 上下文（label/title/menu/extra）时：驳回后立即私下重报一次（dev-plan「驳回并要求重报」，
+        game/2 复盘：夜袭误报已消耗凶器被驳回且无重报机会，直接改写胜负）。重报以「label#驳回重报」
+        独立存档（inbox/outbox/host_log/console 同口径）；二次驳回不再追问（reject_note 已留档）。
+        选房/归宿等有兜底语义（滞留/默认回房）的环节不接重报。
+        """
+        rejected: list[tuple[dict, dict]] = []
         for act in actions:
             if not isinstance(act, dict):
                 continue
-            self.dispatch(p, act)
+            ev = self.dispatch(p, act)
+            if ev is not None and not ev.get("ok"):
+                rejected.append((act, ev))
+        if not rejected or retry is None:
+            return
+        reasons = "；".join(f"{fmt_action(a)} → 驳回（{e.get('error', '未知原因')}）" for a, e in rejected)
+        extra = (retry.get("extra") or "") + \
+            f"\n【主持人】你刚才的动作声明被驳回：{reasons}。请重新声明本阶段动作（放弃则 actions 为 []；speech 可留空，不会重复公开）。"
+        briefing = self.build_briefing(p, retry["title"], retry["menu"], extra)
+        payload = self.call_ai(p, retry["label"] + "#驳回重报", briefing)
+        for act in payload["actions"]:
+            if isinstance(act, dict):
+                self.dispatch(p, act)
 
     def dispatch(self, p: dict, act: dict) -> dict | None:
         name = p["name"]
@@ -848,7 +921,9 @@ class Orchestrator:
             speech = str(payload.get("speech") or "").strip()
             if speech:
                 self.log_line(f"**{name}**：{speech}")
-            self.apply_actions(p, payload["actions"])
+            self.apply_actions(p, payload["actions"], retry={
+                "label": "公共发言", "title": f"第{day}天 · 公共发言（轮到你）", "menu": menu,
+                "extra": "现在轮到你公开发言。分析、指控、质疑、声明、辩护均可。（发言已收录，无需重复）"})
             w["done"].append(name)
             self.save_state()
             self.check_stop()
@@ -896,7 +971,7 @@ class Orchestrator:
             self.check_stop()
 
     def run_free_activity(self) -> None:
-        """自由活动：停电声明并入选房菜单 → 秘密选房+邀请 → 结算 → 房间交谈 → 房间行动。"""
+        """自由活动：停电声明轮（选房前）→ 秘密选房+邀请 → 结算 → 房间交谈 → 房间行动。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         if self.state["rooms_entered"] != period:
@@ -906,6 +981,43 @@ class Orchestrator:
         self.room_talks(day)
         self.room_actions(day)
 
+    def blackout_declarations(self, day: int) -> None:
+        """停电声明轮（rules-6 §7.5：本阶段开始前秘密声明，进入房间后才向众人公布）。
+
+        存活反派中持任一【暴力破解】手段者按行动顺序逐一秘密决定；声明即时生效——选房整段
+        监控缺失、门锁失效、除会客室外黑暗（首位进入落定前完成，保证记录不虚报、开锁成本一致）；
+        公开公告由 select_rooms 在选房收尾后统一发出。无符合条件者则整轮零调用。
+        """
+        s = self.state
+        if s["winner"] or s["power_out"] or s.get("selection_begun") == current_period(s):
+            return
+        w = self.wip(f"{day}:自由活动:停电声明", done=[])
+        for name in s["order"]:
+            if s["power_out"]:
+                break  # 已有一人声明成功，其余反派无需再被询问（重复声明也只会被引擎驳回）
+            p = self.player(name)
+            if not p or not p["alive"] or not is_villain(p) or name in w["done"]:
+                continue
+            if unlock_means(s, name) is None:
+                continue
+            menu = ['- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——职业技能/「万能钥匙」/「螺丝起子」任一；停电中门锁失效、监控缺失、除会客室外全部黑暗；进入房间后才向众人公布）：{"type": "declare_blackout"}',
+                    '- 不声明则 actions 为 []（本环节只有这一项决定，speech 可留空）']
+            briefing = self.build_briefing(p, f"第{day}天 · 自由活动（停电声明）", menu,
+                                           "自由活动即将开始。你可以在进入任何房间之前秘密拉电闸。")
+            payload = self.call_ai(p, "自由活动-停电声明", briefing)
+            for act in payload["actions"]:
+                if not isinstance(act, dict) or act.get("type") != "declare_blackout":
+                    continue
+                ev = self.eng.declare_blackout(name)
+                self.script_action(name, act, ev)  # 记入全记录并在 console 上屏（对玩家仍保密）
+                if ev["ok"]:
+                    self.route(ev)
+                else:
+                    self.reject_note(p, ev)
+            w["done"].append(name)
+            self.save_state()
+            self.check_stop()
+
     def select_rooms(self, day: int, period: str) -> None:
         w = self.wip(f"{day}:自由活动:选房", done=[], assignments={}, invites={})
         assignments: dict[str, str] = dict(w["assignments"])
@@ -913,6 +1025,7 @@ class Orchestrator:
         alive_names = [p["name"] for p in self.alive()]
         if not w["done"]:
             self.state["positions"] = {}  # v3.5 顺序结算：选房轮开始时重置位置账本（续跑保留已结算部分）
+        self.blackout_declarations(day)  # 停电声明轮（rules-6 §7.5：阶段开始前秘密声明，先于任何进入）
         rooms_menu = (
             [f'- 选择房间（必选一项）：{{"type": "choose_room", "room": "房间名"}}；合法去向只有四种：{"、".join(ROOM_CHOICES)}',
              '- 注意：白天卧室一律清场不开放（含你自己的）。满员、上锁而无手段、被封闭空间挡住或选择无效者一律滞留会客室',
@@ -923,8 +1036,6 @@ class Orchestrator:
             if not p or not p["alive"] or name in w["done"]:
                 continue
             menu = list(rooms_menu)
-            if is_villain(p) and unlock_means(self.state, name) is not None:
-                menu.append('- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——职业技能/「万能钥匙」/「螺丝起子」任一；停电中门锁失效、监控缺失、除会客室外全部黑暗）：{"type": "declare_blackout"}')
             later = [n for n in self.state["order"][i + 1:] if n in alive_names]
             extra = f"你可以邀请顺序在你之后的玩家同入：{'、'.join(later) if later else '无'}。"
             settled = self.state["positions"]
@@ -957,10 +1068,6 @@ class Orchestrator:
                     tgt = str(act.get("target", ""))
                     if tgt in later:
                         pending_invite[tgt] = name
-                elif at == "declare_blackout":
-                    ev = self.eng.declare_blackout(name)
-                    self.script_action(name, act, ev)  # 停电声明记入全记录并在 console 上屏（对玩家仍保密）
-                    self.route(ev) if ev["ok"] else self.reject_note(p, ev)
             assignments[name] = room
             ev = self.eng.choose_room_one(name, room)  # v3.5：选择即结算（进入即开锁；失败滞留会客室）
             if ev["ok"]:
@@ -984,6 +1091,10 @@ class Orchestrator:
         if ev["ok"]:
             self.route(ev)
             self.script_private(ev)
+            if self.state.get("blackout_news") == period:
+                # 停电在全员进入房间后才向众人公布（rules-6 §7.5）；三出口同写（feed/public/script + console）
+                self.log_line("- 停电了——除会客室外所有房间一片黑暗，所有门锁失效（保险箱除外），监控停止记录；可前往地下室修复发电机恢复供电")
+                self.state["blackout_news"] = None
             self.script_line("- 选房结果：" + "、".join(f"{n}→{self.state['positions'].get(n, HALL)}" for n in assignments))
             if invited:
                 self.script_line("  同入邀请成立：" + "、".join(f"{t} 随 {v}（{assignments[t]}）" for t, v in invited.items()))
@@ -1048,10 +1159,12 @@ class Orchestrator:
             menu = self.action_menu(p, day)
             if not menu:
                 continue
-            briefing = self.build_briefing(p, f"第{day}天 · 自由活动（房间行动）", menu,
-                                           "现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。")
+            extra = "现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。"
+            briefing = self.build_briefing(p, f"第{day}天 · 自由活动（房间行动）", menu, extra)
             payload = self.call_ai(p, "自由活动-房间行动", briefing)
-            self.apply_actions(p, payload["actions"])
+            self.apply_actions(p, payload["actions"], retry={
+                "label": "自由活动-房间行动", "title": f"第{day}天 · 自由活动（房间行动）",
+                "menu": menu, "extra": extra})
             w["done"].append(name)
             self.save_state()
             self.check_stop()
@@ -1086,7 +1199,7 @@ class Orchestrator:
             targets = [q["name"] for q in self.alive()
                        if q["name"] != name and s["positions"].get(q["name"]) == room and not is_villain(q)]
             if targets:
-                menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名" 或环境凶器）')
+                menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
                 if p["profession"] == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
                     menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
         return menu
@@ -1128,8 +1241,9 @@ class Orchestrator:
                 extra += "\n守夜邀请成立且房内恰好你们两人时，睡前有一轮密谈（仅彼此可见）。"
                 if later:
                     extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
-                if p["identity"] == "杀手" and not self.state["stage_murder_used"]:
-                    menu.append('- 夜袭：前往一名玩家的卧室动手（需【暴力破解】手段，停电期间门锁失效除外；房内满 2 人时仅停电黑暗中可潜入袭击其一，否则无法进入且当夜机会作废）：{"type": "night_raid", "room": "某人的卧室"}')
+                can_raid = unlock_means(self.state, name) is not None or self.state["power_out"]
+                if p["identity"] == "杀手" and day >= 2 and not self.state["stage_murder_used"] and can_raid:
+                    menu.append('- 夜袭：前往一名玩家的卧室动手（需【暴力破解】手段，停电期间门锁失效除外；房内人数不可见、可能空无一人——进入空房则白跑一趟，当夜机会照常消耗；房内两名非反派同守则无法进入且当夜机会作废——同房有你的帮凶则可照常进入，但亮房闯入会被房内人看见；停电黑暗中可潜入满员卧室袭击其一）：{"type": "night_raid", "room": "某人的卧室"}')
                 if is_villain(p) and p["profession"] == "建筑师" and self.state["passage"] and not self.state["passage"]["used"]:
                     menu.append('- 使用密道（当夜行动，与夜间房间/夜袭互斥；监控无痕；出口人数须满足谋杀人数条件，否则当晚失败但密道保留）：{"type": "use_passage", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock（可选）"}')
                 if self.state["bug_room"] and held_item(p, "窃听器", day) is not None:
@@ -1161,7 +1275,7 @@ class Orchestrator:
                     elif at == "night_hall":
                         assignments[name] = HALL
                         passages.pop(name, None)
-                    elif at == "night_raid" and p["identity"] == "杀手":
+                    elif at == "night_raid" and p["identity"] == "杀手" and day >= 2:
                         room = str(act.get("room", ""))
                         if is_bedroom(room) and bedroom_owner(room) != name:
                             assignments[name] = room
@@ -1277,6 +1391,12 @@ class Orchestrator:
                 continue
             speakers = [n for n in occ if n in (guest, host)]   # occ 已按行动顺序排列
             listeners = [n for n in occ if n not in (guest, host)]  # v3.5：停电潜入者在黑暗中旁听
+            if listeners and not is_dark(self.state, room):
+                # v3.7：亮房闯入者无法隐身——守夜两人看清来人，密谈中断（rules-6 §7.7 内应破门口径）
+                self.script_line(f"- {room}密谈中断：{'、'.join(listeners)} 闯入亮房卧室，守夜两人发现了他")
+                w["done"].append(room)
+                self.save_state()
+                continue
             transcript: list[str] = []
             for occ_name in speakers:
                 p = self.player(occ_name)
@@ -1356,13 +1476,15 @@ class Orchestrator:
                    and self.state["positions"].get(q["name"]) == room]
         if not targets:
             return
-        menu = [f'- 谋杀（本次不用则本阶段机会作废）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；空手需满足体格/性别条件，在目标自己卧室偷袭门槛放宽）']
+        menu = [f'- 谋杀（本次不用则本阶段机会作废）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(kp, room)}；空手需满足体格/性别条件，在目标自己卧室偷袭门槛放宽）']
         if kp["profession"] == "魔术师" and skill_left(self.state, kp["name"], "舞台魔术") > 0:
             menu.append(f'- 舞台魔术（不可防御）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
-        briefing = self.build_briefing(kp, f"第{day}天 · 晚间休息（夜袭）", menu,
-                                       "夜深人静，机会只有一次。动手，或按兵不动（actions 为 []）。")
+        extra = "夜深人静，机会只有一次。动手，或按兵不动（actions 为 []）。"
+        briefing = self.build_briefing(kp, f"第{day}天 · 晚间休息（夜袭）", menu, extra)
         payload = self.call_ai(kp, "晚间休息-夜袭", briefing)
-        self.apply_actions(kp, payload["actions"])
+        self.apply_actions(kp, payload["actions"], retry={
+            "label": "晚间休息-夜袭", "title": f"第{day}天 · 晚间休息（夜袭）",
+            "menu": menu, "extra": extra})
 
 
     def run_investigation(self) -> None:
@@ -1413,7 +1535,8 @@ class Orchestrator:
             extra += "\n调查结果仅你本人可见——是否公布、隐瞒或撒谎，由你在发言中决定。"
             briefing = self.build_briefing(p, f"第{day}天 · 案件调查", menu, extra)
             payload = self.call_ai(p, "案件调查", briefing)
-            self.apply_actions(p, payload["actions"])
+            self.apply_actions(p, payload["actions"], retry={
+                "label": "案件调查", "title": f"第{day}天 · 案件调查", "menu": menu, "extra": extra})
             w["done"].append(name)
             self.save_state()
             self.check_stop()
@@ -1699,7 +1822,8 @@ class Orchestrator:
             extra = ("以下案件的现场没有其他非反派角色，你可以动手毁证（也可以不动）：\n" + "\n".join(case_lines))
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)
             payload = self.call_ai(p, "毁证机会", briefing)
-            self.apply_actions(p, payload["actions"])
+            self.apply_actions(p, payload["actions"], retry={
+                "label": "毁证机会", "title": f"第{day}天 · 毁证机会", "menu": menu, "extra": extra})
             w["done"].append(p["name"])
             self.save_state()
             self.check_stop()

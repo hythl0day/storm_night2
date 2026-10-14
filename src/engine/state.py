@@ -133,6 +133,8 @@ def ensure(state: dict) -> dict:
     s.setdefault("stage_murder_used", False)
     s.setdefault("power_out", False)
     s.setdefault("blackout_days", [])  # 发生过停电的天数（清晨监控宣读"空白"提示用）
+    s.setdefault("blackout_news", None)      # 待公告的停电时段（选房收尾后向众人公布，rules-6 §7.5）
+    s.setdefault("selection_begun", None)    # 选房首个进入已结算的时段（此后停电声明窗口关闭）
     s.setdefault("flashlight_lit", [])
     s.setdefault("bedroom_relock", [])
     s.setdefault("sealed_room", None)

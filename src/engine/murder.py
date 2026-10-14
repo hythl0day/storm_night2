@@ -174,6 +174,7 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
             return reject("murder", "空手谋杀条件不满足")
     if weapon is not None and weapon not in ("雕像", "电线"):
         consume_item_entry(kp, entry)
+    spent = f"{weapon}已消耗；" if weapon is not None and weapon not in ("雕像", "电线") else ""
     s["stage_murder_used"] = True
     s["last_murder_day"] = day
     defended, via = _defense(s, tp, method, room, day, savior)
@@ -182,15 +183,16 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
         s["attempts"].append({
             "target": target, "day": day, "stage": stage, "room": room, "period": current_period(s),
         })
-        private = {killer: "谋杀失败（你无法分辨是武器、药品还是技能所致）", target: "你遭遇了袭击，但侥幸幸存"}
+        private = {killer: f"谋杀失败（{spent}你无法分辨是武器、药品还是技能所致）", target: "你遭遇了袭击，但侥幸幸存"}
         for w in witnesses:
             private[w] = "有人遇袭，但你不知道袭击者是谁"
         ev = {"ok": True, "type": "murder_attempt", "public": None, "private": private, "defended": True}
         return _winner_tail(s, ev)
     case = _apply_kill(s, target, method, room, killer)
-    private = {killer: "谋杀成功", target: "你被杀害了"}
+    suffix = f"（{weapon}已消耗）" if weapon is not None and weapon not in ("雕像", "电线") else ""
+    private = {killer: f"谋杀成功{suffix}", target: "你被杀害了"}
     if case["looted"]:
-        private[killer] = f"谋杀成功；缴获道具：{'、'.join(case['looted'])}"
+        private[killer] = f"谋杀成功{suffix}；缴获道具：{'、'.join(case['looted'])}"
     for w in witnesses:
         private[w] = "有人被谋杀，但你不知道凶手是谁"
     ev = {"ok": True, "type": "murder", "public": None, "private": private, "case": case}

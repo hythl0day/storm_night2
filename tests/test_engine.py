@@ -1573,5 +1573,132 @@ class TestTableWeapon(unittest.TestCase):
         self.assertIn("左轮手枪", items_of(eng, "A"))
 
 
+class TestGame2ReviewFixes(unittest.TestCase):
+    """game/2 复盘修复（rules-6 §7.5 停电时机 / §7.7 夜袭空房与第 1 天口径 / 谋杀回执消耗提示）。"""
+
+    def test_blackout_rejected_after_selection_begins(self):
+        """首个进入落定后（selection_begun）停电声明窗口关闭——杜绝选房循环内声明造成"半段监控记录"。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "自由活动", day=2)
+        self.assertTrue(eng.choose_room_one("C", "会客室")["ok"])
+        ev = eng.declare_blackout("B")
+        self.assertFalse(ev["ok"])
+        self.assertIn("窗口已过", ev["error"])
+        self.assertFalse(eng.state["power_out"])
+
+    def test_blackout_preselection_full_suppression(self):
+        """声明先于任何进入生效：停电时段监控整段零记录（含真实记录）；门锁对全员一致失效。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "自由活动", day=2)
+        ev = eng.declare_blackout("B")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["blackout_news"], "第2天自由活动")
+        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 0)
+        # 门锁失效对顺序前后一致：无手段的 C 也免费进入上锁的监控室
+        self.assertTrue(eng.choose_room_one("C", "监控室")["ok"])
+        self.assertEqual(eng.state["positions"]["C"], "监控室")
+        for n in ("A", "B", "D", "E", "F"):
+            self.assertTrue(eng.choose_room_one(n, "会客室")["ok"])
+        self.assertNotIn("第2天自由活动", eng.state["monitoring"])
+        self.assertNotIn("第2天自由活动", eng.state["monitoring_true"])
+
+    def test_day1_no_night_raid_semantics(self):
+        """第 1 天全天禁杀：杀手不享受夜袭语义——满员卧室按普通拦截处理，不消耗当夜机会。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players, order=["C", "D", "A", "B", "E", "F"]))
+        goto(eng, "公共发言", day=1)
+        self.assertTrue(eng.declare_blackout("B")["ok"])  # 停电令门锁失效，排除开锁变量专测满员口径
+        goto(eng, "晚间休息", day=1)
+        ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["D"], "C的卧室")
+        self.assertEqual(ev["positions"]["A"], "A的卧室")  # 无夜袭语义：满员即拦截（非"机会消耗"口径）
+        self.assertFalse(eng.state["stage_murder_used"])
+
+    def test_night_raid_empty_bedroom(self):
+        """夜袭空卧室合法：照常进入、开锁手段消耗，但不产生谋杀判定/未遂记录、不重置无杀倒计时。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        eng = Engine(mk_state(players=players, order=["C", "A", "B", "D", "E", "F"]))
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"C": "书房", "A": "C的卧室"})  # C 夜不归宿去书房
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "C的卧室")
+        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 0)  # 开锁手段照常消耗
+        self.assertFalse(eng.state["cases"])
+        self.assertFalse(eng.state["attempts"])
+        self.assertIsNone(eng.state["last_murder_day"])
+
+    def test_murder_receipt_notes_weapon_consumed(self):
+        """谋杀回执明示凶器已消耗（成功与未遂）——防 AI 台账残留幻觉（game/2 索尔误报已消耗的刀）。"""
+        eng = Engine(mk_state())  # A 杀手持刀；E 无自卫手段
+        free2(eng, {"A": "书房", "E": "书房", "B": "会客室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E", "刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("刀已消耗", ev["private"]["A"])
+        self.assertNotIn("刀", items_of(eng, "A"))  # 次数归零即销毁（从持有列表移除）
+
+        eng2 = Engine(mk_state())  # 未遂：C 的急救箱自动防御，刀同样消耗
+        free2(eng2, {"A": "书房", "C": "书房", "B": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng2.murder("A", "C", "刀")
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertIn("刀已消耗", ev["private"]["A"])
+        self.assertNotIn("刀", items_of(eng2, "A"))
+
+
+class TestNightRaidVillainAccess(unittest.TestCase):
+    """v3.7 内应口径：守夜拦截看非反派人数——同房有帮凶时杀手可夜袭破门（rules-6 §7.7）。"""
+
+    def test_raid_civ_host_accomplice_guest(self):
+        """平民邀请帮凶守夜（引狼入室）：杀手可进入满员卧室并正常谋杀；亮房闯入被两人看见。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)  # 暴力破解作开锁手段
+        # 跨日轮转后第 2 天顺序 = F→B→…→A：F（平民房主）先归房、B（帮凶）应邀随后、A 夜袭最后行动
+        eng = Engine(mk_state(players=players, order=["A", "F", "B", "C", "D", "E"]))
+        goto(eng, "晚间休息", day=2)
+        # F（平民，无防御）邀请 B（帮凶）守夜；A 最后行动，夜袭 F 的卧室
+        ev = eng.night_assign({"B": "F的卧室", "A": "F的卧室"}, invited={"B": "F"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "F的卧室")          # 同房有反派 → 满员拦截不适用
+        self.assertIn("都看见了你", ev["private"]["A"])             # 亮房闯入无法隐身
+        self.assertIn("闯入了你们的卧室", ev["private"]["F"])
+        self.assertIn("闯入了你们的卧室", ev["private"]["B"])
+        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 0)  # 开锁成本照付
+        self.assertFalse(eng.state["stage_murder_used"])            # 进入本身不耗机会，深夜才判定
+        ev = eng.murder("A", "F", "刀")   # 房内非反派仅 F 一人 → 深夜正常判定
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder")
+
+    def test_raid_accomplice_host_civ_guest(self):
+        """帮凶邀请平民守夜（请君入瓮）：杀手夜袭帮凶的卧室收割；尸体留在帮凶卧室形成自曝制衡。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        eng = Engine(mk_state(players=players))  # 第 2 天行动顺序 B→C→D→E→F→A
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"F": "B的卧室", "A": "B的卧室"}, invited={"F": "B"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "B的卧室")
+        ev = eng.murder("A", "F", "刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["case"]["room"], "B的卧室")  # 尸体在帮凶卧室——次日清晨监控宣读会念出三人进入记录
+
+    def test_raid_two_civilians_still_blocked(self):
+        """两名非反派同守仍是严防：杀手无法进入，当夜机会消耗但不计谋杀、不重置倒计时。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        eng = Engine(mk_state(players=players))  # 第 2 天 A 最后行动，守夜对先成立
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "A的卧室")
+        self.assertTrue(eng.state["stage_murder_used"])
+        self.assertIsNone(eng.state["last_murder_day"])
+
+
 if __name__ == "__main__":
     unittest.main()

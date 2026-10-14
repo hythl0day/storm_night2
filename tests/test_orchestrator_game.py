@@ -385,10 +385,14 @@ class TestCivilianWinEnding(MockGameTestBase):
             title = briefing.splitlines()[0]
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
+            if "停电声明" in title and day == 2 and name == "B":
+                # 停电声明轮：选房开始前逐一秘密询问反派（rules-6 §7.5 口径修正，game/2 复盘）
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "选房" in title and day == 2 and name == "B":
                 return ChatResult(player.name, ok=True,
-                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"},
-                                                                      {"type": "declare_blackout"}]),
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "选房" in title and day == 2 and name == "C":
                 return ChatResult(player.name, ok=True,
@@ -419,6 +423,11 @@ class TestCivilianWinEnding(MockGameTestBase):
         s = orch.state
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn("◆ B｜声明今晚停电 → 成功", script)  # v3.5 复盘修复：停电声明记入全记录（行动回执格式）
+        # game/2 复盘修复：声明轮先于选房（script 中声明回执位于"选房结果"之前）；停电公告在收尾后公开
+        self.assertLess(script.index("声明今晚停电"), script.index("- 选房结果：B→会客室"))
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("停电了——", log)                     # 进入房间后向众人公布
+        self.assertNotIn("第2天自由活动", json.dumps(s["monitoring"], ensure_ascii=False))  # 停电整段监控零记录
         self.assertIn("C的卧室密谈（C、D）：【旁听：A】", script)
         self.assertIn("C 的密谈内容", script)
         # 密谈双方正常收到；杀手作为旁听者收到；密谈者的记录不泄漏"被旁听"
@@ -576,6 +585,176 @@ class StageHintsTest(MockGameTestBase):
         line = json.loads((self.orch.dir / "host_log.jsonl").read_text(encoding="utf-8").strip())
         self.assertEqual(line["total_tokens"], 100)
         self.assertEqual(line["usage"]["prompt_cache_hit_tokens"], 80)
+
+
+class TestBriefingAndRetryFixes(MockGameTestBase):
+    """game/2 复盘修复：简报「你的状态」台账段 / 关键记录压缩 / 驳回即时重报（含三出口口径）。"""
+
+    def setUp(self):
+        super().setUp()
+        self.orch = Orchestrator(write_game_dir(self.root, default_players()))
+
+    def test_briefing_status_section_live_ledger(self):
+        p = self.orch.player("A")  # 杀手/魔术师/刀
+        text = self.orch.build_briefing(p, "第1天 · 公共发言", [])
+        self.assertIn("## 你的状态", text)
+        self.assertIn("身份：杀手｜职业：魔术师", text)
+        self.assertIn("刀×1", text)
+        self.assertIn("看破伪装×2", text)
+        p["items"].clear()  # 消耗后立即反映（不依赖 AI 自己的笔记）
+        text = self.orch.build_briefing(p, "第1天 · 公共发言", [])
+        self.assertIn("道具：无", text)
+
+    def test_compact_public_election_and_status_lines(self):
+        lines = ["A 宣告参选侦探", "B 宣告不参选", "退选结果：无人退选；留任候选人：A",
+                 "- 侦探竞选：A 当选侦探（略）；侦探佩枪：桌上凶器「左轮手枪」归 A 持有",
+                 "- 第 2/5 天开始。今日行动顺序：B → A", "- 目前存活 6 人：A、B",
+                 "- 无杀倒计时：已连续 0 个完整天无谋杀行为", "- 投票结果：无人得票",
+                 "- 第 3/5 天开始。今日行动顺序：A → B", "- 目前存活 5 人：A、B",
+                 "- 无杀倒计时：已连续 1 个完整天无谋杀行为"]
+        out = Orchestrator._compact_public(lines)
+        self.assertTrue(any("侦探竞选：" in x for x in out))                 # 结果行保留
+        self.assertFalse(any("宣告参选" in x or "宣告不参选" in x or "退选结果" in x for x in out))  # 仪式行折叠
+        self.assertEqual([x for x in out if "/5 天开始" in x], ["- 第 3/5 天开始。今日行动顺序：A → B"])
+        self.assertEqual([x for x in out if "目前存活" in x], ["- 目前存活 5 人：A、B"])
+        self.assertEqual([x for x in out if "无杀倒计时：已连续" in x], ["- 无杀倒计时：已连续 1 个完整天无谋杀行为"])
+        self.assertTrue(any("投票结果" in x for x in out))                   # 事件行全保留
+
+    def test_compact_private_keeps_latest_monitoring_dump(self):
+        lines = ["你用暴力破解打开了监控室",
+                 "监控记录（公开口径，今日新增置顶）：今日新增：第1天自由活动[监控室←A]",
+                 "你收到了不明药剂（剩余 1 次）",
+                 "监控记录（公开口径，今日新增置顶）：今日新增：第2天自由活动[书房←B]；历史：第1天自由活动[监控室←A]"]
+        out = Orchestrator._compact_private(lines)
+        dumps = [x for x in out if x.startswith("监控记录（公开口径")]
+        self.assertEqual(len(dumps), 1)
+        self.assertIn("第2天", dumps[0])          # 留最新一条（格式本身累计历史）
+        self.assertTrue(any("暴力破解" in x for x in out))   # 其余事件全保留
+        self.assertTrue(any("不明药剂" in x for x in out))
+
+    def test_night_murder_rejection_then_retry(self):
+        """夜袭误报已消耗凶器 → 驳回后当场私下重报一次 → 改报空手落杀（重报独立存档/日志/host 全记录）。"""
+        d = write_game_dir(self.root / "g2", default_players())
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            acts = None
+            if "夜袭" in title and name == "A" and day == 3:
+                if "被驳回" in briefing:  # 驳回重报的第二次调用：改报空手
+                    acts = [{"type": "murder", "target": "F"}]
+                else:                   # 第一次：误报已在第 2 天消耗掉的刀
+                    acts = [{"type": "murder", "target": "F", "weapon": "刀"}]
+            elif "晚间休息" in title and "密谈" not in title and name == "A" and day == 3:
+                acts = [{"type": "night_raid", "room": "F的卧室"}]
+            elif "选房" in title and day == 2 and name == "A":
+                acts = [{"type": "choose_room", "room": "书房"}]
+            elif "选房" in title and day == 2 and name == "E":
+                acts = [{"type": "choose_room", "room": "书房"}]
+            elif "房间行动" in title and day == 2 and name == "A":
+                acts = [{"type": "murder", "target": "E", "weapon": "刀"}]  # 刀在此消耗
+            if acts is None:
+                return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+            return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                              latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+
+        orch = self.run_game_with(d, chat_fn)
+        s = orch.state
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("驳回（未持有可用凶器）", script)          # 驳回入 host 全记录
+        self.assertTrue(any(c["victim"] == "F" for c in s["cases"]))  # 重报后落杀成功
+        host_log = (d / "host_log.jsonl").read_text(encoding="utf-8")
+        self.assertIn("晚间休息-夜袭#驳回重报", host_log)        # host_log 独立条目
+        self.assertTrue((d / "outbox" / "A" / "day3-晚间休息-夜袭#驳回重报.md").exists())  # 重报独立存档
+        self.assertTrue(any("你的动作被驳回：未持有可用凶器" in m for m in s["orch"]["hist"]["A"]))
+        # 简报台账与压缩：A 第 3 天晚间简报——你的状态段实时道具（刀没了、缴获的万能钥匙在）；
+        # 公共记录折叠竞选仪式行、保留结果行
+        briefing = (d / "inbox" / "A" / "day3-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("## 你的状态", briefing)
+        self.assertIn("万能钥匙×2", briefing)
+        self.assertNotIn("刀×1", briefing)
+        pub = briefing.split("### 公共记录")[1].split("### 与你相关的私密记录")[0]
+        self.assertIn("侦探竞选：", pub)
+        self.assertNotIn("宣告参选", pub)
+        self.assertEqual(pub.count("/5 天开始"), 1)
+
+    def test_night_raid_menu_requires_means_or_blackout(self):
+        """夜袭菜单门槛：无开锁手段且非停电时不提供该项（菜单只列合法动作——game/2 复盘同源的菜单准确性）。"""
+        # A=魔术师（无任何开锁手段）：整局夜间菜单无夜袭项
+        d1 = write_game_dir(self.root / "g4", default_players())
+        self.run_game(d1, killer_script=False)
+        night2 = (d1 / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertNotIn("night_raid", night2)
+
+        # A=黑客（暴力破解）：第 2 天起有夜袭项；第 1 天（全天禁杀）没有
+        players = default_players()
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        d2 = write_game_dir(self.root / "g5", players)
+        self.run_game(d2, killer_script=False)
+        night1 = (d2 / "inbox" / "A" / "day1-晚间休息.md").read_text(encoding="utf-8")
+        self.assertNotIn("night_raid", night1)
+        night2 = (d2 / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("night_raid", night2)
+
+        # 停电中（B 第 2 天声明）：门锁失效，无手段的杀手也显示夜袭项
+        d3 = write_game_dir(self.root / "g6", default_players())
+        base = make_fake_chat(False)
+
+        def chat_bo(player, messages, *, on_token=None, reasoning_effort=None):
+            title = messages[-1]["content"].splitlines()[0]
+            if "停电声明" in title and player.name == "B" and "第2天" in title:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        self.run_game_with(d3, chat_bo)
+        night2 = (d3 / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("night_raid", night2)
+
+    def test_lit_breakin_interrupts_sleep_talk(self):
+        """v3.7 内应口径：帮凶邀平民守夜 + 杀手夜袭破门——亮房闯入被看见，守夜密谈中断，深夜照常判定。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        d = write_game_dir(self.root / "g3", players)
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            acts = None
+            if "夜袭" in title and name == "A" and day == 2:
+                acts = [{"type": "murder", "target": "F", "weapon": "刀"}]
+            elif "晚间休息" in title and "密谈" not in title and day == 2:
+                if name == "B":
+                    acts = [{"type": "invite", "target": "F"}]   # 帮凶邀平民守夜（请君入瓮）
+                elif name == "F":
+                    acts = [{"type": "accept_invite"}]
+                elif name == "A":
+                    acts = [{"type": "night_raid", "room": "B的卧室"}]
+                else:
+                    acts = []
+            if acts is None:
+                return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+            return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                              latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+
+        orch = self.run_game_with(d, chat_fn)
+        s = orch.state
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("密谈中断", script)                    # 亮房闯入打断密谈
+        self.assertNotIn("B的卧室密谈（B、F）：", script)     # 密谈没有发生
+        self.assertTrue(any("闯入了你们的卧室" in m for m in s["orch"]["hist"]["F"]))  # 守夜两人看清来人
+        self.assertTrue(any("都看见了你" in m for m in s["orch"]["hist"]["A"]))
+        self.assertTrue(any(c["victim"] == "F" and c["room"] == "B的卧室" for c in s["cases"]))
+        self.assertFalse(next(p for p in s["players"] if p["name"] == "F")["alive"])
 
 
 if __name__ == "__main__":

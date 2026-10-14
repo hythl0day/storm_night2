@@ -46,7 +46,7 @@
 
 房间与道具台账：
 - `unlock(user, room)` / `open_safe(user)` / `transfer(giver, receiver, item, accept=True)` / `use_flashlight(user)`
-- `declare_blackout(user)` / `fix_generator(user)`
+- `declare_blackout(user)` / `fix_generator(user)` — 停电声明窗口 = 公共发言/投票阶段，或自由活动阶段选房结算开始前（首个进入落定后以 `selection_begun` 驳回，rules-6 §7.5"阶段开始前声明"）；成功记 `blackout_news`，由编排器在选房收尾后公开公告（"进入房间后向众人公布"）
 - `take_table_item(user, item)` — v3.5 取桌上物品：仅晚间休息、身处会客室且室内无其他存活者；物品保留剩余次数、当夜即可用；变动记入 `table_events`，次日清晨公告
 - `place_bug(user, room)`（可放会客室——唯一能听到大厅交谈的手段）/ `bug_listen(user)`（v3：晚间休息在卧室收听，×2 次）
 - `seal_room(user, allowed=None)`（建筑师【封闭空间】，不能对会客室；第 4 天门锁全开后仍可用）、`set_passage(user)` / `use_passage(user, room)`（v3 密道：仅晚间休息，出口书房/监控室/地下室任选，进入条件=谋杀人数条件，失败不损毁，成功一次后损毁）
@@ -64,7 +64,7 @@
 
 引擎在 deal.py 产出的 state 上扩展（完整注释见 `state.py` 模块 docstring）：
 
-`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
+`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
 
 玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、遗嘱/桌上取用当天即可用（v3.5）、转手不改变次数；deal 可用 `extra_items` 额外配发（杀手的固定万能钥匙、帮凶的固定反派道具），ensure 时并入。
 
@@ -81,7 +81,7 @@
 7. 武装指认错误出局后，同样复查"只剩 1 平民反派胜"。
 8. 记忆植入直接改写选票，公告只说"票数被更改过"。
 9. 延时装置的"拆除"规则书未定义动作，未实现（需要补规则后再加）。
-10. 夜间归宿由引擎按行动顺序自动结算：失败者回自己卧室且只知"无法进入"；夜袭已满 2 人的卧室消耗当夜机会，但不计为谋杀行为、不重置无杀倒计时（v3.2）。
+10. 夜间归宿由引擎按行动顺序自动结算：失败者回自己卧室且只知"无法进入"；夜袭拦截看**非反派人数**（v3.7 内应口径）——房内 2 名非反派同守才无法进入（消耗当夜机会，但不计为谋杀行为、不重置无杀倒计时，v3.2），同房有反派则可照常进入（付开锁成本；亮房闯入会被房内两人看见、密谈中断）；**夜袭空卧室**（房主夜不归宿/外出）同样合法——照常进入、机会与开锁手段消耗，不产生谋杀判定（game/2 复盘确认的口径，rules-6 §7.7 已写明）；夜袭语义仅第 2 天起生效（第 1 天全天禁杀）。
 11. v3 密道：进入条件与谋杀人数条件同（亮房非反派 ≤1、暗房 ≤2），故密道永远不能撞进人堆；出口有人但不超条件时可进入（杀手可借道谋杀，由编排器夜间谋杀窗口提供）。
 12. v3.5 选房顺序结算：逐人即时结算，被锁房间在进入瞬间由该玩家付手段开门——被锁房间此刻必然为空（门开前无人能进），故不存在"同房者目击开门"的通知对象；靠后者从选房门前的实时简报得知门已开。延时装置触发仍在全员结算后统一判定（"结伴进入可防"的平衡不变）。
 13. v3.5 桌上物品：取用判定为"归宿结算后会客室仅此 1 名存活者"（含夜宿者——夜宿名单次日公开，独宿取物等于自首）；停电不放宽独处要求（会客室永不黑暗）；盗贼道具回桌后反派夜里仍可取回（自取无害）。

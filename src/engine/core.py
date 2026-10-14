@@ -33,6 +33,7 @@ from .state import (
     get_player,
     is_bedroom,
     is_dark,
+    is_villain,
     record_entry,
     reject,
     unlock_means,
@@ -233,7 +234,8 @@ class Engine:
             s["flashlight_lit"] = []
             s["passage_stealth"] = []
             s["sealed_room"] = None
-            if s["power_out"]:
+            if s["power_out"] and s.get("blackout_news") != current_period(s):
+                # 当天新声明的停电在选房收尾后统一公布（rules-6 §7.5）；这里只公告跨日延续的停电
                 public["announcements"].append("停电中：除卧室外所有房间一片黑暗（可前往地下室修复发电机恢复供电）")
         if stage == "晚间休息":
             s["stage_murder_used"] = any(
@@ -243,6 +245,8 @@ class Engine:
             s["passage_stealth"] = []
             if s["phase"]["day"] < 4:
                 s["locks"][HALL] = True  # v3.4：会客室夜间自动落锁（第 4 天起全开）
+            if s["power_out"]:
+                public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗——含卧室（守夜密谈/围炉夜谈仍可低声进行）")
 
     def _morning_report(self, day: int, public: dict, private: dict) -> None:
         """清晨公告：昨日死亡与未遂、强制开锁、职业公开、尸体道具封存、桌上物品变动、监控公开宣读。"""
@@ -303,6 +307,7 @@ class Engine:
         if p is None or not p["alive"]:
             return reject("choose_room", "玩家不存在或已死亡")
         private: dict = {}
+        s["selection_begun"] = current_period(s)  # 首个进入落定后，停电声明窗口关闭（rules-6 §7.5：阶段开始前声明）
         placed, note = self._settle_entry(name, room)
         s["positions"][name] = placed
         record_entry(s, name, placed)
@@ -403,10 +408,12 @@ class Engine:
 
         assignments 缺省回自己卧室。规则要点：
         - 每个夜间房间（书房/监控室/地下室）只能进入 1 人，靠后者失败；
-        - 卧室满 2 人后他人无法进入（不按房内身份拦截——v3.6 起杀手当房主的卧室应邀可入，
-          守夜即与虎谋皮：密谈照常，深夜谋杀照 §7.6 判定，尸体在杀手卧室形成自曝制衡）；
-        - 杀手夜袭他人卧室需开锁手段（停电期间门锁失效除外）；若卧室已有 2 人：停电黑暗中
-          杀手可潜入并袭击其一；否则无法进入——当夜谋杀机会消耗，但不计为谋杀行为（不重置无杀倒计时）。
+        - 应邀/夜宿等普通进入：卧室满 2 人后他人无法进入（不按房内身份拦截——v3.6 起杀手当房主的
+          卧室应邀可入，守夜即与虎谋皮：密谈照常，深夜谋杀照 §7.6 判定，尸体在杀手卧室形成自曝制衡）；
+        - 杀手夜袭他人卧室需开锁手段（停电期间门锁失效除外）；拦截看**非反派人数**（v3.7 内应口径）：
+          房内 2 名非反派同守才无法进入——当夜谋杀机会消耗，但不计为谋杀行为（不重置无杀倒计时）；
+          同房有反派（帮凶做内应）则可照常进入，亮房闯入会被房内两人看见（密谈中断，编排器处理）；
+          停电黑暗中杀手可潜入已满 2 人的卧室并袭击其一。
         - 停电期间所有门锁失效（door_locked 统一裁定）。
         结算后自动检查延时装置触发。
         """
@@ -434,15 +441,35 @@ class Engine:
                 owner = bedroom_owner(want)
                 occupants = [n for n, r in positions.items() if r == want]
                 is_invited = invited.get(name) == owner and positions.get(owner) == want
-                is_night_raid = p["identity"] == "杀手" and not s["stage_murder_used"] and not is_invited
+                is_night_raid = p["identity"] == "杀手" and day >= 2 and not s["stage_murder_used"] and not is_invited
                 if len(occupants) >= BEDROOM_CAPACITY:
+                    # v3.7 内应口径：守夜拦截看"非反派人数"——同房有反派时卧室不算严防（深夜可正常谋杀）
+                    nv = [n for n in occupants if not is_villain(get_player(s, n))]
                     if is_night_raid and is_dark(s, want):
                         # 停电黑暗中卧室满员也可潜入（v3.2 破守夜）；谋杀条件在深夜判定（黑暗 ≤2）
                         placed = want
                         private[name] = "你在黑暗中潜入了这间已有两人的卧室"
-                    elif is_night_raid:
+                    elif is_night_raid and len(nv) >= 2:
                         s["stage_murder_used"] = True  # 消耗当夜机会，但不计为谋杀行为（不重置无杀倒计时）
                         note = "无法进入（房内满员，当夜谋杀机会已消耗）"
+                    elif is_night_raid:
+                        # 亮房且房内有反派（帮凶做内应）：照常进入（付开锁成本），但会被房内两人看见
+                        means = unlock_means(s, name)
+                        if door_locked(s, want) and means is None:
+                            s["stage_murder_used"] = True
+                            note = "无法进入（当夜谋杀机会已消耗）"
+                            host.append(f"{name} 未能进入{want}（真实原因：房门上锁且 TA 无开锁手段）")
+                        else:
+                            if door_locked(s, want):
+                                consume_unlock_means(s, name, means)
+                                s["locks"][want] = False
+                                s["bedroom_relock"].append(want)
+                            placed = want
+                            seen = f"房里亮着灯，{'、'.join(occupants)}都看见了你"
+                            private[name] = f"你用{means}进入了{want}——{seen}" if means else f"你进入了{want}——{seen}"
+                            for occ_name in occupants:
+                                private[occ_name] = (private.get(occ_name, "") + "；" if private.get(occ_name) else "") + \
+                                    f"{name} 闯入了你们的卧室——灯亮着，你们看清了来人的脸"
                     else:
                         note = "无法进入（不知原因）"
                         host.append(f"{name} 未能进入{want}（真实原因：房内满员——{'、'.join(occupants)}）")

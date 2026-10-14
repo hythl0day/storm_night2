@@ -200,6 +200,8 @@ def declare_blackout(state: dict, user: str) -> dict:
     )
     if not in_window:
         return reject("declare_blackout", "只能在自由活动阶段开始前声明停电")
+    if s.get("selection_begun") == current_period(s):
+        return reject("declare_blackout", "选房已开始，停电声明窗口已过")
     if s["power_out"]:
         return reject("declare_blackout", "已经处于停电中")
     if not is_villain(p):
@@ -209,6 +211,7 @@ def declare_blackout(state: dict, user: str) -> dict:
         return reject("declare_blackout", "拉电闸需要消耗一次【暴力破解】（职业技能/「万能钥匙」/「螺丝起子」任一）")
     consume_unlock_means(s, user, means)
     s["power_out"] = True
+    s["blackout_news"] = f"第{s['phase']['day']}天自由活动"  # 进入房间后向众人公布（编排器在选房收尾后公告）
     if s["phase"]["day"] not in s["blackout_days"]:
         s["blackout_days"].append(s["phase"]["day"])
     return {"ok": True, "type": "declare_blackout", "public": None,
