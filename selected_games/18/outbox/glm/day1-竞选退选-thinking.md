@@ -1,0 +1,1 @@
+Consider: 4 candidates stay, voters are Claude and Doubao. My claim is verifiable. Doubao said she'd vote for transparent people. Staying gives me gun + accusation power as平民魔术师. But其他三位可能是反派。风险：被杀。作为侦探有枪可自卫枪无敌。留任有利。

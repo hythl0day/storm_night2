@@ -212,7 +212,7 @@ python tools/bench.py --skip-long
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
 | `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
 | `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](engine.md) |
-| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归（test_balance，v3 会客室版）+ 编排 mock 全流程（test_orchestrator_game，含中断续跑/API 失败/关键记录/v3 夜间特性）共 92 用例：`python -m unittest discover -s tests` |
+| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归（test_balance，v3 会客室版）+ 编排 mock 全流程（test_orchestrator_game，含中断续跑/API 失败/关键记录/v3 夜间特性）共 182 用例：`python -m unittest discover -s tests` |
 | `prompt/game_system.md` | ✅ 可用 | 对局系统提示模板（扮演设定 + 输出契约 + 规则书 + 私密卡），占位符 {name}/{profile}/{card}/{rules} |
 | `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
 | `src/viewer.py` | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py 与 console.py 共用 |

@@ -110,6 +110,26 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_version({"table_items": []}), "v3.5")
         self.assertEqual(rules_version({}), "≤v3.4")
 
+    def test_rules_group_pooling(self):
+        """平衡统计分组：v3.8 起合并为一组（v3.9/v3.10 未改规则），更早版本保持独立。"""
+        from tools.scorecard import rules_group
+        self.assertEqual(rules_group({"rules_version": "v3.8"}), "v3.8+")
+        self.assertEqual(rules_group({"rules_version": "v3.9"}), "v3.8+")
+        self.assertEqual(rules_group({"rules_version": "v3.10"}), "v3.8+")
+        self.assertEqual(rules_group({"rules_version": "v3.5"}), "v3.5")
+        self.assertEqual(rules_group({}), "≤v3.4")
+
+    def test_multi_report_aggression_section(self):
+        """多局报告新增「反派主动性」段（出手率/未遂防御/再出手/零谋杀局）；反派功能技能行。"""
+        run_mock_game(self.sel / "1001", killer_script=True)
+        run_mock_game(self.sel / "1002", killer_script=False)
+        text = multi_report(self.sel)
+        self.assertIn("—— 反派主动性 ——", text)
+        self.assertIn("平均出手率", text)
+        self.assertIn("未遂防御分布", text)
+        self.assertIn("零谋杀局：1/2", text)  # 1002 全程消极
+        self.assertIn("反派功能技能", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,1 @@
+Choose room. Suspicion: 狄西 took gun. Solo monitoring room? Maybe go monitor room to check records—useful. Go 监控室.

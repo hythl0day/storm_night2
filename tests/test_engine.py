@@ -308,6 +308,18 @@ class TestSelfDefense(unittest.TestCase):
         self.assertIn("无法分辨", ev["private"]["A"])
         self.assertIn("幸存", ev["private"]["E"])
 
+    def test_attempt_records_defense_via(self):
+        """未遂台账记录防御途径（host 侧分析用，不下发给任何玩家；scorecard 未遂防御分布的数据源）。"""
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
+        self.rooms_for(eng)
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertEqual(eng.state["attempts"][0]["defense"], "武器自卫")
+        # 防御途径不进玩家私信（杀手只知"无法分辨"）
+        self.assertNotIn("武器自卫", ev["private"]["A"])
+
     def test_club_vs_knife_and_gun_defended(self):
         for weapon, defender in [("棒球棍", "刀"), ("棒球棍", "左轮手枪"), ("刀", "左轮手枪")]:
             players = default_players()

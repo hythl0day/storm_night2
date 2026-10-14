@@ -8,9 +8,9 @@
     python -m tools.scorecard --dir game           # 改扫别的目录
     python -m tools.scorecard --game 42            # 单局详细报告（--dir 下的子目录 42）
 
-单局报告：基本台账 + 流程简报（按天事件）+ 戏剧性评分（分项透明）+ 主角弧线候选 + 成本。
-多局报告：版本分组胜率平衡 + 机制利用率（规则是否如预期被使用）+ 多样性分布 + 成本汇总。
-注意：跨版本存档按 state["rules_version"] 分组统计，不混算平衡数据；winner 为空的中断局不计入胜负率。
+单局报告：基本台账 + 流程简报（按天事件）+ 未遂明细 + 戏剧性评分（分项透明）+ 主角弧线候选 + 成本（含缓存命中率）。
+多局报告：版本分组胜率平衡 + 机制利用率 + 反派主动性 + 多样性分布 + 成本汇总。
+注意：平衡数据按规则版本分组——v3.8 起合并为 "v3.8+" 一组（v3.9 文本澄清、v3.10 裁决补全，均未改规则）；winner 为空的中断局不计入胜负率。
 """
 from __future__ import annotations
 
@@ -80,6 +80,44 @@ def roster_identities(script: str) -> dict[str, str]:
     return ids
 
 
+def rules_group(st: dict) -> str:
+    """平衡统计分组：v3.8 起规则书再无机制变更（v3.9 文本澄清、v3.10 裁决补全），合并为一组。"""
+    v = rules_version(st)
+    m = re.match(r"v(\d+)\.(\d+)$", v)
+    if m and (int(m.group(1)), int(m.group(2))) >= (3, 8):
+        return "v3.8+"
+    return v
+
+
+def roster_professions(script: str) -> dict[str, str]:
+    """从 script.md 的阵容表解析职业（与 roster_identities 同表，身份可能被继任改写、职业不会）。"""
+    profs = {}
+    for line in script.splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) >= 8 and cells[5] in ("平民", "帮凶", "杀手"):
+            profs[cells[1]] = cells[6]
+    return profs
+
+
+# script.md 行动回执（"◆ X｜动作描述 → 成功/驳回"）：机制利用率的补充数据源
+RECEIPT_RE = re.compile(r"◆ \S+｜(.+?) → (成功|驳回)")
+RECEIPT_KEYS = [
+    ("声明今晚停电", "拉电闸停电"), ("修复发电机", "修发电机"), ("查看监控", "查监控"), ("篡改", "篡改监控"),
+    ("犯罪侧写", "犯罪侧写"), ("现场调查", "现场调查"), ("鲁米诺", "鲁米诺试剂"), ("看破伪装", "看破伪装/测谎"),
+    ("打开保险箱", "开保险箱"), ("延时装置", "延时装置"), ("舞台魔术", "舞台魔术"), ("记忆植入", "记忆植入"),
+    ("转移尸体", "转移尸体"), ("封闭空间", "封闭空间"), ("密道", "密道"), ("窃听器", "窃听器"),
+    ("手电筒", "手电筒"), ("取桌上物品", "取桌上物品"), ("夜袭", "夜袭声明"), ("谋杀", "谋杀行动"),
+    ("赠送", "赠送道具"),
+]
+
+
+def receipt_label(text: str) -> str:
+    for kw, label in RECEIPT_KEYS:
+        if kw in text:
+            return label
+    return text.split("（")[0].split("：")[0][:12]
+
+
 def win_path(st: dict) -> str:
     w, r = st.get("winner"), st.get("win_reason", "") or ""
     if w == "主神":
@@ -121,6 +159,11 @@ def analyze(g: dict) -> dict:
         actions[label] += 1
         if m.group(2) == "驳回":
             action_rejects[label] += 1
+    for m in RECEIPT_RE.finditer(script):
+        label = receipt_label(m.group(1))
+        actions[label] += 1
+        if m.group(2) == "驳回":
+            action_rejects[label] += 1
 
     gun_moves = (sum(1 for l in feed if "侦探佩枪" in l)
                  + sum(1 for l in feed if "会客室桌上的" in l and "不见了" in l)
@@ -132,19 +175,46 @@ def analyze(g: dict) -> dict:
         hist = st.get("orch", {}).get("hist", {})
         succession = any("继任为杀手" in m for msgs in hist.values() for m in msgs)
     host_ok = [h for h in g["host"] if h.get("ok")]
+    # 反派主动性（game/8、game/18 连续零击杀局复盘）：出手窗口估算 = 第 2 天起每天 2 个可谋杀阶段
+    days = st.get("phase", {}).get("day", 1)
+    windows = max(1, 2 * (days - 2))
+    behavior = len(cases) + len(attempts)
+    retry_after_fail = any(
+        any(c["day"] > a2["day"] for c in cases) or any(b["day"] > a2["day"] for b in attempts)
+        for a2 in attempts)
+    # 反派功能技能使用率（破抱团/破票仓：舞台魔术/延时装置/记忆植入/信号干扰）：阵容表出场 vs state 台账消耗
+    profs = roster_professions(script)
+    valve = {"魔术师": "舞台魔术", "机械师": "延时装置", "心理医生": "记忆植入", "黑客": "信号干扰"}
+    su = st.get("skill_uses", {})
+    villain_valve = sum(1 for n, i in ids.items() if i in ("帮凶", "杀手") and profs.get(n) in valve)
+    valve_used = sum(1 for n, i in ids.items()
+                     if i in ("帮凶", "杀手") and profs.get(n) in valve
+                     and su.get(n, {}).get(valve[profs[n]], 0) < 1)
+    prompt_tokens = sum((h.get("usage") or {}).get("prompt_tokens") or 0 for h in g["host"])
+    cached_tokens = sum(((h.get("usage") or {}).get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+                        for h in g["host"])
     a = {
         "seed": st.get("seed", g["dir"].name),
         "dir_name": g["dir"].name,
         "version": rules_version(st),
+        "group": rules_group(st),
         "complete": st.get("winner") is not None,
         "winner": st.get("winner"), "win_reason": st.get("win_reason"),
         "path": win_path(st) if st.get("winner") else None,
-        "days": st.get("phase", {}).get("day", 1),
+        "days": days,
         "players": st.get("players", []),
         "alive": [p["name"] for p in st.get("players", []) if p.get("alive")],
         "out_day": st.get("orch", {}).get("out_day", {}),
         "ids": ids,
         "murders": len(cases), "attempts": len(attempts), "cases": cases,
+        "attempt_list": attempts,
+        "aggression": behavior / windows,
+        "retry_after_fail": retry_after_fail,
+        "empty_raids": script.count("空房白跑"),
+        "villain_valve": villain_valve,
+        "valve_used": valve_used,
+        "prompt_tokens": prompt_tokens,
+        "cached_tokens": cached_tokens,
         "elected": bool(detectives), "detectives": detectives,
         "detective_murdered": any(c["victim"] in detectives for c in cases),
         "badge_passed": sum(1 for l in feed if "侦探徽章（" in l and "→" in l),
@@ -268,6 +338,12 @@ def single_report(d: Path) -> str:
         for c in a["cases"]:
             loot = f"｜缴获：{'、'.join(c['looted'])}" if c.get("looted") else ""
             L.append(f"  第{c['day']}天{c['stage']}：{c['victim']} 死于{c['room']}（{c['method']}）{loot}")
+    if a["attempt_list"]:
+        L.append("")
+        L.append("—— 未遂 ——")
+        for t in a["attempt_list"]:
+            d = f"｜防御：{t['defense']}" if t.get("defense") else ""
+            L.append(f"  第{t['day']}天{t['stage']}：{t['target']} 遇袭幸存（{t['room']}）{d}")
     L.append("")
     L.append("—— 流程简报 ——")
     L.extend(flow_briefing(g["log"]) or ["  （无公开日志）"])
@@ -301,9 +377,9 @@ def multi_report(base: Path) -> str:
 
     L.append("")
     L.append("—— 胜率平衡（按规则版本分组；中断局不计入） ——")
-    versions = sorted({a["version"] for a in done})
+    versions = sorted({a["group"] for a in done})
     for v in versions:
-        grp = [a for a in done if a["version"] == v]
+        grp = [a for a in done if a["group"] == v]
         n = len(grp)
         wins = Counter(a["winner"] for a in grp)
         avg_days = sum(a["days"] for a in grp) / n
@@ -331,6 +407,8 @@ def multi_report(base: Path) -> str:
                  f"｜遗嘱回桌 {sum(a['table_fallbacks'] for a in done)}｜遇害缴获 {sum(1 for a in done for c in a['cases'] if '左轮手枪' in c.get('looted', []))}")
         L.append(f"  杀手继任：{sum(1 for a in done if a['succession'])} 局｜警徽传承：{sum(a['badge_passed'] for a in done)} 次")
         L.append(f"  守夜密谈：{sum(a['bedroom_talks'] for a in done)} 轮｜会客室夜谈：{sum(a['hall_talks'] for a in done)} 轮")
+        L.append(f"  反派功能技能（魔术/装置/植入/干扰）：出场 {sum(a['villain_valve'] for a in done)} 次"
+                 f"｜使用 {sum(a['valve_used'] for a in done)} 次")
         total_actions: Counter = Counter()
         total_rejects: Counter = Counter()
         for a in done:
@@ -340,6 +418,21 @@ def multi_report(base: Path) -> str:
             L.append("  动作声明（次数，驳回率）：" + "；".join(
                 f"{k} {v}（{total_rejects[k] / v:.0%}）" if total_rejects[k] else f"{k} {v}"
                 for k, v in total_actions.most_common()))
+
+    L.append("")
+    L.append("—— 反派主动性 ——")
+    if done:
+        n = len(done)
+        att = sum(a["attempts"] for a in done)
+        mur = sum(a["murders"] for a in done)
+        L.append(f"  平均出手率：{sum(a['aggression'] for a in done) / n:.0%}"
+                 f"（谋杀 {mur} + 未遂 {att}，窗口按第 2 天起每天 2 阶段估算）")
+        defenses = Counter(t["defense"] for a in done for t in a["attempt_list"] if t.get("defense"))
+        L.append(f"  未遂防御分布：{'、'.join(f'{k}×{v}' for k, v in defenses.most_common()) or '无记录（v3.10 前存档未留防御途径）'}")
+        with_att = [a for a in done if a["attempts"]]
+        retry = sum(1 for a in with_att if a["retry_after_fail"])
+        L.append(f"  未遂后再出手：{retry}/{len(with_att)} 局｜夜袭空房：{sum(a['empty_raids'] for a in done)} 次"
+                 f"｜零谋杀局：{sum(1 for a in done if not a['murders'])}/{n}")
 
     L.append("")
     L.append("—— 多样性 ——")
@@ -358,6 +451,10 @@ def multi_report(base: Path) -> str:
                  f"｜失败率 {sum(a['call_failures'] for a in done) / max(1, sum(a['calls'] for a in done)):.1%}"
                  f"｜平均 token {sum(a['tokens'] for a in done) / len(done):.0f}"
                  f"｜平均延迟 {sum(a['avg_latency'] for a in done) / len(done):.1f}s")
+        pt = sum(a["prompt_tokens"] for a in done)
+        if pt:
+            L.append(f"  输入缓存命中率：{sum(a['cached_tokens'] for a in done) / pt:.0%}"
+                     f"（{sum(a['cached_tokens'] for a in done)}/{pt} tokens）")
     return "\n".join(L)
 
 

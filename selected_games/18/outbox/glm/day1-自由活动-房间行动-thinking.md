@@ -1,0 +1,1 @@
+I've already stated my position. No actions available (no lock-picking means). Empty actions.

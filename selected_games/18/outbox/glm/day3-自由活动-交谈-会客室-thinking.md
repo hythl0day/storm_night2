@@ -1,0 +1,1 @@
+Order: 智谱 second? Today order: 克劳德(出局)→智谱→狄西→豆包→杰普特→格罗克. Actually order is 智谱→狄西→豆包→格罗克 among alive. 智谱 speaks first in this room. Ask 豆包 about contradictions; but she sees my speech. Keep short.

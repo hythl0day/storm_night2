@@ -69,6 +69,7 @@ from .engine.state import (
     is_bedroom,
     is_dark,
     is_villain,
+    reject,
     skill_left,
     unlock_means,
 )
@@ -770,14 +771,22 @@ class Orchestrator:
             ev = self.eng.stage_magic(name, str(act.get("target", "")))
         elif at == "declare_blackout":
             ev = self.eng.declare_blackout(name)
-        elif at == "falsify":
-            ev = self.eng.falsify(name, int(act.get("case_id", 0)), str(act.get("kind", "")))
-        elif at == "move_body":
-            ev = self.eng.move_body(name, int(act.get("case_id", 0)), str(act.get("to_room", "")))
-        elif at == "investigate":
-            ev = self.eng.investigate(name, int(act.get("case_id", 0)), str(act.get("choice", "")))
-        elif at == "profile":
-            ev = self.eng.profile(name, int(act.get("case_id", 0)), str(act.get("aspect", "")))
+        elif at in ("falsify", "move_body", "investigate", "profile"):
+            # case_id 是 AI 输入：非整数走驳回（进驳回重报流程），绝不允许抛异常炸穿跑局（game/18 复盘）
+            try:
+                cid = int(act.get("case_id", 0))
+            except (TypeError, ValueError):
+                cid = None
+            if cid is None:
+                ev = reject(at, f"case_id 必须是案件编号（整数），收到 {act.get('case_id')!r}")
+            elif at == "falsify":
+                ev = self.eng.falsify(name, cid, str(act.get("kind", "")))
+            elif at == "move_body":
+                ev = self.eng.move_body(name, cid, str(act.get("to_room", "")))
+            elif at == "investigate":
+                ev = self.eng.investigate(name, cid, str(act.get("choice", "")))
+            else:
+                ev = self.eng.profile(name, cid, str(act.get("aspect", "")))
         if ev is None:
             return None
         self.script_action(name, act, ev)
@@ -1579,12 +1588,11 @@ class Orchestrator:
         """案件调查：调查自荐（现场调查/鲁米诺试剂/犯罪侧写）+ 死者字条遗嘱。
 
         清晨公告（死亡/未遂/强制开锁/职业公开/监控宣读）由 advance() 统一路由，此处只管调查动作。
-        全无案件且无未遂的清晨（第 2 天恒如此）不调用任何 AI，直接跳过。
+        无案件的清晨不调用任何 AI（未遂不产生案件：无尸体无现场，无可调查对象），直接跳过。
         """
         day = self.state["phase"]["day"]
         yday = day - 1
-        had_attempts = any(a["day"] == yday and a["target"] for a in self.state["attempts"])
-        if not self.state["cases"] and not had_attempts:
+        if not self.state["cases"]:
             return
         # 遗嘱（v3.2）：昨日遇害者的封存道具以"死者字条"指定归属（公开），接收人可拒收
         w_be = self.wip(f"{day}:案件调查:遗嘱", done=[])

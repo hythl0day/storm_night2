@@ -936,5 +936,35 @@ class TestGameStateSection(MockGameTestBase):
         self.assertNotIn("平民", seg_d)  # 被谋杀者身份不公开
 
 
+class TestCaseIdRobustness(MockGameTestBase):
+    """game/18 复盘：AI 自造 case_id（如 "格罗克遇袭"）不得炸穿编排器；无案件清晨调查阶段整体跳过。"""
+
+    def test_non_integer_case_id_rejected_not_raised(self):
+        d = write_game_dir(self.root / "g13", default_players())
+        orch = Orchestrator(d)
+        p = next(q for q in orch.state["players"] if q["name"] == "C")
+        ev = orch.dispatch(p, {"type": "investigate", "case_id": "格罗克遇袭", "choice": "武器伤痕"})
+        self.assertFalse(ev["ok"])
+        self.assertIn("案件编号", ev["error"])
+        ev2 = orch.dispatch(p, {"type": "profile", "case_id": None})
+        self.assertFalse(ev2["ok"])
+
+    def test_investigation_skipped_without_cases(self):
+        """只有未遂、没有案件的清晨：无可调查对象，调查阶段不调用任何 AI。"""
+        d = write_game_dir(self.root / "g14", default_players())
+        orch = Orchestrator(d)
+        s = orch.state
+        s["phase"] = {"day": 3, "stage": "案件调查"}
+        s["attempts"].append({"target": "E", "day": 2, "stage": "晚间休息", "room": "会客室", "period": "第2天晚间休息"})
+        calls = []
+        orig = orchestrator.chat
+        orchestrator.chat = lambda *a, **k: calls.append((a, k))
+        try:
+            orch.run_investigation()
+        finally:
+            orchestrator.chat = orig
+        self.assertEqual(calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -36,7 +36,7 @@ EFFORT_MSG = [{"role": "user", "content": (
 
 
 def long_messages() -> list[dict]:
-    rules = (ROOT / "rules" / "rules-6.md").read_text(encoding="utf-8")
+    rules = (ROOT / "docs" / "rules-6.md").read_text(encoding="utf-8")
     return [
         {"role": "system", "content": "你在身份推理游戏《暴风夜》中扮演一名玩家。以下是规则书：\n\n" + rules},
         {"role": "user", "content": (
@@ -62,8 +62,10 @@ def probe(player, messages: list[dict], label: str, reasoning_effort: str | None
     ttft = stats["ttft"] or 0.0
     gen = total - ttft
     speed = stats["chars"] / gen if gen > 0 else 0.0
+    cached = ((r.usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
     return (f"{player.id:<9} {label}  TTFT {ttft:6.1f}s  总 {total:6.1f}s  "
-            f"{stats['chars']:5d} 字  {speed:5.1f} 字/s  tok={r.usage.get('total_tokens')}")
+            f"{stats['chars']:5d} 字  {speed:5.1f} 字/s  tok={r.usage.get('total_tokens')}"
+            f"（缓存命中 {cached}）")
 
 
 def main() -> None:

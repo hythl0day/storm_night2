@@ -1,0 +1,3 @@
+Night talk: Jepite pointed out I misstated his vote (he voted Dxi). I was in monitoring room day 2, saw records. Who claims? Claude's speech claims:停电是反派拉的判断 is opinion; her claim "昨天停电期间所有门锁失效" fact. Claims to verify? Jepite claimed 豆包守夜无袭击—can't verify. Maybe verify Jepite's statement that he voted Dxi? Not a valid category. Better use 看破伪装 on Jepite's claim? Claims: profession? None declared.
+
+Actually could verify Jepite's day-2 claims? I don't have record of his speech claims in notes. Skip action, or verify Claude? She claims no profession publicly. Keep 看破伪装 in reserve; speech: correct my mistake, point at Jepite—question him. Speech brief.

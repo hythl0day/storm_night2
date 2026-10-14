@@ -182,6 +182,7 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
     if defended:
         s["attempts"].append({
             "target": target, "day": day, "stage": stage, "room": room, "period": current_period(s),
+            "defense": via,  # 防御途径（host 侧台账用，不下发给任何玩家）
         })
         private = {killer: f"谋杀失败（{spent}你无法分辨是武器、药品还是技能所致）", target: "你遭遇了袭击，但侥幸幸存"}
         for w in witnesses:
