@@ -9,6 +9,7 @@ A scenario-based interactive role-playing reality show featuring AI-powered dedu
 ## 文档
 
 - 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v3）/ [docs/rules-8.md](docs/rules-8.md)（8 人局）
+- 失忆版规则集：[docs/rules-6-lite.md](docs/rules-6-lite.md)（同一套裁决规则，但只告诉 AI 生存骨架——职业/道具全表与分配结构不下发，机制靠菜单临场发现，供节目前期"失忆受害者"阶段使用）
 - 工程计划与里程碑：[docs/dev-plan.md](docs/dev-plan.md)
 - 节目规划（两季 + 特别单集）：[screenwriting/show-bible.md](screenwriting/show-bible.md)
 - 脚本使用说明（环境准备、席位配置、连通性测试、跑局与查看器的完整用法）：[docs/usage.md](docs/usage.md)
@@ -26,9 +27,11 @@ export RELAY_API_KEY_CN="sk-..."       # 另有 RELAY_API_KEY_GPT / _CLAUDE / _G
 python -m src.smoke --all
 
 # 创建对局（同 seed 逐字节可复现；目录名即 seed 本身，方便手打）
-python -m src.deal --seed 42           # 生成 game/42/
+python -m src.deal --seed 42           # 生成 game/42/（完整规则书）
+python -m src.deal --seed 42 --lite    # 失忆版规则集（生存须知 + 临场规则下发；裁决规则不变，
+                                       # state 记 is_lite_rule，评分卡独立分池不混算胜率）
 
-# 跑局（二选一），跑到对局结束；中断后加 --resume 按阶段续跑
+# 跑局（二选一），跑到对局结束；中断后加 --resume 按席位断点续跑
 python -m src.console --game game/42        # 交互驾驶舱：流式输出 + 随时命令（输入 help 查看）
 python -m src.orchestrator --game game/42   # 无头模式（供批量跑局）
 
@@ -38,8 +41,9 @@ python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/
 # 评分卡（M6）：把跑完整的存档挑入 selected_games/ 后扫描
 python -m tools.scorecard                   # 多局报告：版本分组胜率/机制利用率/多样性/成本
 python -m tools.scorecard --game 42         # 单局报告：台账/流程简报/戏剧性评分/主角弧线候选
+python -m tools.scorecard --min-version v3.8  # 只统计指定版本及以后的存档
 
-# 测试（引擎 + 平衡回归 + 编排 mock 集成，147 用例）
+# 测试（引擎 + 平衡回归 + 编排 mock 集成，197 用例）
 python -m unittest discover -s tests
 ```
 
