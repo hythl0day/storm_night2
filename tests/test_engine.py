@@ -897,19 +897,38 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertIn("无杀倒计时", winner_ev["win_reason"])
         self.assertEqual(eng.state["phase"], {"day": 4, "stage": "案件调查"})
 
-    def test_night_bedroom_raid_relaxed_physique(self):
+    def test_night_bedroom_unarmed_no_condition(self):
+        """v3.16：夜间卧室（夜袭）空手谋杀无任何附加条件——体格 1 的女杀手也可空手夜袭体格 3 的男性
+        （旧④"体格 ≥ 目标−1"在此驳回；v3.16 起夜间卧室豁免，空手仍不被凶器克制）。"""
         players = default_players()
-        players[0] = P("A", "杀手", "魔术师", "刀", gender="女", physique=2)
+        players[0] = P("A", "杀手", "魔术师", "刀", gender="女", physique=1)
         eng = Engine(mk_state(players=players))
         goto(eng, "晚间休息", day=2)
         player(eng, "A")["items"].append({"name": "万能钥匙", "uses_left": 2, "available_day": 1})
-        ev = eng.night_assign({"A": "F的卧室"})
+        eng.state["skill_uses"]["D"]["敏捷闪避"] = 0  # 排除被动防御，专注验证准入条件
+        ev = eng.night_assign({"A": "D的卧室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev["positions"]["A"], "F的卧室")
-        ev = eng.murder("A", "F")
+        self.assertEqual(ev["positions"]["A"], "D的卧室")
+        ev = eng.murder("A", "D")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["type"], "murder")
         self.assertEqual(ev["case"]["wound"], "空手")
+
+    def test_night_hall_unarmed_still_gated(self):
+        """v3.16：夜宿会客室为亮房大厅而非卧室——空手谋杀仍须满足 ①②③（夜间豁免仅限黑暗房间与卧室）。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "魔术师", "刀", gender="女", physique=1)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "投票", day=2)
+        self.assertTrue(eng.declare_blackout("B")["ok"])  # 停电门锁失效，二人才能夜宿会客室
+        goto(eng, "晚间休息", day=2)
+        ev = eng.night_assign({"A": "会客室", "D": "会客室"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["positions"]["A"], "会客室")
+        self.assertEqual(ev["positions"]["D"], "会客室")
+        ev = eng.murder("A", "D")  # 会客室永不黑暗：①②③ 均不满足 → 仍驳回
+        self.assertFalse(ev["ok"])
+        self.assertIn("空手", ev["error"])
 
     def test_night_raid_full_bedroom_lit_no_countdown_reset(self):
         """v3.2 倒计时修正：夜袭满员亮房卧室无法进入——消耗当夜机会，但不计谋杀行为（不重置倒计时）。"""

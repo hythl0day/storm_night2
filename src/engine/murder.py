@@ -3,8 +3,8 @@
 裁定要点：
 - 仅杀手可发动谋杀；每阶段一次机会，未遂同样消耗机会并计入无杀倒计时。
 - 在场非反派角色数：正常 ≤1，黑暗房间 ≤2。
-- 空手附加条件（满足其一）：①帮凶在场 ②本人体格≥目标 ③本人男且目标女
-  ④夜间限定：在目标自己卧室偷袭，体格门槛放宽为 ≥目标−1。黑暗房间空手无任何附加条件。
+- 空手附加条件（满足其一）：①帮凶在场 ②本人体格≥目标 ③本人男且目标女。
+  黑暗房间与夜间卧室（晚间休息阶段，含夜袭/受邀守夜）中的空手谋杀无任何附加条件（v3.16）。
 - 凶器谋杀无条件（用一次即消耗，无论成败）；环境凶器（雕像/电线）无条件且不限次数。
 - 自卫自动触发：武器克制仅覆盖 刀↔棍 与 枪防刀棍；急救箱/不明药剂（药用）/敏捷闪避防一切
   （含不明药剂、环境凶器、空手）；延时装置与舞台魔术不可被任何方式防御。
@@ -17,7 +17,6 @@ from .state import (
     ACTION_STAGES,
     ENV_WEAPON,
     WOUND_LABEL,
-    bedroom_of,
     check_winner,
     consume_item_entry,
     consume_skill,
@@ -26,6 +25,7 @@ from .state import (
     grant_item,
     held_item,
     held_item_names,
+    is_bedroom,
     is_dark,
     is_villain,
     reject,
@@ -163,12 +163,12 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
     dark = is_dark(s, room)
     if len(non_villain) > (2 if dark else 1):
         return reject("murder", "在场非反派角色过多")
-    if method == "空手" and not dark:
+    # v3.16：黑暗房间与夜间卧室（晚间休息阶段，含夜袭/受邀守夜）空手无任何附加条件
+    if method == "空手" and not dark and not (stage == "晚间休息" and is_bedroom(room)):
         ok = (
             any(p["identity"] == "帮凶" for p in present)
             or kp["physique"] >= tp["physique"]
             or (kp["gender"] == "男" and tp["gender"] == "女")
-            or (stage == "晚间休息" and room == bedroom_of(target) and kp["physique"] >= tp["physique"] - 1)
         )
         if not ok:
             return reject("murder", "空手谋杀条件不满足")

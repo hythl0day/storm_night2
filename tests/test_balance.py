@@ -238,5 +238,37 @@ class TestDealVillainGuarantees(unittest.TestCase):
         self.assertFalse(st["is_lite_rule"])
 
 
+class TestDealExclude(unittest.TestCase):
+    """--exclude 屏蔽席位：随机抽席前从阵容池剔除（仅影响随机模式；rng 调用序列不变，同 seed + 同名单可复现）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.players, _ = load_config(str(ROOT / "players.toml"))
+        cls.personas = load_personas(ROOT / "personas.toml")
+
+    def test_excluded_never_drawn(self):
+        for seed in range(1, 21):
+            st = deal(seed, self.players, self.personas, None, exclude={"grok", "doubao"})
+            ids = [p["id"] for p in st["players"]]
+            self.assertNotIn("grok", ids, f"seed={seed} 屏蔽席位仍被抽中")
+            self.assertNotIn("doubao", ids, f"seed={seed} 屏蔽席位仍被抽中")
+            self.assertEqual(validate(st), [], f"seed={seed} 分配校验失败")
+            self.assertEqual(st["excluded_seats"], ["doubao", "grok"], f"seed={seed} 屏蔽名单留痕错误")
+
+    def test_exclude_deterministic(self):
+        self.assertEqual(deal(7, self.players, self.personas, None, exclude={"grok"}),
+                         deal(7, self.players, self.personas, None, exclude={"grok"}))
+
+    def test_exclude_pool_exhaustion(self):
+        # 美国侧屏蔽 2 席后只剩 2 席（< 3），拒绝生成
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, None, exclude={"grok", "gemini"})
+
+    def test_exclude_clashes_with_manual_seats(self):
+        seats = ["gpt", "claude", "gemini", "deepseek", "kimi", "glm"]
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, seats, exclude={"gpt"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,6 +28,7 @@ python -m src.smoke --all
 
 # 创建对局（同 seed 逐字节可复现；目录名即 seed 本身，方便手打）
 python -m src.deal --seed 42           # 生成 game/42/（完整规则书）
+python -m src.deal --seed 42 --exclude grok   # 随机抽席屏蔽指定席位（逗号分隔，id 或名字；state 记 excluded_seats）
 python -m src.deal --seed 42 --lite    # 失忆版规则集（生存须知 + 临场规则下发；裁决规则不变，
                                        # state 记 is_lite_rule，评分卡独立分池不混算胜率）
 

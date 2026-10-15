@@ -215,7 +215,7 @@ def declare_blackout(state: dict, user: str) -> dict:
     if s["phase"]["day"] not in s["blackout_days"]:
         s["blackout_days"].append(s["phase"]["day"])
     return {"ok": True, "type": "declare_blackout", "public": None,
-            "private": {user: f"你用{means}拉开电闸制造过载——今天停电（进入房间后向众人公布）"}}
+            "private": {user: f"你用{means}拉开电闸制造过载——停电开始（进入房间后向众人公布；发电机被修复前停电一直持续，可跨天延续）"}}
 
 
 def fix_generator(state: dict, user: str) -> dict:

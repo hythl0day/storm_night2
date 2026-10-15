@@ -4,15 +4,17 @@
     python -m src.deal                       # 随机种子，输出 game/<seed>/
     python -m src.deal --seed 42             # 指定种子（同 seed 两次生成完全一致）
     python -m src.deal --seed 42 --seats gpt,claude,gemini,deepseek,kimi,glm   # 手动指定 6 席
+    python -m src.deal --seed 42 --exclude grok,doubao  # 随机抽席时屏蔽席位（id 或名字，逗号分隔）
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
-                                                    # 裁决规则不变（仍 v3.12），state 记 is_lite_rule=True
+                                                    # 裁决规则不变（仍 v3.17），state 记 is_lite_rule=True
 
 随机调用顺序（影响复现，勿随意调整；v3.5 起保底凶器车道改为桌上凶器，不再选持有人）：
     席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
     → 帮凶反派道具 → 保险箱抽池 → 螺丝起子持有人 →（保险箱抽中反派道具时）第四平民凶器 → 平民道具池 → 行动顺序
     （反派功能覆盖保证为无随机的确定性后处理，插在职业抽取与反派凶器之间；万能钥匙预留无随机消耗）
+    --exclude 只在席位抽取前从阵容池剔除屏蔽席位，rng 调用次数与顺序不变——同 seed + 同屏蔽名单可复现。
 """
 from __future__ import annotations
 
@@ -88,10 +90,14 @@ def load_personas(path: Path) -> dict:
         return tomllib.load(f)
 
 
-def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None, lite: bool = False):
+def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
+         lite: bool = False, exclude: set[str] | None = None):
     """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。
-    lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致。"""
+    lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致。
+    exclude 为屏蔽席位 id 集：随机抽席前从阵容池剔除（rng 调用序列不变，同 seed + 同名单可复现）；
+    与手动 seat_keys 重叠时报错。"""
     rng = random.Random(seed)
+    exclude = exclude or set()
 
     # 1. 席位抽取（或手动指定）。随机模式为中美 3+3 对称抽取，两侧 API 渠道均衡
     if seat_keys:
@@ -101,11 +107,16 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None, 
             if p is None:
                 raise SystemExit(f"席位 {k!r} 不在配置中")
             seats.append(p)
+        clash = [p.id for p in seats if p.id in exclude]
+        if clash:
+            raise SystemExit(f"手动席位与屏蔽名单冲突：{', '.join(clash)}")
     else:
-        us = [p for p in players if personas.get(p.name, {}).get("nationality") == "美国"]
-        cn = [p for p in players if personas.get(p.name, {}).get("nationality") == "中国"]
+        pool = [p for p in players if p.id not in exclude]
+        us = [p for p in pool if personas.get(p.name, {}).get("nationality") == "美国"]
+        cn = [p for p in pool if personas.get(p.name, {}).get("nationality") == "中国"]
         if len(us) < 3 or len(cn) < 3:
-            raise SystemExit(f"阵容池中美两侧不足 3 席（美国 {len(us)} / 中国 {len(cn)}）")
+            suffix = f"（已屏蔽 {len(exclude)} 席）" if exclude else ""
+            raise SystemExit(f"阵容池中美两侧不足 3 席（美国 {len(us)} / 中国 {len(cn)}）{suffix}")
         seats = rng.sample(us, 3) + rng.sample(cn, 3)
         rng.shuffle(seats)
     if len(seats) != len(IDENTITIES):
@@ -186,8 +197,9 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None, 
     return {
         "seed": seed,
         "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
-        "rules_version": "v3.15",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
+        "rules_version": "v3.17",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
+        "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
         "mode": "6人局",
         "phase": {"day": 1, "stage": "开局准备"},
         "order": order,
@@ -327,6 +339,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=None, help="随机种子，缺省随机生成")
     ap.add_argument("--players", type=int, default=6, help="局人数（当前仅支持 6）")
     ap.add_argument("--seats", default=None, help="手动指定席位：id 或名字，逗号分隔")
+    ap.add_argument("--exclude", default=None,
+                    help="随机抽席时屏蔽席位：id 或名字，逗号分隔（中美两侧各需剩余 ≥3 席；仅影响随机模式）")
     ap.add_argument("--config", default="players.toml")
     ap.add_argument("--personas", default="personas.toml")
     ap.add_argument("--rules", default=None, help="规则书路径（缺省按 --lite 选择 rules-6-lite.md / rules-6.md）")
@@ -345,8 +359,16 @@ def main() -> None:
     players, _ = load_config(args.config)
     personas = load_personas(Path(args.personas))
     seat_keys = [s.strip() for s in args.seats.split(",") if s.strip()] if args.seats else None
+    exclude: set[str] = set()
+    exclude_names: list[str] = []
+    for k in [s.strip() for s in args.exclude.split(",") if s.strip()] if args.exclude else []:
+        p = find_player(players, k)
+        if p is None:
+            raise SystemExit(f"屏蔽席位 {k!r} 不在配置中")
+        exclude.add(p.id)
+        exclude_names.append(p.name)
 
-    state = deal(seed, players, personas, seat_keys, lite=args.lite)
+    state = deal(seed, players, personas, seat_keys, lite=args.lite, exclude=exclude)
 
     problems = validate(state)
     if problems:
@@ -378,6 +400,8 @@ def main() -> None:
 
     # 主持人视角汇总（含身份，勿外发）
     print(f"seed = {seed}  →  {out}/" + ("（lite 规则集）" if args.lite else ""))
+    if exclude:
+        print("屏蔽席位：" + "、".join(exclude_names))
     print("行动顺序：" + " → ".join(state["order"]))
     print(f"保险箱：{state['safe_item']}（开局公告已公开）｜桌上：{TABLE_WEAPON}（开局公告已公开）")
     print()

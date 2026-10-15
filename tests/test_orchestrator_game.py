@@ -1049,6 +1049,71 @@ class TestBlackoutDiscovery(MockGameTestBase):
         self.assertTrue(all("已永久开启：监控室的门" in b for b in later))
 
 
+class TestDarkWhisper(MockGameTestBase):
+    """v3.17：黑暗房间中"同入邀请成立的组合"（互知在场）可摸黑低语（rules-6 §7.5.6/§9.5）——
+    低语全体在场者都能听到（含组合看不见的潜伏者），低语者不会知道是否被旁听。"""
+
+    def test_dark_whisper_invited_pair_with_lurker(self):
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+
+        def chat_whisper(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            name = player.name
+            if day == 2 and "停电声明" in title and name == "B":
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 2 and "选房" in title:
+                acts = [{"type": "choose_room", "room": "会客室"}]
+                if name == "C":
+                    acts = [{"type": "choose_room", "room": "书房"}, {"type": "invite", "target": "D"}]
+                elif name in ("D", "E"):
+                    acts = [{"type": "choose_room", "room": "书房"}]
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        seen = {}
+
+        def on_stage(title):
+            if "第2天" in title and "晚间休息" in title:
+                seen["invites"] = dict(orch.state["orch"].get("free_invites") or {})
+
+        orch = Orchestrator(d, hooks={"on_stage": on_stage})
+        orig = orchestrator.chat
+        orchestrator.chat = chat_whisper
+        try:
+            orch.run_game()
+        finally:
+            orchestrator.chat = orig
+        s = orch.state
+        # 第 2 天 B 拉闸停电：C 邀 D 同入书房成立（互知在场）→ 二人摸黑低语；E 未受邀独立进入 → 黑暗中旁听
+        self.assertEqual(seen["invites"], {"D": "C"})
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("### 书房内低语（黑暗）（C、D）【旁听：E】", script)
+        c_log = (d / "private" / "C" / "log.md").read_text(encoding="utf-8")
+        d_log = (d / "private" / "D" / "log.md").read_text(encoding="utf-8")
+        e_log = (d / "private" / "E" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("C 的第2天发言", c_log)
+        self.assertIn("D 的第2天发言", c_log)
+        self.assertNotIn("E 的第2天发言", c_log)  # E 不是低语组合成员，没有发言机会
+        self.assertIn("书房内低语（黑暗）", d_log)
+        self.assertIn("听到有人低语", e_log)        # 潜伏者的私密存档
+        self.assertIn("C 的第2天发言", e_log)
+        self.assertTrue(any("听到有人低声交谈" in m for m in s["orch"]["hist"]["E"]))  # 潜伏者回执得知全部内容
+        self.assertNotIn("旁听", c_log)              # 低语者不会被告知是否有人旁听
+        # E 不是发言者：没有收到低语环节简报；C 收到了，且简报明示摸黑低语口径
+        self.assertFalse((d / "inbox" / "E" / "day2-自由活动-交谈-书房.md").exists())
+        c_brief = (d / "inbox" / "C" / "day2-自由活动-交谈-书房.md").read_text(encoding="utf-8")
+        self.assertIn("摸黑低声交谈", c_brief)
+        # 黑暗中的低语同样进入窃听器录音源（麦克风不受黑暗影响）
+        self.assertTrue(s["orch"]["talks"].get("2:书房"))
+
+
 class TestLiteJustInTimeRules(MockGameTestBase):
     """lite 规则集：AI 的规则书没有机制章节——凡 full 局指向"规则书 §X"的引用，
     lite 局改为把对应规则临场内联发给 AI（just-in-time），不产生悬空引用。"""

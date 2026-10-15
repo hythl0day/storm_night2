@@ -239,7 +239,7 @@ class Engine:
             s["sealed_room"] = None
             if s["power_out"] and s.get("blackout_news") != current_period(s):
                 # 当天新声明的停电在选房收尾后统一公布（rules-6 §7.5）；这里只公告跨日延续的停电
-                public["announcements"].append("停电中：除卧室外所有房间一片黑暗（可前往地下室修复发电机恢复供电）")
+                public["announcements"].append("停电中：除卧室外所有房间一片黑暗（可前往地下室修复发电机恢复供电——未修复则停电一直持续）")
         if stage == "晚间休息":
             s["stage_murder_used"] = any(
                 c["day"] == s["phase"]["day"] and c["stage"] == "自由活动" for c in s["cases"]
@@ -249,7 +249,7 @@ class Engine:
             if s["phase"]["day"] < 4:
                 s["locks"][HALL] = True  # v3.4：会客室夜间自动落锁（第 4 天起全开）
             if s["power_out"]:
-                public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗——含卧室（守夜密谈/围炉夜谈仍可低声进行）")
+                public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗——含卧室（守夜密谈/围炉夜谈仍可低声进行）；修复发电机前不会恢复")
 
     def _morning_report(self, day: int, public: dict, private: dict) -> None:
         """清晨公告：昨日死亡与未遂、强制开锁、职业公开、尸体道具封存、桌上物品变动、监控公开宣读。"""

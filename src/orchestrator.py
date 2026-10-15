@@ -552,13 +552,15 @@ class Orchestrator:
                     "同一上锁房间由顺序最前的有手段者开门（自动消耗一次手段），之后的人直接随入。",
                     "已有人进入的房间门必然已开；空房间的锁状态见「游戏状态」段的「已永久开启」（监控室开局上锁）。"]
         if "内交谈" in title:
-            return ["按行动顺序各发言一次，后发言者能看到先发言者的话；黑暗房间内无法交谈。"]
+            return ["按行动顺序各发言一次，后发言者能看到先发言者的话。",
+                    "黑暗房间内无法交谈——除非同入邀请成立的伙伴互知在场，可摸黑低语：低语会被房间内所有在场者听到（包括你们看不见的潜伏者），而你们不会知道是否有人旁听。"]
         if "房间行动" in title:
             return ["非黑暗时，房间行动（查监控/开箱/修发电机）会被同房者看见；黑暗中无人知晓是谁做的。"]
         if "夜袭" in title:
             return ["夜袭目标：有且仅有 1 名非反派角色的房间；持【暴力破解】手段可尝试进入某卧室（两名非反派同守则无法进入——同房有帮凶则可照常进入）。",
                     "夜袭以卧室为目标声明，房内人数不可见——进入空房则白跑一趟。",
-                    "夜袭失败（无法进入）或进入空房：消耗当夜机会与开锁手段，但不计为谋杀行为、不重置无杀倒计时。"]
+                    "夜袭失败（无法进入）或进入空房：消耗当夜机会与开锁手段，但不计为谋杀行为、不重置无杀倒计时。",
+                    "夜袭时（夜间卧室）空手谋杀无任何附加条件——不看体格/性别、无需帮凶在场；空手也不会被凶器克制，但仍可被「急救箱」/【敏捷闪避】抵消。"]
         if "密谈" in title or "夜谈" in title:
             return ["密谈/夜谈内容只有参与者知道；按行动顺序各发言一次；停电不影响密谈（黑暗中照常进行）。"]
         if "晚间休息" in title:
@@ -624,6 +626,17 @@ class Orchestrator:
             lines.append("- 你是侦探：公共发言末置发言、一票计 1.5、垄断武装指认（出局时警徽按遗嘱传承）")
         return lines
 
+    def _dark_partners(self, name: str, room: str) -> list[str]:
+        """v3.17：同入邀请成立且当前同处一室的伙伴（黑暗房间低语资格——互知在场，rules-6 §7.5.6）。"""
+        free_invites = self.orch.get("free_invites") or {}
+        partners = []
+        for t, v in free_invites.items():
+            if t == name and self.state["positions"].get(v) == room:
+                partners.append(v)
+            elif v == name and self.state["positions"].get(t) == room:
+                partners.append(t)
+        return partners
+
     def _weapon_hint(self, p: dict, room: str | None) -> str:
         """谋杀菜单的实时凶器提示：持有凶器逐件列出（含次数），无凶器则明示只能空手。"""
         held = [f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])
@@ -633,7 +646,8 @@ class Orchestrator:
         elif self.lite:
             # lite 规则书无 §7.6：空手条件临场内联发给杀手
             parts = ["你当前未持有凶器（只能空手。空手谋杀需满足其一：帮凶在场 / 你体格不弱于目标 / "
-                     "你男而目标女 / 夜间在目标自己卧室偷袭（体格门槛放宽一级）；漆黑的房间内无附加条件）"]
+                     "你男而目标女；漆黑房间或夜间卧室中（含夜袭）无任何附加条件——空手不被凶器克制，"
+                     "但仍可能被急救箱/敏捷闪避抵消）"]
         else:
             parts = ["你当前未持有凶器（只能空手，空手条件见规则 §7.6）"]
         env = ENV_WEAPON.get(room or "")
@@ -705,7 +719,13 @@ class Orchestrator:
         if pos and not meeting_hall:
             if is_dark(self.state, pos):
                 # 黑暗房间不报"同房者：无"（明明有人却报无，曾与谋杀菜单目标矛盾、误导 AI——game/42 复盘）
-                pos_line += "（房间黑暗：你看不见这里有谁，也无法交谈）"
+                partners = self._dark_partners(name, pos)
+                if partners:
+                    # v3.17：同入邀请成立的伙伴互知在场，可摸黑低语（rules-6 §7.5.6）
+                    pos_line += (f"（房间黑暗：你看不见这里有谁——但你知道 {'、'.join(partners)} 应邀同来、就在身边，"
+                                 "可以摸黑低声交谈；当心被你们看不见的潜伏者旁听）")
+                else:
+                    pos_line += "（房间黑暗：你看不见这里有谁，也无法交谈）"
             else:
                 pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
         lines.append(f"## 当前局面\n{pos_line}")
@@ -1134,7 +1154,7 @@ class Orchestrator:
                 continue
             if unlock_means(s, name) is None:
                 continue
-            menu = ['- 秘密声明今天停电（拉电闸制造过载，消耗一次【暴力破解】——职业技能/「万能钥匙」/「螺丝起子」任一；停电中门锁失效、监控缺失、除会客室外全部黑暗；进入房间后才向众人公布）：{"type": "declare_blackout"}',
+            menu = ['- 秘密声明停电（拉电闸制造过载，消耗一次【暴力破解】——职业技能/「万能钥匙」/「螺丝起子」任一；停电中门锁失效、监控缺失、除会客室外全部黑暗；停电持续到有人前往地下室修复发电机为止——无人修复则跨天延续，不会自动恢复；进入房间后才向众人公布）：{"type": "declare_blackout"}',
                     '- 不声明则 actions 为 []（本环节只有这一项决定，speech 可留空）',
                     f'- {NO_SPEECH_NOTE}']
             briefing = self.build_briefing(p, f"第{day}天 · 自由活动（停电声明）", menu,
@@ -1218,10 +1238,10 @@ class Orchestrator:
                     placed = self.state["positions"].get(name, HALL)
                     if placed == HALL:
                         self.tell(name, "你留在会客室——壁炉的火光还亮着，但你注意到走廊与其他房间的灯全部熄灭了："
-                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录）。")
+                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录；发电机被修复前停电不会结束）。")
                     else:
                         self.tell(name, f"你走向{placed}——灯骤然熄灭，四周一片漆黑，门上的锁全部失效："
-                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录）。")
+                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录；发电机被修复前停电不会结束）。")
             else:
                 self.reject_note(p, ev)
             w["done"].append(name)
@@ -1233,6 +1253,7 @@ class Orchestrator:
         for t, v in pending_invite.items():
             if t in assignments and v in assignments and assignments[t] == assignments[v]:
                 invited[t] = v
+        self.orch["free_invites"] = invited  # v3.17：黑暗房间"同入邀请成立的组合"可摸黑低语（room_talks 用）
         for t, v in invited.items():
             # 邀请成立对邀请者私密可见（黑暗房间中也知道应邀者到来——game/42 复盘：索尔不知桑娜已到而放弃谋杀）
             self.tell(v, f"{t} 接受了你的同入邀请，进入了{self.state['positions'].get(t, '?')}——即使房间黑暗，你也知道 TA 来了。")
@@ -1242,7 +1263,7 @@ class Orchestrator:
             self.script_private(ev)
             if self.state.get("blackout_news") == period:
                 # 停电在全员进入房间后才向众人公布（rules-6 §7.5）；三出口同写（feed/public/script + console）
-                self.log_line("- 停电了——除会客室外所有房间一片黑暗，所有门锁失效（保险箱除外），监控停止记录；可前往地下室修复发电机恢复供电")
+                self.log_line("- 停电了——除会客室外所有房间一片黑暗，所有门锁失效（保险箱除外），监控停止记录；可前往地下室修复发电机恢复供电——未修复则停电一直持续（跨天延续）")
                 self.state["blackout_news"] = None
             self.script_line("- 选房结果：" + "、".join(f"{n}→{self.state['positions'].get(n, HALL)}" for n in assignments))
             if invited:
@@ -1258,6 +1279,7 @@ class Orchestrator:
 
     def room_talks(self, day: int) -> None:
         positions = self.state["positions"]
+        free_invites = self.orch.get("free_invites") or {}
         w = self.wip(f"{day}:自由活动:交谈", done_rooms=[])
         for name in self.state["order"]:
             room = positions.get(name)
@@ -1265,19 +1287,44 @@ class Orchestrator:
                 continue
             occ = [n for n in self.state["order"]
                    if positions.get(n) == room and (self.player(n) or {}).get("alive")]
-            if len(occ) < 2 or is_dark(self.state, room):
+            if len(occ) < 2:
                 continue
+            dark = is_dark(self.state, room)
+            listeners: list[str] = []
+            if dark:
+                # v3.17：黑暗房间仅"同入邀请成立的组合"（互知在场）可摸黑低语（rules-6 §7.5.6/§9.5）；
+                # 低语全体在场者都能听到——含组合看不见的潜伏者，低语者不会知道是否被旁听
+                aware = set()
+                for t, v in free_invites.items():
+                    if t in occ and v in occ:
+                        aware.update((t, v))
+                speakers = [n for n in occ if n in aware]
+                listeners = [n for n in occ if n not in aware]
+                if len(speakers) < 2:
+                    continue
+            else:
+                speakers = occ
             if any(c["day"] == day and c["stage"] == "自由活动" and c["room"] == room for c in self.state["cases"]):
                 continue
             # 一个房间是一次原子 checkpoint：中途被打断则整间重谈（transcript 只在谈妥后才投递）
             transcript: list[str] = []
-            for occ_name in occ:
+            for occ_name in speakers:
                 p = self.player(occ_name)
-                others = [n for n in occ if n != occ_name]
-                menu = ["- 本环节是房间内交谈：speech 只对同房者可见；actions 为 []"]
-                extra = f"你在 {room}，同房者：{'、'.join(others)}。"
-                if transcript:
-                    extra += "\n本房间已发生的交谈：\n" + "\n".join(transcript)
+                if dark:
+                    partners = [n for n in speakers if n != occ_name
+                                and (free_invites.get(occ_name) == n or free_invites.get(n) == occ_name)]
+                    menu = ["- 本环节是黑暗中的低语：speech 会被房间内所有在场者听到（包括你们看不见的人）；actions 为 []"]
+                    extra = (f"{room}一片漆黑，你看不见任何人——但你知道 {'、'.join(partners)} 应邀而来、就在身边，"
+                             "你们可以摸黑低声交谈。注意：房间里可能还有你们不知道的潜伏者，你们说的话会被在场所有人听到，"
+                             "而你们不会知道是否有人旁听。")
+                    if transcript:
+                        extra += "\n已发生的低语：\n" + "\n".join(transcript)
+                else:
+                    others = [n for n in occ if n != occ_name]
+                    menu = ["- 本环节是房间内交谈：speech 只对同房者可见；actions 为 []"]
+                    extra = f"你在 {room}，同房者：{'、'.join(others)}。"
+                    if transcript:
+                        extra += "\n本房间已发生的交谈：\n" + "\n".join(transcript)
                 briefing = self.build_briefing(p, f"第{day}天 · 自由活动（{room}内交谈）", menu, extra)
                 payload = self.call_ai(p, f"自由活动-交谈-{room}", briefing)
                 speech = str(payload.get("speech") or "").strip()
@@ -1285,14 +1332,25 @@ class Orchestrator:
                     transcript.append(f"{occ_name}：{speech}")
             if transcript:
                 self.orch["talks"].setdefault(f"{day}:{room}", []).extend(transcript)  # 窃听器录音源
-                self.script_sub(f"{room}内交谈（{'、'.join(occ)}）")
+                tag = "内低语（黑暗）" if dark else "内交谈"
+                if dark:
+                    self.script_sub(f"{room}{tag}（{'、'.join(speakers)}）"
+                                    + (f"【旁听：{'、'.join(listeners)}】" if listeners else ""))
+                else:
+                    self.script_sub(f"{room}{tag}（{'、'.join(occ)}）")
                 for line in transcript:
                     self.script_line(f"    {line}")
-                for occ_name in occ:
+                content = "；".join(transcript)
+                for occ_name in speakers:
                     seat = self.seat(self.player(occ_name))
                     with open(self.dir / "private" / seat / "log.md", "a", encoding="utf-8") as f:
-                        f.write(f"\n## 第{day}天 · {room}内交谈\n\n" + "\n".join(transcript) + "\n")
-                    self.tell(occ_name, f"{room}内交谈：" + "；".join(transcript))
+                        f.write(f"\n## 第{day}天 · {room}{tag}\n\n" + "\n".join(transcript) + "\n")
+                    self.tell(occ_name, f"{room}{tag}：" + content)
+                for occ_name in listeners:  # 潜伏者得知全部内容；低语者不知情（不泄漏潜伏）
+                    seat = self.seat(self.player(occ_name))
+                    with open(self.dir / "private" / seat / "log.md", "a", encoding="utf-8") as f:
+                        f.write(f"\n## 第{day}天 · {room}（你在黑暗中听到有人低语）\n\n" + "\n".join(transcript) + "\n")
+                    self.tell(occ_name, f"你在{room}的黑暗中，听到有人低声交谈：" + content)
             w["done_rooms"].append(room)
             self.save_state()
             self.check_stop()
@@ -1348,7 +1406,7 @@ class Orchestrator:
         if is_dark(s, room) and held_item(p, "手电筒", day) is not None:
             menu.append('- 使用手电筒（本房间本次不视为黑暗）：{"type": "use_flashlight"}')
         if room == "地下室" and s["power_out"]:
-            menu.append('- 修复发电机：{"type": "fix_generator"}')
+            menu.append('- 修复发电机（结束停电、恢复供电；修复前停电一直持续，可跨天）：{"type": "fix_generator"}')
         if p["profession"] == "建筑师" and skill_left(s, name, "封闭空间") > 0 and room != HALL:
             menu.append('- 封闭空间（锁死当前房间至下一自由活动；不能对会客室使用）：{"type": "seal_room", "allowed": ["许可留下的人"]}')
         if is_villain(p) and p["profession"] == "机械师" and day >= 2:
@@ -1403,7 +1461,7 @@ class Orchestrator:
                     extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
                 can_raid = unlock_means(self.state, name) is not None or self.state["power_out"]
                 if p["identity"] == "杀手" and day >= 2 and not self.state["stage_murder_used"] and can_raid:
-                    menu.append('- 夜袭：前往一名玩家的卧室动手（需【暴力破解】手段，停电期间门锁失效除外；房内人数不可见、可能空无一人——进入空房则白跑一趟，当夜机会照常消耗；房内两名非反派同守则无法进入且当夜机会作废——同房有你的帮凶则可照常进入，但亮房闯入会被房内人看见；停电黑暗中可潜入满员卧室袭击其一）：{"type": "night_raid", "room": "某人的卧室"}')
+                    menu.append('- 夜袭：前往一名玩家的卧室动手（需【暴力破解】手段，停电期间门锁失效除外；房内人数不可见、可能空无一人——进入空房则白跑一趟，当夜机会照常消耗；房内两名非反派同守则无法进入且当夜机会作废——同房有你的帮凶则可照常进入，但亮房闯入会被房内人看见；停电黑暗中可潜入满员卧室袭击其一；夜间卧室空手谋杀无任何附加条件）：{"type": "night_raid", "room": "某人的卧室"}')
                 if is_villain(p) and p["profession"] == "建筑师" and self.state["passage"] and not self.state["passage"]["used"]:
                     menu.append('- 使用密道（当夜行动，与夜间房间/夜袭互斥；监控无痕；出口人数须满足谋杀人数条件，否则当晚失败但密道保留）：{"type": "use_passage", "room": "书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock（可选）"}')
                 if self.state["bug_room"] and held_item(p, "窃听器", day) is not None:
@@ -1636,7 +1694,7 @@ class Orchestrator:
                    and self.state["positions"].get(q["name"]) == room]
         if not targets:
             return
-        menu = [f'- 谋杀（本次不用则本阶段机会作废）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(kp, room)}；空手需满足体格/性别条件，在目标自己卧室偷袭门槛放宽）']
+        menu = [f'- 谋杀（本次不用则本阶段机会作废）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(kp, room)}；夜袭/夜间卧室中空手谋杀无任何附加条件，且空手不被凶器克制——但仍可能被急救箱/敏捷闪避抵消）']
         if kp["profession"] == "魔术师" and skill_left(self.state, kp["name"], "舞台魔术") > 0:
             menu.append(f'- 舞台魔术（不可防御）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
         extra = f"夜深人静，机会只有一次。动手，或按兵不动（actions 为 []）。\n{NO_SPEECH_NOTE}"
