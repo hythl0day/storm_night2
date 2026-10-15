@@ -18,6 +18,12 @@ def third_person(name: str, msg: str) -> str:
     return msg
 
 
+def _case_label(a: dict) -> str:
+    """案件标签：主口径受害者名字（case/victim 字段），兼容旧式整数 case_id。"""
+    name = a.get("case") or a.get("victim")
+    return f"{name}案" if name else f"案件 {a.get('case_id', '?')}"
+
+
 def fmt_action(a: dict) -> str:
     """动作 JSON → 人读文本（展示用；落盘的原始 JSON 不受影响）。"""
     if not isinstance(a, dict):
@@ -76,13 +82,13 @@ def fmt_action(a: dict) -> str:
     if t == "stage_magic":
         return f"舞台魔术 → {a.get('target', '?')}"
     if t == "falsify":
-        return f"{a.get('kind', '伪造')}（案件 {a.get('case_id', '?')}）"
+        return f"{a.get('kind', '伪造')}（{_case_label(a)}）"
     if t == "move_body":
-        return f"转移尸体（案件 {a.get('case_id', '?')} → {a.get('to_room', '?')}）"
+        return f"转移尸体（{_case_label(a)} → {a.get('to_room', '?')}）"
     if t == "investigate":
-        return f"现场调查（案件 {a.get('case_id', '?')}：{a.get('choice', '?')}）"
+        return f"现场调查（{_case_label(a)}：{a.get('choice', '?')}）"
     if t == "profile":
-        return f"犯罪侧写（案件 {a.get('case_id', '?')}：{a.get('aspect', '?')}）"
+        return f"犯罪侧写（{_case_label(a)}：{a.get('aspect', '?')}）"
     if t == "declare":
         return "宣告参选侦探" if a.get("run") else "宣告不参选"
     if t == "elect_stay":

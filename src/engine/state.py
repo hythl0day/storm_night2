@@ -200,6 +200,19 @@ def current_period(state: dict) -> str:
     return f"第{ph['day']}天{ph['stage']}"
 
 
+def countdown_text(day: int, last_murder_day: int | None) -> str:
+    """无杀倒计时公告口径（rules-6 §8）：直接给出进度与触发条件，避免玩家自行换算
+    （旧版"已连续 X 个完整天"曾让部分 AI 理解困难，v3.20 改写）。
+    尚无谋杀行为时视同末次行为为第 1 天（自第 2 天起算）。"""
+    last = last_murder_day if last_murder_day is not None else 1
+    quiet = max(0, day - 1 - last)
+    if quiet == 0:
+        return ("无杀倒计时：自首个可谋杀日（第 2 天）起，若连续 2 个完整天没有任何谋杀行为，"
+                "下一个清晨平民直接获胜（当前进度 0/2；任何谋杀出手含未遂都会重置）")
+    return (f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（{quiet}/2）——"
+            "今天若仍无谋杀行为，明早平民直接获胜（任何谋杀出手含未遂都会重置）")
+
+
 def is_dark(state: dict, room: str) -> bool:
     """黑暗判定（v3.2）：地下室永久黑暗；会客室永不黑暗；停电期间除会客室外全部黑暗（含卧室，取消紧急照明）；手电筒照亮的房间本次除外。"""
     if room in state["flashlight_lit"]:

@@ -83,7 +83,7 @@ def make_fake_chat(killer_script: bool):
             acts = [{"type": "bequest_reply", "decisions": {"万能钥匙": "接受"}}]
         elif "案件调查" in title:
             if '"type": "profile"' in briefing:
-                acts = [{"type": "profile", "case_id": 1, "aspect": "性别"}]
+                acts = [{"type": "profile", "case": "E", "aspect": "性别"}]  # 案件指认=受害者名字
         elif "武装指认" in title:
             pass
         elif "投票" in title:
@@ -943,7 +943,8 @@ class TestGameStateSection(MockGameTestBase):
         self.assertIn("第 1/6 天", b)
         self.assertIn("存活 6 人", b)
         self.assertIn("侦探：无", b)
-        self.assertIn("无杀倒计时：已连续 0 个完整天", b)
+        self.assertIn("无杀倒计时：", b)
+        self.assertIn("当前进度 0/2", b)  # v3.20：倒计时直白口径（进度 + 触发条件）
         self.assertIn("A（男·魁梧·中国·存活）", b)  # 体格转文字，不含数值（硬性约定）
 
         # 出局者身份职业公开（§7.3）；被谋杀者只公开死亡信息与已公开职业，身份不公开（§9.4）
@@ -960,7 +961,7 @@ class TestGameStateSection(MockGameTestBase):
         self.assertIn("第 3/6 天", b2)
         self.assertIn("存活 4 人", b2)
         self.assertIn("侦探：E", b2)
-        self.assertIn("已连续 0 个完整天", b2)  # 第 2 天有谋杀行为，倒计时清零
+        self.assertIn("当前进度 0/2", b2)  # 第 2 天有谋杀行为，倒计时清零
         self.assertIn("C（女·健壮·中国·第2天出局：平民/医师）", b2)
         seg_d = next(x for x in b2.split("、") if x.startswith("D（"))
         self.assertIn("第2天死亡（书房）", seg_d)
@@ -969,15 +970,61 @@ class TestGameStateSection(MockGameTestBase):
 
 
 class TestCaseIdRobustness(MockGameTestBase):
-    """game/18 复盘：AI 自造 case_id（如 "格罗克遇袭"）不得炸穿编排器；无案件清晨调查阶段整体跳过。"""
+    """案件指认主口径=受害者名字（"case" 字段）：容忍「」引号与"案"后缀、兼容旧式整数 case_id、
+    单案件自动归一；未知名驳回并附案件名单，不得炸穿编排器（game/18 复盘）。无案件清晨调查整体跳过。"""
 
-    def test_non_integer_case_id_rejected_not_raised(self):
-        d = write_game_dir(self.root / "g13", default_players())
+    @staticmethod
+    def _mk_case(cid, victim, room="书房"):
+        return {"id": cid, "victim": victim, "room": room, "crime_room": room, "day": 2,
+                "stage": "自由活动", "period": "第2天自由活动", "method": "刀", "wound": "利器",
+                "culprit": "A", "body_moved": False, "falsified": None, "looted": [],
+                "evidence_vulnerable": True, "sealed": True}
+
+    def _orch_with_cases(self, name, cases):
+        d = write_game_dir(self.root / name, default_players())
         orch = Orchestrator(d)
+        orch.state["cases"] = cases
+        orch.state["phase"] = {"day": 3, "stage": "案件调查"}
+        return orch
+
+    def test_case_resolved_by_victim_name(self):
+        orch = self._orch_with_cases("g13a", [self._mk_case(1, "E"), self._mk_case(2, "F", "地下室")])
+        p = next(q for q in orch.state["players"] if q["name"] == "C")  # 医师：现场调查×2
+        ev = orch.dispatch(p, {"type": "investigate", "case": "F", "choice": "武器伤痕"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["private"]["C"]["case"], "F")      # 回执回显受害者与房间（选错可自查）
+        self.assertEqual(ev["private"]["C"]["room"], "地下室")
+        ev = orch.dispatch(p, {"type": "investigate", "case": "「E案」", "choice": "死亡时间"})
+        self.assertTrue(ev["ok"], ev)  # 容忍「」引号与"案"后缀
+        self.assertEqual(ev["private"]["C"]["case"], "E")
+        ev = orch.dispatch(p, {"type": "investigate", "case": "格罗克", "choice": "尸体转移"})
+        self.assertFalse(ev["ok"])     # 未知名：解析层驳回（先于引擎，不耗次数）
+        self.assertIn("受害者名字", ev["error"])
+        self.assertIn("E", ev["error"])
+
+    def test_case_legacy_case_id_still_accepted(self):
+        orch = self._orch_with_cases("g13b", [self._mk_case(1, "E"), self._mk_case(2, "F", "地下室")])
+        p = next(q for q in orch.state["players"] if q["name"] == "C")
+        ev = orch.dispatch(p, {"type": "investigate", "case_id": 2, "choice": "武器伤痕"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["private"]["C"]["case"], "F")
+        ev = orch.dispatch(p, {"type": "investigate", "case_id": "案件1", "choice": "死亡时间"})
+        self.assertTrue(ev["ok"], ev)  # 可提取数字的写法兼容
+        self.assertEqual(ev["private"]["C"]["case"], "E")
+
+    def test_single_case_auto_default(self):
+        orch = self._orch_with_cases("g13c", [self._mk_case(1, "E")])
+        p = next(q for q in orch.state["players"] if q["name"] == "C")
+        ev = orch.dispatch(p, {"type": "investigate", "choice": "武器伤痕"})  # 缺省 → 唯一案件
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["private"]["C"]["case"], "E")
+
+    def test_unknown_case_rejected_not_raised(self):
+        orch = self._orch_with_cases("g13d", [])
         p = next(q for q in orch.state["players"] if q["name"] == "C")
         ev = orch.dispatch(p, {"type": "investigate", "case_id": "格罗克遇袭", "choice": "武器伤痕"})
         self.assertFalse(ev["ok"])
-        self.assertIn("案件编号", ev["error"])
+        self.assertIn("受害者名字", ev["error"])
         ev2 = orch.dispatch(p, {"type": "profile", "case_id": None})
         self.assertFalse(ev2["ok"])
 

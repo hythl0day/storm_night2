@@ -930,6 +930,16 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertFalse(ev["ok"])
         self.assertIn("空手", ev["error"])
 
+    def test_countdown_text_plain(self):
+        """v3.20 倒计时公告口径：0/2 直接给规则全文，1/2 给"今天再无杀则明早平民胜"——免换算。"""
+        from src.engine.state import countdown_text
+        t0 = countdown_text(2, None)
+        self.assertIn("连续 2 个完整天", t0)
+        self.assertIn("当前进度 0/2", t0)
+        t1 = countdown_text(4, 2)  # 第 2 天有行为、第 3 天无杀 → 今天（第 4 天）再无杀则明早胜
+        self.assertIn("1/2", t1)
+        self.assertIn("明早平民直接获胜", t1)
+
     def test_night_raid_full_bedroom_lit_no_countdown_reset(self):
         """v3.2 倒计时修正：夜袭满员亮房卧室无法进入——消耗当夜机会，但不计谋杀行为（不重置倒计时）。"""
         eng = Engine(mk_state())
@@ -1121,7 +1131,7 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         self.kill_e_day2(eng)
         goto(eng, "案件调查", day=3)
         ev = eng.profile("F", 1, "体格")
-        self.assertEqual(ev["private"]["F"]["result"], "强壮")
+        self.assertEqual(ev["private"]["F"]["result"], "健壮或魁梧")  # v3.20：按角色表文字口径
         ev = eng.profile("F", 1, "性别")
         self.assertFalse(ev["ok"])
 

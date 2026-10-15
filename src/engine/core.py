@@ -27,6 +27,7 @@ from .state import (
     bedroom_owner,
     check_winner,
     consume_unlock_means,
+    countdown_text,
     current_period,
     door_locked,
     ensure,
@@ -190,11 +191,10 @@ class Engine:
             public["announcements"].append(ann)
             # 清晨状态行：host 算好的全局状态，避免玩家自行推算规则状态出错（game/42 复盘项）
             public["announcements"].append(f"目前存活 {len(alive_names)} 人：{'、'.join(alive_names)}")
-            # 无杀倒计时自第 2 天起算（rules-6 §8）：尚无谋杀行为时视同末次行为为第 1 天
+            # 无杀倒计时自第 2 天起算（rules-6 §8）：尚无谋杀行为时视同末次行为为第 1 天；
+            # 公告口径见 countdown_text，判定仍用 last_behavior
             last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
-            quiet = new_day - 1 - last_behavior
-            public["announcements"].append(
-                f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个完整天则平民直接获胜）")
+            public["announcements"].append(countdown_text(new_day, s["last_murder_day"]))
             if s["sealed_items"]:
                 public["announcements"].append(f"遗留道具待立遗嘱：{len(s['sealed_items'])} 件")
             if new_day == 4:

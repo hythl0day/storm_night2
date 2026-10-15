@@ -63,6 +63,7 @@ from .engine.state import (
     ROOM_CAPACITY,
     bedroom_of,
     bedroom_owner,
+    countdown_text,
     current_period,
     held_item,
     held_item_names,
@@ -579,11 +580,9 @@ class Orchestrator:
         每阶段重发是为了让 AI 不必从笔记里推算局面（game/8 复盘：角色反复搞错存活与道具台账）。"""
         s = self.state
         day = s["phase"]["day"]
-        last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
-        quiet = max(0, day - 1 - last_behavior)
         alive_n = sum(1 for q in s["players"] if q["alive"])
         lines = [f"- 进度：第 {day}/6 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
-                 f"｜无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个则平民直接获胜）"]
+                 f"｜{countdown_text(day, s['last_murder_day'])}"]
         deaths = {c["victim"]: c for c in s["cases"]}
         out_day = self.orch.get("out_day", {})
         prof_pub = set(s.get("profession_public", []))
@@ -663,7 +662,7 @@ class Orchestrator:
         - 日序/存活/倒计时三类状态行各只保留最新一条；事件行（死亡/投票/遗嘱/监控宣读等）全保留。
         """
         has_result = any("侦探竞选：" in x or "本局不设侦探" in x for x in lines)
-        kinds = ("/6 天开始", "目前存活", "无杀倒计时：已连续")
+        kinds = ("/6 天开始", "目前存活", "无杀倒计时：")
         last = {k: max((i for i, x in enumerate(lines) if k in x), default=-1) for k in kinds}
         out = []
         for i, x in enumerate(lines):
@@ -783,6 +782,33 @@ class Orchestrator:
             if isinstance(act, dict):
                 self.dispatch(p, act)
 
+    def _resolve_case(self, act: dict) -> tuple[dict | None, dict | None]:
+        """把 AI 动作中的案件引用解析为案件 dict。返回 (案件, None) 或 (None, 驳回事件)。
+
+        主口径：受害者名字（"case" 字段，容忍 "victim" 字段、「」/引号与"案"后缀）；
+        兼容旧式整数 case_id（含 "案件1"/"#1" 等可提取数字的写法）；
+        全局只剩 1 起案件时缺省或写错自动归一。解析失败 → 驳回并附当前案件名单。
+        """
+        cases = self.state["cases"]
+        raw = act.get("case", act.get("victim"))
+        if raw is not None:
+            name = str(raw).strip().strip("「」\"'").removesuffix("案").strip()
+            hit = next((c for c in cases if c["victim"] == name), None)
+            if hit:
+                return hit, None
+        raw_id = act.get("case_id")
+        if raw_id is not None:
+            m = re.search(r"\d+", str(raw_id))
+            if m:
+                hit = next((c for c in cases if c["id"] == int(m.group())), None)
+                if hit:
+                    return hit, None
+        if len(cases) == 1:
+            return cases[0], None
+        listing = "、".join(f"{c['victim']}（{c['room']}）" for c in cases) or "（无）"
+        return None, reject(str(act.get("type", "?")),
+                            f"未找到对应案件——请用受害者名字指认（当前案件：{listing}）")
+
     def dispatch(self, p: dict, act: dict) -> dict | None:
         name = p["name"]
         at = act.get("type", "")
@@ -822,21 +848,19 @@ class Orchestrator:
         elif at == "declare_blackout":
             ev = self.eng.declare_blackout(name)
         elif at in ("falsify", "move_body", "investigate", "profile"):
-            # case_id 是 AI 输入：非整数走驳回（进驳回重报流程），绝不允许抛异常炸穿跑局（game/18 复盘）
-            try:
-                cid = int(act.get("case_id", 0))
-            except (TypeError, ValueError):
-                cid = None
-            if cid is None:
-                ev = reject(at, f"case_id 必须是案件编号（整数），收到 {act.get('case_id')!r}")
+            # 案件指认主口径 = 受害者名字（"case"/"victim" 字段）；兼容旧式整数 case_id。
+            # 解析失败走驳回重报，绝不允许异常炸穿跑局（game/18 复盘）
+            case, err = self._resolve_case(act)
+            if err is not None:
+                ev = err
             elif at == "falsify":
-                ev = self.eng.falsify(name, cid, str(act.get("kind", "")))
+                ev = self.eng.falsify(name, case["id"], str(act.get("kind", "")))
             elif at == "move_body":
-                ev = self.eng.move_body(name, cid, str(act.get("to_room", "")))
+                ev = self.eng.move_body(name, case["id"], str(act.get("to_room", "")))
             elif at == "investigate":
-                ev = self.eng.investigate(name, cid, str(act.get("choice", "")))
+                ev = self.eng.investigate(name, case["id"], str(act.get("choice", "")))
             else:
-                ev = self.eng.profile(name, cid, str(act.get("aspect", "")))
+                ev = self.eng.profile(name, case["id"], str(act.get("aspect", "")))
         if ev is None:
             return None
         self.script_action(name, act, ev)
@@ -1743,7 +1767,7 @@ class Orchestrator:
                 self.run_bequest(victim, mapping)
             self.check_stop()
         w = self.wip(f"{day}:案件调查:调查", done=[])
-        case_lines = [f"案件 {c['id']}：{c['victim']} 死于{c['room']}（第{c['day']}天）" for c in self.state["cases"]]
+        case_lines = [f"{c['victim']}（第{c['day']}天，{c['room']}）" for c in self.state["cases"]]
         for name in self.state["order"]:
             if self.state["winner"]:
                 return
@@ -1752,12 +1776,12 @@ class Orchestrator:
                 continue
             menu = []
             if skill_left(self.state, name, "现场调查") > 0 or held_item(p, "鲁米诺试剂", day) is not None:
-                menu.append('- 现场调查（每起案件可选一项获知真实结论，可申报多次、次数以剩余为准）：{"type": "investigate", "case_id": 案件编号, "choice": "武器伤痕|死亡时间|尸体转移"}')
+                menu.append('- 现场调查（每起案件可选一项获知真实结论，可申报多次、次数以剩余为准）：{"type": "investigate", "case": "受害者名字", "choice": "武器伤痕|死亡时间|尸体转移"}')
             if skill_left(self.state, name, "犯罪侧写") > 0:
-                menu.append('- 犯罪侧写（获知凶手本人的一项特征）：{"type": "profile", "case_id": 案件编号, "aspect": "性别|国籍|体格"}')
+                menu.append('- 犯罪侧写（获知凶手本人的一项特征）：{"type": "profile", "case": "受害者名字", "aspect": "性别|国籍|体格"}')
             if not menu:
                 continue
-            extra = "已发生的案件：\n" + "\n".join(case_lines)
+            extra = "已发生的案件（用受害者名字指认）：\n" + "\n".join(case_lines)
             extra += "\n调查结果仅你本人可见——是否公布、隐瞒或撒谎，由你在发言中决定。"
             extra += f"\n{NO_SPEECH_NOTE}"
             briefing = self.build_briefing(p, f"第{day}天 · 案件调查", menu, extra)
@@ -2058,16 +2082,16 @@ class Orchestrator:
             if not here:
                 w["done"].append(p["name"])  # 不在案发现场：本窗口与 TA 无关
                 continue
-            case_lines = [f"案件 {c['id']}：{c['victim']}（{c['room']}）" for c in here]
+            case_lines = [f"{c['victim']}（{c['room']}）" for c in here]
             menu = []
             if skill_left(s, p["name"], "伪造痕迹") > 0:
-                menu.append('- 伪造痕迹（该案件除武器伤痕外的调查结果全部出错）：{"type": "falsify", "case_id": 案件编号, "kind": "伪造痕迹"}')
+                menu.append('- 伪造痕迹（该案件除武器伤痕外的调查结果全部出错）：{"type": "falsify", "case": "受害者名字", "kind": "伪造痕迹"}')
             if skill_left(s, p["name"], "销毁证物") > 0:
-                menu.append('- 销毁证物（该案件仅死亡时间保持正确）：{"type": "falsify", "case_id": 案件编号, "kind": "销毁证物"}')
+                menu.append('- 销毁证物（该案件仅死亡时间保持正确）：{"type": "falsify", "case": "受害者名字", "kind": "销毁证物"}')
             if skill_left(s, p["name"], "伪造证物") > 0 or held_item(p, "可疑的粉末", day) is not None:
-                menu.append('- 伪造证物（该案件除尸体转移外的调查结果全部出错）：{"type": "falsify", "case_id": 案件编号, "kind": "伪造证物"}')
+                menu.append('- 伪造证物（该案件除尸体转移外的调查结果全部出错）：{"type": "falsify", "case": "受害者名字", "kind": "伪造证物"}')
             if skill_left(s, p["name"], "转移尸体") > 0 or held_item(p, "裹尸袋", day) is not None:
-                menu.append('- 转移尸体到另一房间：{"type": "move_body", "case_id": 案件编号, "to_room": "会客室|书房|监控室|地下室|某人的卧室"}')
+                menu.append('- 转移尸体到另一房间：{"type": "move_body", "case": "受害者名字", "to_room": "会客室|书房|监控室|地下室|某人的卧室"}')
             extra = ("以下案件的现场没有其他非反派角色，且你就在案发现场——你可以动手毁证（也可以不动）：\n"
                      + "\n".join(case_lines) + f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)

@@ -327,7 +327,7 @@ def investigate(state: dict, user: str, case_id: int, choice: str) -> dict:
         "ok": True,
         "type": "investigate",
         "public": None,
-        "private": {user: {"case_id": case_id, "choice": choice, "result": result}},
+        "private": {user: {"case": case["victim"], "room": case["room"], "choice": choice, "result": result}},
     }
 
 
@@ -366,7 +366,8 @@ def falsify(state: dict, user: str, case_id: int, kind: str) -> dict:
     else:
         return reject("falsify", "没有对应的毁证手段")
     case["falsified"] = kind
-    return {"ok": True, "type": "falsify", "public": None, "private": {user: f"已对案件 {case_id} 发动【{kind}】"}}
+    return {"ok": True, "type": "falsify", "public": None,
+            "private": {user: f"已对 {case['victim']} 的案件（{case['room']}）发动【{kind}】"}}
 
 
 def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
@@ -404,7 +405,8 @@ def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
         return reject("move_body", "没有【转移尸体】或「裹尸袋」")
     case["room"] = to_room
     case["body_moved"] = True
-    return {"ok": True, "type": "move_body", "public": None, "private": {user: f"尸体已转移到{to_room}"}}
+    return {"ok": True, "type": "move_body", "public": None,
+            "private": {user: f"{case['victim']} 的尸体已转移到{to_room}"}}
 
 
 def profile(state: dict, user: str, case_id: int, aspect: str) -> dict:
@@ -429,12 +431,12 @@ def profile(state: dict, user: str, case_id: int, aspect: str) -> dict:
     elif aspect == "国籍":
         result = culprit["nationality"]
     else:
-        result = "强壮" if culprit["physique"] >= 3 else "普通"
+        result = "健壮或魁梧" if culprit["physique"] >= 3 else "普通或瘦弱"
     return {
         "ok": True,
         "type": "profile",
         "public": None,
-        "private": {user: {"case_id": case_id, "aspect": aspect, "result": result}},
+        "private": {user: {"case": case["victim"], "room": case["room"], "aspect": aspect, "result": result}},
     }
 
 
