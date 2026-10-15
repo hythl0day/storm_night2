@@ -1,0 +1,7 @@
+We need act.  I'm playing the Day1 free activity as a hacker accomplice, with a violent cracking tool for opening safes and no murder involved. My current task is to choose a room, and I've decided to pick the study. The safe in the study contains suspicious powder, and I can open it alone without witnesses, but I can't be sure if other people are already in the study. I've confirmed the suspicious powder is a useful villain prop worth stealing. I've decided to stick with choosing the study, and will organize the relevant notes next.
+
+I've clarified the rules of this stage: only room selection is allowed now, no safe opening or other actions are permitted, and speaking is prohibited during the whole process. The electricity pull-down option is invalid as it violates the rules and is useless. Going to the study alone won't cause suspicion, and I can mention relevant details later if needed.
+
+After further evaluation, I've ruled out the monitor room option as it would consume the only hacking skill needed for the safe, making it unfeasible. I've also decided not to invite the killer to the study to avoid unnecessary risks. The final plan is to choose the study alone, and I will open the safe only if no one else is present to avoid exposing the suspicious powder prop.
+
+I'll reserve the signal interference tool for later tampering with the monitoring when the killer acts. The suspicious powder is the villain prop I want to steal before civilians get it, and I won't cut the power supply today to save it for tomorrow's use.

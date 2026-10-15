@@ -5,6 +5,9 @@
     python -m src.deal --seed 42             # 指定种子（同 seed 两次生成完全一致）
     python -m src.deal --seed 42 --seats gpt,claude,gemini,deepseek,kimi,glm   # 手动指定 6 席
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
+    python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
+                                                    # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
+                                                    # 裁决规则不变（仍 v3.12），state 记 is_lite_rule=True
 
 随机调用顺序（影响复现，勿随意调整；v3.5 起保底凶器车道改为桌上凶器，不再选持有人）：
     席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
@@ -22,12 +25,15 @@ import tomllib
 from pathlib import Path
 
 from .gamedata import (
+    ITEM_DESC,
     ITEMS,
     ITEM_USES,
     ITEMS_GENERAL,
     PROFESSION_SKILLS_GENERAL,
     PROFESSION_SKILLS_VILLAIN,
     PROFESSIONS,
+    SKILL_DESC_GENERAL,
+    SKILL_DESC_VILLAIN,
     TABLE_WEAPON,
     VILLAIN_ITEMS,
     VILLAIN_WEAPON_POOL,
@@ -82,8 +88,9 @@ def load_personas(path: Path) -> dict:
         return tomllib.load(f)
 
 
-def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
-    """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。"""
+def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None, lite: bool = False):
+    """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。
+    lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致。"""
     rng = random.Random(seed)
 
     # 1. 席位抽取（或手动指定）。随机模式为中美 3+3 对称抽取，两侧 API 渠道均衡
@@ -178,8 +185,9 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None):
 
     return {
         "seed": seed,
-        "ruleset": "rules-6.md",
-        "rules_version": "v3.10",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
+        "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
+        "rules_version": "v3.13",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
+        "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
         "mode": "6人局",
         "phase": {"day": 1, "stage": "开局准备"},
         "order": order,
@@ -247,15 +255,20 @@ def validate(state: dict) -> list[str]:
     return problems
 
 
-def write_card(player: dict, players: list) -> str:
+def write_card(player: dict, players: list, lite: bool = False) -> str:
+    """私密卡。lite 模式（rules-6-lite.md 无职业/道具词条）：技能与道具内联一句话定义、
+    不引用规则书章节；身份简报中的规则书引用同步剥离。"""
     p = player
+    brief = IDENTITY_BRIEF[p["identity"]]
+    if lite:
+        brief = brief.replace("（规则书 §7.5）", "")
     lines = [
         f"# {p['name']} 的私密卡（仅本人可见）",
         "",
         f"角色：{p['gender']} / {p['nationality']}人 / 体格{physique_desc(p['physique'])}",
         "",
         f"## 身份：{p['identity']}",
-        IDENTITY_BRIEF[p["identity"]],
+        brief,
     ]
     if p["identity"] in ("杀手", "帮凶"):
         partner_role = "帮凶" if p["identity"] == "杀手" else "杀手"
@@ -268,16 +281,28 @@ def write_card(player: dict, players: list) -> str:
         f"## 职业：{p['profession']}",
         f"技能：{PROFESSION_SKILLS_GENERAL[p['profession']]}",
     ]
+    if lite:
+        lines[-1] += f"——{SKILL_DESC_GENERAL[p['profession']]}"
     if p["identity"] in ("杀手", "帮凶"):
-        lines.append(f"反派技能：{PROFESSION_SKILLS_VILLAIN[p['profession']]}")
+        villain_skill = f"反派技能：{PROFESSION_SKILLS_VILLAIN[p['profession']]}"
+        if lite:
+            villain_skill += f"——{SKILL_DESC_VILLAIN[p['profession']]}"
+        lines.append(villain_skill)
+    if not lite:
+        lines += ["（完整定义见规则书 §3）"]
     lines += [
-        "（完整定义见规则书 §3）",
         "",
         f"## 道具：{p['item']}（剩余 {p['item_uses_left']} 次）",
     ]
+    if lite:
+        lines[-1] += f"——{ITEM_DESC[p['item']]}"
     for extra in p.get("extra_items", []):
-        lines.append(f"## 道具：{extra}（剩余 {ITEM_USES[extra]} 次）")
-    lines.append("道具效果见规则书 §4。")
+        extra_line = f"## 道具：{extra}（剩余 {ITEM_USES[extra]} 次）"
+        if lite:
+            extra_line += f"——{ITEM_DESC[extra]}"
+        lines.append(extra_line)
+    if not lite:
+        lines.append("道具效果见规则书 §4。")
     if p["profession"] == "建筑师" and p["identity"] in ("杀手", "帮凶"):
         lines += ["", "## 开局准备", "你是反派建筑师：开局准备阶段确认密道网即可（无需选定出口）；晚间休息时可经密道前往书房/监控室/地下室之一。"]
     if p["item"] == "窃听器":
@@ -304,19 +329,24 @@ def main() -> None:
     ap.add_argument("--seats", default=None, help="手动指定席位：id 或名字，逗号分隔")
     ap.add_argument("--config", default="players.toml")
     ap.add_argument("--personas", default="personas.toml")
-    ap.add_argument("--rules", default="docs/rules-6.md")
+    ap.add_argument("--rules", default=None, help="规则书路径（缺省按 --lite 选择 rules-6-lite.md / rules-6.md）")
+    ap.add_argument("--lite", action="store_true",
+                    help="失忆版精简规则集：AI 只知生存须知（职业/道具全表与分配结构不下发），裁决规则不变")
     ap.add_argument("--out", default=None, help="输出目录（缺省 game/<seed>/）")
     args = ap.parse_args()
 
     if args.players != 6:
         raise SystemExit("当前仅支持 6 人局；8 人局开局将随第二季实现")
+    rules_path = args.rules or ("docs/rules-6-lite.md" if args.lite else "docs/rules-6.md")
+    if not Path(rules_path).exists():
+        raise SystemExit(f"规则书不存在：{rules_path}")
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10**6)
 
     players, _ = load_config(args.config)
     personas = load_personas(Path(args.personas))
     seat_keys = [s.strip() for s in args.seats.split(",") if s.strip()] if args.seats else None
 
-    state = deal(seed, players, personas, seat_keys)
+    state = deal(seed, players, personas, seat_keys, lite=args.lite)
 
     problems = validate(state)
     if problems:
@@ -338,16 +368,16 @@ def main() -> None:
     (out / "state.json").write_text(
         json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    shutil.copyfile(args.rules, out / "rules.md")
+    shutil.copyfile(rules_path, out / "rules.md")
     shutil.copyfile(args.config, out / "players.toml")
     (out / "public" / "roster.md").write_text(write_roster(state["players"]), encoding="utf-8")
     (out / "public" / "announcement.md").write_text(announcement(state["safe_item"]), encoding="utf-8")
     for p in state["players"]:
         seat = p["id"] or p["name"]
-        (out / "private" / seat / "card.md").write_text(write_card(p, state["players"]), encoding="utf-8")
+        (out / "private" / seat / "card.md").write_text(write_card(p, state["players"], lite=args.lite), encoding="utf-8")
 
     # 主持人视角汇总（含身份，勿外发）
-    print(f"seed = {seed}  →  {out}/")
+    print(f"seed = {seed}  →  {out}/" + ("（lite 规则集）" if args.lite else ""))
     print("行动顺序：" + " → ".join(state["order"]))
     print(f"保险箱：{state['safe_item']}（开局公告已公开）｜桌上：{TABLE_WEAPON}（开局公告已公开）")
     print()

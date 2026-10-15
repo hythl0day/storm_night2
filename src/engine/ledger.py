@@ -434,6 +434,9 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     {"profession", "item", "skill", "visited_rooms": [...], "denied_rooms": [...]}。
     每项裁决为三态：属实 / 谎言 / 无法验证（无效名目、对方未作此类声明、或房间无监控覆盖），
     "无法验证"不计入谎言判定。行踪以真实监控记录（monitoring_true）验证（v3.5 起监控覆盖所有房间门口，含会客室）。
+    v3.12（game/20 复盘）：存在停电空白（blackout_days）时，行踪声称的"无记录"不构成谎言证据，
+    判"无法验证"；全部为非法名目的 claims 整体驳回且不消耗次数（进驳回重报流程）；
+    visited_rooms/denied_rooms 容错接受单个字符串。
     """
     s = state
     day = s["phase"]["day"]
@@ -458,34 +461,62 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     def monitorable(room: str) -> bool:
         return room in FREE_ROOMS or is_bedroom(room)  # v3.5：监控覆盖所有房间门口（含会客室）
 
+    # v3.12（game/20 复盘）：存在停电空白的对局，"无记录"不能作为行踪谎言的证据——
+    # 与清晨宣读"缺失不代表无人进入"同口径；有记录为证的声称不受空白影响
+    gap = bool(s.get("blackout_days"))
+
     verdicts: dict[str, str] = {}
+    wellformed = 0  # 名目合法的声明数；全部为非法名目（如整句描述）→ 整体驳回、不消耗次数（v3.12）
     if claims.get("profession"):
         c = str(claims["profession"])
         if c in PROFESSIONS:
+            wellformed += 1
             verdicts[f"职业声明「{c}」"] = "属实" if c == tp["profession"] else "谎言"
         else:
             verdicts[f"职业声明「{c}」"] = "无法验证（不是有效职业名）"
     if claims.get("item"):
         c = str(claims["item"])
         if c in ITEMS:
+            wellformed += 1
             verdicts[f"道具声明「{c}」"] = "属实" if held_item(tp, c, day) is not None else "谎言"
         else:
             verdicts[f"道具声明「{c}」"] = "无法验证（不是有效道具名）"
     if claims.get("skill"):
         c = str(claims["skill"])
         if c in ALL_SKILLS:
+            wellformed += 1
             verdicts[f"技能声明「{c}」"] = "属实" if skill_left(s, target, c) > 0 else "谎言"
         else:
             verdicts[f"技能声明「{c}」"] = "无法验证（不是有效技能名）"
     for key, ph in (("visited_rooms", "去过"), ("denied_rooms", "没去过")):
-        for r in claims.get(key) or []:
+        rooms_claimed = claims.get(key) or []
+        if isinstance(rooms_claimed, str):
+            rooms_claimed = [rooms_claimed]  # 容错：单个房间允许直接填字符串（v3.12）
+        for r in rooms_claimed:
             r = str(r)
             if not monitorable(r):
                 verdicts[f"{ph}{r}"] = "无法验证（该房间无监控覆盖）"
-            elif key == "visited_rooms":
-                verdicts[f"{ph}{r}"] = "属实" if entered(r) else "谎言"
+                continue
+            wellformed += 1
+            got = entered(r)
+            if key == "visited_rooms":
+                if got:
+                    verdicts[f"{ph}{r}"] = "属实"
+                elif gap:
+                    verdicts[f"{ph}{r}"] = "无法验证（监控存在停电空白，不能排除其在空白期进入）"
+                else:
+                    verdicts[f"{ph}{r}"] = "谎言"
             else:
-                verdicts[f"{ph}{r}"] = "属实" if not entered(r) else "谎言"
+                if got:
+                    verdicts[f"{ph}{r}"] = "谎言"
+                elif gap:
+                    verdicts[f"{ph}{r}"] = "无法验证（监控存在停电空白，不能确认其从未进入）"
+                else:
+                    verdicts[f"{ph}{r}"] = "属实"
+    if not wellformed:
+        return reject("see_through",
+                      '没有可验证的声明：职业/道具/技能/房间须填规则书原名（如 "黑客"、"刀"、"书房"），'
+                      "不要填整句描述——本次不消耗次数，请重新声明")
     if means[0] == "skill":
         consume_skill(s, user, means[1])
     else:

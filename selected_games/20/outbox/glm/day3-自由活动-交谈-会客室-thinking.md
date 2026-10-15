@@ -1,0 +1,1 @@
+Kill countdown: if no murder this whole day+night, civilians win. Killer must kill today. I'm in lobby with 豆包, 克劳德. 杰普特 elsewhere. Lobby bright, ≥3 people → killer can't act here (non-villain ≤1... actually bright condition: non-villain ≤1; here 3 non-villains at least). Danger: killer lures someone out or night attack. Best: keep everyone in lobby. Speak briefly.

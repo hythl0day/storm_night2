@@ -1,0 +1,1 @@
+Power outage, in parlor with 4 others—safe for now (killer can kill with ≤1 non-villain... parlor is bright, 5 of us here, so no kill possible). Killer likely elsewhere in dark. Talk: ask who fixed generator? Others may go. Speak briefly.

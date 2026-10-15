@@ -1,0 +1,3 @@
+**Evaluating voting strategy**
+
+I’m considering how to encourage our team to be consistent with our votes while avoiding randomness. It seems like abstaining might be a good option to prevent any harsh decisions and to keep things fair, rather than making arbitrary choices. I’ll need to communicate this, so everyone understands the reasoning behind it. It's important to keep the team motivated and clear about our goals, ensuring we work together effectively!

@@ -102,10 +102,12 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
                 heir["identity"] = "杀手"
                 private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）"
     s["last_vote"] = {"day": day, "out": out}
-    check_winner(s)
-    if not s["winner"] and _civilian_count(s) <= 1:
+    # 具体原因先于通用检查（v3.13 起 check_winner 已含 ≤1 平民兜底，此处保留更精确的"投票后"文案；
+    # 反派存活保护：反派全灭时应由 check_winner 判平民胜，不能误判反派胜）
+    if not s["winner"] and _civilian_count(s) <= 1 and any(p["alive"] and is_villain(p) for p in s["players"]):
         s["winner"] = "反派"
         s["win_reason"] = "投票后存活平民只剩 1 人"
+    check_winner(s)
     ev = {"ok": True, "type": "vote", "public": public, "private": private}
     if s["winner"]:
         ev["winner"] = s["winner"]
@@ -171,10 +173,11 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
         f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误，{accuser} 出局。身份：{ap['identity']}；职业：{ap['profession']}"
         + ("（桌上凶器仍在会客室桌上）" if temp_grab else "")
     ]}
-    check_winner(s)
-    if not s["winner"] and _civilian_count(s) <= 1:
+    # 同 resolve_vote：具体"投票后"文案先于通用检查（v3.13），并加反派存活保护
+    if not s["winner"] and _civilian_count(s) <= 1 and any(p["alive"] and is_villain(p) for p in s["players"]):
         s["winner"] = "反派"
         s["win_reason"] = "投票后存活平民只剩 1 人"
+    check_winner(s)
     ev = {"ok": True, "type": "armed_accusation", "public": public, "private": {}}
     if s["winner"]:
         ev["winner"] = s["winner"]

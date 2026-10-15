@@ -966,5 +966,116 @@ class TestCaseIdRobustness(MockGameTestBase):
         self.assertEqual(calls, [])
 
 
+class TestBlackoutDiscovery(MockGameTestBase):
+    """v3.11：停电逐人发现——每位玩家在抵达所选房间时各自收到发现回执；选房进入情况
+    不再标注锁状态（正常天与停电天的选房简报逐字一致，后续选房者无法提前推断停电）。"""
+
+    def test_blackout_per_person_discovery(self):
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+        briefings = []
+        locks_snap = {}
+        holder = {}
+
+        def on_stage(title):
+            if "orch" in holder:
+                locks_snap[title] = dict(holder["orch"].state["locks"])
+
+        def chat_blackout(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "选房" in title and day == 2:
+                briefings.append((player.name, briefing))
+            if "停电声明" in title and day == 2 and player.name == "B":
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = Orchestrator(d, hooks={"on_stage": on_stage})
+        holder["orch"] = orch
+        orig = orchestrator.chat
+        orchestrator.chat = chat_blackout
+        try:
+            orch.run_game()
+        finally:
+            orchestrator.chat = orig
+        s = orch.state
+        # 每位存活玩家在第 2 天选房时收到逐人发现回执（含留在会客室者）
+        for n in ("A", "B", "C", "D", "E", "F"):
+            self.assertTrue(any("停电了" in msg and "门锁失效" in msg for msg in s["orch"]["hist"][n]), n)
+        # 选房简报不再出现锁状态标注（进入情况只报占用）
+        self.assertTrue(any("各房间进入情况" in b for _, b in briefings))
+        for name, b in briefings:
+            self.assertNotIn("门仍上锁", b, name)
+        # 停电不动物理锁台账：第 2 天选房结束（进入晚间休息）时监控室仍记为上锁，供电恢复后回到原状态
+        night2 = next(v for t, v in locks_snap.items() if "第2天" in t and "晚间休息" in t)
+        self.assertTrue(night2["监控室"])
+
+    def test_permanently_opened_doors_in_game_state(self):
+        """E（万能钥匙）第 2 天首开监控室后，「游戏状态」段列出「已永久开启」——跨天锁台账
+        不再依赖 AI 自己记笔记（替代被删除的选房锁标注）。"""
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+        briefings = []
+
+        def chat_open(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "选房" in title:
+                briefings.append((day, briefing))
+                if day == 2 and player.name == "E":
+                    return ChatResult(player.name, ok=True,
+                                      content=payload(notes="x", actions=[{"type": "choose_room", "room": "监控室"}]),
+                                      latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_open)
+        s = orch.state
+        self.assertFalse(s["locks"]["监控室"])  # 首开即永久开启（rules-6 §3.1）
+        day1 = [b for day, b in briefings if day == 1]
+        later = [b for day, b in briefings if day >= 3]
+        self.assertTrue(day1 and later)
+        self.assertTrue(all("已永久开启：（暂无" in b for b in day1))
+        self.assertTrue(all("已永久开启：监控室的门" in b for b in later))
+
+
+class TestLiteJustInTimeRules(MockGameTestBase):
+    """lite 规则集：AI 的规则书没有机制章节——凡 full 局指向"规则书 §X"的引用，
+    lite 局改为把对应规则临场内联发给 AI（just-in-time），不产生悬空引用。"""
+
+    def test_lite_inline_rules(self):
+        d = write_game_dir(self.root, default_players())
+        orch = Orchestrator(d)
+        # full：保持对规则书的引用
+        self.assertTrue(any("见规则书 §7.3" in h for h in orch._stage_hints("第2天 · 投票")))
+        self.assertIn("见规则 §7.6", orch._weapon_hint(orch.player("C"), None))  # C 无凶器 → 空手提示
+        # lite：临场内联，无章节引用
+        orch.state["is_lite_rule"] = True
+        hints = "、".join(orch._stage_hints("第2天 · 投票"))
+        self.assertNotIn("§", hints)
+        self.assertIn("指对平民立即获胜", hints)  # 武装指认内联口径
+        w = orch._weapon_hint(orch.player("C"), None)
+        self.assertNotIn("§", w)
+        self.assertIn("你体格不弱于目标", w)  # 空手条件内联
+
+    def test_lite_game_no_dangling_refs(self):
+        """lite 全流程 mock 局：全部 inbox 简报不得出现任何规则书章节引用（§）。"""
+        d = write_game_dir(self.root, default_players())
+        sj = d / "state.json"
+        st = json.loads(sj.read_text(encoding="utf-8"))
+        st["is_lite_rule"] = True
+        sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        self.run_game(d, killer_script=True)
+        inboxes = list(d.glob("inbox/*/*.md"))
+        self.assertTrue(inboxes)
+        for f in inboxes:
+            self.assertNotIn("§", f.read_text(encoding="utf-8"), f.name)
+
+
 if __name__ == "__main__":
     unittest.main()

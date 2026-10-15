@@ -15,9 +15,17 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import unittest
 
-from src.deal import ROOT, VALVE_PROFESSIONS, deal, load_personas, validate
+from src.deal import ROOT, VALVE_PROFESSIONS, deal, load_personas, validate, write_card
 from src.engine import Engine
-from src.gamedata import ITEMS_GENERAL, TABLE_WEAPON, VILLAIN_ITEMS, VILLAIN_WEAPON_POOL, WEAPONS
+from src.gamedata import (
+    ITEM_DESC,
+    ITEMS_GENERAL,
+    SKILL_DESC_GENERAL,
+    TABLE_WEAPON,
+    VILLAIN_ITEMS,
+    VILLAIN_WEAPON_POOL,
+    WEAPONS,
+)
 from src.providers import load_config
 from test_engine import P, default_players, goto, mk_state, player
 
@@ -195,9 +203,39 @@ class TestDealVillainGuarantees(unittest.TestCase):
             profs = {p["profession"] for p in st["players"] if p["identity"] in ("杀手", "帮凶")}
             self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无功能性主动技能")
 
+    def test_deal_lite_flag(self):
+        """--lite：state 标记 is_lite_rule、ruleset 指向 lite 规则书；不消耗随机序列（同 seed 分配逐字节一致）。"""
+        full = deal(42, self.players, self.personas, None)
+        lite = deal(42, self.players, self.personas, None, lite=True)
+        self.assertFalse(full["is_lite_rule"])
+        self.assertEqual(full["ruleset"], "rules-6.md")
+        self.assertTrue(lite["is_lite_rule"])
+        self.assertEqual(lite["ruleset"], "rules-6-lite.md")
+        self.assertEqual(full["players"], lite["players"])
+        self.assertEqual(full["order"], lite["order"])
+        self.assertFalse(validate(lite))  # lite 局同样过分配校验
+
+    def test_lite_card_self_contained(self):
+        """lite 私密卡自包含：技能/道具带内联定义、不引用规则书章节（lite 规则书无 §3/§4 词条）；
+        full 卡保持缩写 + 章节引用。"""
+        st = deal(42, self.players, self.personas, None, lite=True)
+        for p in st["players"]:
+            card = write_card(p, st["players"], lite=True)
+            self.assertNotIn("规则书 §", card, p["name"])
+            self.assertIn(SKILL_DESC_GENERAL[p["profession"]], card, p["name"])
+            self.assertIn(ITEM_DESC[p["item"]], card, p["name"])
+            full_card = write_card(p, st["players"], lite=False)
+            self.assertIn("规则书 §", full_card)
+
     def test_deal_still_deterministic(self):
         self.assertEqual(deal(42, self.players, self.personas, None),
                          deal(42, self.players, self.personas, None))
+
+    def test_deal_writes_lite_flag(self):
+        """deal 写入 is_lite_rule（默认 False = 高级规则；评分卡对缺字段旧档同样视为 False）。"""
+        st = deal(42, self.players, self.personas, None)
+        self.assertIn("is_lite_rule", st)
+        self.assertFalse(st["is_lite_rule"])
 
 
 if __name__ == "__main__":

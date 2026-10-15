@@ -7,10 +7,13 @@
     python -m tools.scorecard                      # 多局报告（默认扫描 selected_games/）
     python -m tools.scorecard --dir game           # 改扫别的目录
     python -m tools.scorecard --game 42            # 单局详细报告（--dir 下的子目录 42）
+    python -m tools.scorecard --min-version v3.8   # 多局报告只统计 v3.8 及以后的存档
 
 单局报告：基本台账 + 流程简报（按天事件）+ 未遂明细 + 戏剧性评分（分项透明）+ 主角弧线候选 + 成本（含缓存命中率）。
 多局报告：版本分组胜率平衡 + 机制利用率 + 反派主动性 + 多样性分布 + 成本汇总。
-注意：平衡数据按规则版本分组——v3.8 起合并为 "v3.8+" 一组（v3.9 文本澄清、v3.10 裁决补全，均未改规则）；winner 为空的中断局不计入胜负率。
+注意：平衡数据按规则版本分组——v3.8 起合并为 "v3.8+" 一组（v3.9 文本澄清、v3.10 裁决补全，均未改规则）；
+winner 为空的中断局不计入胜负率。失忆版精简规则集（state 的 is_lite_rule）永不与高级规则同池——
+单独成组且不做跨版本合并；旧档缺该字段一律视为高级规则（None → False）。
 """
 from __future__ import annotations
 
@@ -70,6 +73,17 @@ def rules_version(st: dict) -> str:
     return st.get("rules_version") or ("v3.5" if "table_items" in st else "≤v3.4")
 
 
+def is_lite(st: dict) -> bool:
+    """失忆版精简规则集标记：deal 自 v3.12 起写入 is_lite_rule；旧档缺字段/None 一律视为高级规则。"""
+    return bool(st.get("is_lite_rule"))
+
+
+def _ver_tuple(v: str) -> tuple[int, int] | None:
+    """解析 "v3.8" 为 (3, 8)；无法解析（如 "≤v3.4"）返回 None（--min-version 过滤时被排除）。"""
+    m = re.fullmatch(r"v(\d+)\.(\d+)", v)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
 def roster_identities(script: str) -> dict[str, str]:
     """从 script.md 的阵容表解析初始身份（state 里的身份会被继任改写，不可用于开局口径）。"""
     ids = {}
@@ -81,8 +95,11 @@ def roster_identities(script: str) -> dict[str, str]:
 
 
 def rules_group(st: dict) -> str:
-    """平衡统计分组：v3.8 起规则书再无机制变更（v3.9 文本澄清、v3.10 裁决补全），合并为一组。"""
+    """平衡统计分组：v3.8 起规则书再无机制变更（v3.9 文本澄清、v3.10 裁决补全），合并为一组。
+    失忆版精简规则集（lite）的规则面不同，永不并入高级规则的池——单独成组且不跨版本合并。"""
     v = rules_version(st)
+    if is_lite(st):
+        return f"lite·{v}"
     m = re.match(r"v(\d+)\.(\d+)$", v)
     if m and (int(m.group(1)), int(m.group(2))) >= (3, 8):
         return "v3.8+"
@@ -197,6 +214,7 @@ def analyze(g: dict) -> dict:
         "seed": st.get("seed", g["dir"].name),
         "dir_name": g["dir"].name,
         "version": rules_version(st),
+        "lite": is_lite(st),
         "group": rules_group(st),
         "complete": st.get("winner") is not None,
         "winner": st.get("winner"), "win_reason": st.get("win_reason"),
@@ -321,7 +339,7 @@ def single_report(d: Path) -> str:
     a = analyze(g)
     score, parts = drama(a)
     L = [f"===== 单局报告：{a['dir_name']} ====="]
-    head = f"seed {a['seed']}｜规则 {a['version']}｜历时 {a['days']} 天｜"
+    head = f"seed {a['seed']}｜规则 {a['version']}{'·lite' if a['lite'] else ''}｜历时 {a['days']} 天｜"
     head += f"结局：{a['winner']} 胜（{a['win_reason']}）" if a["complete"] else "结局：（中断/未跑完）"
     L.append(head)
     L.append("")
@@ -356,7 +374,7 @@ def single_report(d: Path) -> str:
     return "\n".join(L)
 
 
-def multi_report(base: Path) -> str:
+def multi_report(base: Path, min_version: str | None = None) -> str:
     games = []
     for sub in sorted(base.iterdir()) if base.is_dir() else []:
         if sub.is_dir():
@@ -365,18 +383,29 @@ def multi_report(base: Path) -> str:
                 games.append(analyze(g))
     if not games:
         return f"{base}：没有对局存档（把跑完整的 game/<seed>/ 复制到这里）"
+    filtered = ""
+    if min_version:
+        lo = _ver_tuple(min_version)
+        if lo is None:
+            return f"--min-version 格式无法识别：{min_version!r}（应为 v3.8 形式）"
+        kept = [a for a in games if (_ver_tuple(a["version"]) or (-1, -1)) >= lo]
+        filtered = f"（--min-version {min_version} 过滤掉 {len(games) - len(kept)} 局）"
+        games = kept
+        if not games:
+            return f"{base}：没有对局存档满足 --min-version {min_version}"
     done = [a for a in games if a["complete"]]
-    L = [f"===== 多局报告：{base}（共 {len(games)} 局：完整 {len(done)} / 中断 {len(games) - len(done)}） =====", ""]
+    L = [f"===== 多局报告：{base}{filtered}（共 {len(games)} 局：完整 {len(done)} / 中断 {len(games) - len(done)}） =====", ""]
 
     L.append("—— 逐局一览 ——")
-    L.append(f"  {'存档':<10}{'版本':<7}{'结局':<12}{'路径':<10}{'天数':<5}{'谋杀':<5}{'戏剧性':<6}")
+    L.append(f"  {'存档':<10}{'版本':<12}{'结局':<12}{'路径':<10}{'天数':<5}{'谋杀':<5}{'戏剧性':<6}")
     for a in games:
         sc, _ = drama(a)
-        L.append(f"  {a['dir_name']:<10}{a['version']:<7}{(a['winner'] or '中断') + '胜' if a['complete'] else '中断':<12}"
+        ver = a["version"] + ("·lite" if a["lite"] else "")
+        L.append(f"  {a['dir_name']:<10}{ver:<12}{(a['winner'] or '中断') + '胜' if a['complete'] else '中断':<12}"
                  f"{a['path'] or '-':<10}{a['days']:<5}{a['murders']:<5}{sc:<6}")
 
     L.append("")
-    L.append("—— 胜率平衡（按规则版本分组；中断局不计入） ——")
+    L.append("—— 胜率平衡（按规则版本分组，lite 规则集单独成组不混池；中断局不计入） ——")
     versions = sorted({a["group"] for a in done})
     for v in versions:
         grp = [a for a in done if a["group"] == v]
@@ -462,12 +491,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="跑局评分卡：扫描 selected_games/ 等目录的对局存档")
     ap.add_argument("--dir", default=str(ROOT / "selected_games"), help="存档目录（默认 selected_games/）")
     ap.add_argument("--game", default=None, help="单局报告：--dir 下的子目录名")
+    ap.add_argument("--min-version", default=None, metavar="v3.8",
+                    help="多局报告只统计该版本及以后的存档（按 rules_version 比较，无法解析版本的旧档被排除）")
     args = ap.parse_args()
     base = Path(args.dir)
     if args.game:
         print(single_report(base / args.game))
     else:
-        print(multi_report(base))
+        print(multi_report(base, min_version=args.min_version))
 
 
 if __name__ == "__main__":

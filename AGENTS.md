@@ -23,7 +23,7 @@ players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key �
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
 screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md
-docs/         规则书 rules-6.md（6人局）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + usage.md（脚本用法）/ engine.md（引擎参考）
+docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + usage.md（脚本用法）/ engine.md（引擎参考）
 tools/        bench.py（API 速度诊断：流式 TTFT/吞吐）
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
@@ -54,7 +54,7 @@ tests/        unittest（python -m unittest discover -s tests）
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
-python -m unittest discover -s tests   # 182 用例（引擎 + 平衡回归 + 编排 mock 集成：全流程/中断续跑/关键记录/v3.2-v3.8 特性/deal 车道保证 + 评分卡 + providers think 标签解析 + 简报规则速查/host_log usage + game/2 复盘修复：驳回重报/停电前置声明/简报台账与压缩/夜袭口径 + v3.7 夜袭内应破门 + v3.8 附言公开路由 + v3.9 帮凶魔术师舞台魔术菜单修复 + v3.10 夜袭空房补结算与简报「游戏状态」段 + game/18 复盘：AI 自造 case_id 不炸编排器、无案件清晨跳过调查 + 评分卡 v3.8+ 版本池化与反派主动性统计）
+python -m unittest discover -s tests   # 193 测试用例
 ```
 
 ## 当前进度与待办

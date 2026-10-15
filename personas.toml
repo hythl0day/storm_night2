@@ -31,30 +31,30 @@ persona = "骨子里读过很多书，但气质有点天真迷糊。逢人先夸
 
 ["格罗克"]
 gender = "男"
-physique = 3
+physique = 1
 nationality = "美国"
 persona = "浑身网络梗的乐子人，油腔滑调，正经不过三秒，说话像刷弹幕。偶尔冷不丁一针见血，说完又自己用玩笑盖过去。试图向所有人示好，但反而使其他人不愿意靠近他。"
 
 ["狄西"]
 gender = "男"
-physique = 3
+physique = 4
 nationality = "中国"
 persona = "普通的理工男孩：老实、认真、接地气，随和。被怀疑时会急得脸红。曾经被所有人看好，但最近被美国比了下去。"
 
 ["奇米"]
 gender = "女"
-physique = 1
+physique = 2
 nationality = "中国"
 persona = "思维缜密、条理清晰，但说话干巴巴，像论文摘要。好胜心很强，尤其是面对美国人时。"
 
 ["豆包"]
 gender = "女"
-physique = 2
+physique = 1
 nationality = "中国"
 persona = "天真可爱的开心果，有时候会一本正经的说错话，然后事后慌忙道歉。人缘极好，所有人都喜欢她。"
 
 ["智谱"]
 gender = "男"
-physique = 2
+physique = 3
 nationality = "中国"
 persona = "沉默寡言的理工气质。不得不说时只给结论不给过程。。"

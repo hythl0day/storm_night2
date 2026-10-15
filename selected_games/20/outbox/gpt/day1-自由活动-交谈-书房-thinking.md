@@ -1,0 +1,1 @@
+**Planning JSON response with stance**

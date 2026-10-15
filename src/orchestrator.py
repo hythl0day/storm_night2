@@ -10,7 +10,8 @@
 遗言先于身份公布/封存道具与警徽遗嘱——v3.5 遗嘱道具当天可用、未指定或拒收放回会客室桌上/
 无人出局时武装指认——v3.5 有侦探时仅侦探可指认，无侦探时持械平民或临时取用桌上凶器）→
 自由活动（会客室/书房/监控室/地下室四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；
-v3.5 顺序结算：逐人选择即结算进入（进入即开锁、失败者滞留会客室、靠后者可见先前结果）；房间交谈；
+v3.5 顺序结算：逐人选择即结算进入（进入即开锁、失败者滞留会客室、靠后者可见先前结果）；
+v3.11：停电逐人发现——各选房者抵达所选房间时才各自得知停电，进入情况不再标注锁状态（防提前泄漏）；房间交谈；
 房间行动；阶段末毁证窗口）→ 晚间休息（守夜邀请与守夜密谈/夜间房间行动/密道/收听窃听器/
 取桌上物品（独处会客室限定）/杀手夜袭，互相不可见选择）→ advance() 进入次日案件调查
 （清晨公告含状态行/桌上物品变动/调查自荐/死者字条遗嘱）。
@@ -63,7 +64,6 @@ from .engine.state import (
     bedroom_of,
     bedroom_owner,
     current_period,
-    door_locked,
     held_item,
     held_item_names,
     is_bedroom,
@@ -280,6 +280,12 @@ class Orchestrator:
         cb = self.hooks.get(name)
         if cb:
             cb(*args)
+
+    @property
+    def lite(self) -> bool:
+        """本局是否为 lite 规则集（失忆版）：AI 的规则书没有机制词条与章节，
+        凡 full 局指向"规则书 §X"的引用，lite 局改为把对应规则临场内联发给 AI。"""
+        return bool(self.state.get("is_lite_rule"))
 
     def seat(self, p: dict) -> str:
         return p["id"] or p["name"]
@@ -516,10 +522,12 @@ class Orchestrator:
             return ["每人仅一次发起赠送的机会；对方可以拒绝；道具转手不影响剩余次数。"]
         if "投票" in title:
             need = (n + 1) / 2  # 严格过半的最小票值（0.5 步进）：n=4→2.5，n=5→3，n=6→3.5
+            accuse_ref = ("见规则书 §7.3" if not self.lite else
+                          "持武器的平民可当众指认某人为杀手：指对平民立即获胜、指错指认者出局；资格细节届时见菜单")
             return [f"存活 {n} 人：出局线 = 得票严格超过 {n}/2，即至少 {need:g} 票（普通票 1、侦探票 1.5）——"
                     f"{need - 0.5:g} 票不够。",
                     "可弃权；平票或未过线 → 本轮无人出局。",
-                    "本轮无人出局时，之后可能进入武装指认（见规则书 §7.3）。"]
+                    f"本轮无人出局时，之后可能进入武装指认（{accuse_ref}）。"]
         if "武装指认" in title:
             return ["每次投票至多接受一次指认，按行动顺序先声明者优先。",
                     "指认对象确为杀手 → 平民立即获胜；指错（帮凶/平民）→ 你直接出局，游戏继续。"]
@@ -534,7 +542,8 @@ class Orchestrator:
                     "结果仅你本人可见——公布、隐瞒或撒谎由你决定。"]
         if "选房" in title:
             return ["顺序靠后者可见顺序靠前者的选择结果；房间满员/上锁而无开锁手段/被【封闭空间】挡住 → 滞留会客室。",
-                    "同一上锁房间由顺序最前的有手段者开门（自动消耗一次手段），之后的人直接随入。"]
+                    "同一上锁房间由顺序最前的有手段者开门（自动消耗一次手段），之后的人直接随入。",
+                    "已有人进入的房间门必然已开；空房间的锁状态见「游戏状态」段的「已永久开启」（监控室开局上锁）。"]
         if "内交谈" in title:
             return ["按行动顺序各发言一次，后发言者能看到先发言者的话；黑暗房间内无法交谈。"]
         if "房间行动" in title:
@@ -584,6 +593,14 @@ class Orchestrator:
             else:
                 roster.append(base + "·出局）")
         lines.append("- 角色表（开局全员公布）：" + "、".join(roster))
+        # v3.11：永久开启台账（替代选房简报的锁状态标注）——只列 locks 台账与保险箱，
+        # 与停电的临时锁失效无关，因此不会从这一行泄漏停电
+        opened = []
+        if s["locks"].get("监控室") is False:
+            opened.append("监控室的门")
+        if s.get("safe_open"):
+            opened.append("书房保险箱")
+        lines.append("- 已永久开启：" + ("、".join(opened) if opened else "（暂无；监控室开局上锁，首开需【暴力破解】手段）"))
         return lines
 
     def _status_lines(self, p: dict) -> list[str]:
@@ -604,8 +621,14 @@ class Orchestrator:
         """谋杀菜单的实时凶器提示：持有凶器逐件列出（含次数），无凶器则明示只能空手。"""
         held = [f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])
                 if e["uses_left"] > 0 and e["name"] in WEAPONS]
-        parts = ["你当前持有凶器：" + "、".join(held) if held
-                 else "你当前未持有凶器（只能空手，空手条件见规则 §7.6）"]
+        if held:
+            parts = ["你当前持有凶器：" + "、".join(held)]
+        elif self.lite:
+            # lite 规则书无 §7.6：空手条件临场内联发给杀手
+            parts = ["你当前未持有凶器（只能空手。空手谋杀需满足其一：帮凶在场 / 你体格不弱于目标 / "
+                     "你男而目标女 / 夜间在目标自己卧室偷袭（体格门槛放宽一级）；漆黑的房间内无附加条件）"]
+        else:
+            parts = ["你当前未持有凶器（只能空手，空手条件见规则 §7.6）"]
         env = ENV_WEAPON.get(room or "")
         if env:
             parts.append(f"本房间环境凶器：{env}（不限次数）")
@@ -999,7 +1022,16 @@ class Orchestrator:
                 continue
             menu = []
             if skill_left(self.state, name, "看破伪装") > 0 or held_item(p, "测谎仪", day) is not None:
-                menu.append('- 看破伪装（自己发言前；claims 只填对方实际声称过的内容——无效名目或无监控覆盖的类目会标注"无法验证"，不计入谎言判定）：{"type": "see_through", "target": "玩家名", "claims": {"profession": "对方声称的职业", "item": "对方声称的道具", "visited_rooms": ["对方声称去过的房间"], "denied_rooms": ["对方声称没去过的房间"]}}')
+                if self.lite:
+                    # lite：不下发职业/道具全表，示例不得泄漏合法名目——一律"照抄对方声明中的原名"
+                    menu.append('- 看破伪装（自己发言前。claims 只填你想验证的项；值照抄对方声明中的原名——对方自称什么职业就填什么职业名、'
+                                '对方提到什么道具就填什么道具名、房间填房间名；填整句描述属于非法名目，全部非法则驳回、不消耗次数。'
+                                '示例——验证对方声称去过书房：{"type": "see_through", "target": "对方名字", "claims": {"visited_rooms": ["书房"]}}。'
+                                '行踪以监控记录为准；存在停电空白时"无记录"不构成谎言证据（判"无法验证"，不计入谎言判定）')
+                else:
+                    menu.append('- 看破伪装（自己发言前。claims 只填你想验证的项，值必须是规则书原名——职业如 "黑客"、道具如 "刀"、房间如 "书房"；填整句描述属于非法名目，全部非法则驳回、不消耗次数。'
+                                '示例——验证对方自称黑客且声称去过书房：{"type": "see_through", "target": "对方名字", "claims": {"profession": "黑客", "visited_rooms": ["书房"]}}。'
+                                '行踪以监控记录为准；存在停电空白时"无记录"不构成谎言证据（判"无法验证"，不计入谎言判定）')
             menu.append("- 发言写在 speech 字段；无需动作时 actions 为 []")
             briefing = self.build_briefing(p, f"第{day}天 · 公共发言（轮到你）", menu,
                                            "现在轮到你公开发言。分析、指控、质疑、声明、辩护均可。")
@@ -1135,6 +1167,8 @@ class Orchestrator:
             extra = f"你可以邀请顺序在你之后的玩家同入：{'、'.join(later) if later else '无'}。"
             settled = self.state["positions"]
             if settled:
+                # v3.11：进入情况只报占用，不再标注锁状态——正常天与停电天逐字一致，
+                # 后续选房者无法从标注消失推断停电；锁状态改由「游戏状态」段的「已永久开启」承载
                 bits = []
                 for r in ROOM_CHOICES:
                     occ = [n for n, rr in settled.items() if rr == r]
@@ -1142,9 +1176,9 @@ class Orchestrator:
                     if r == HALL:
                         bits.append(f"{r}（不限人数）：{occ_s}")
                     else:
-                        lock_s = "，门仍上锁" if door_locked(self.state, r) else ""
-                        bits.append(f"{r}（{len(occ)}/{ROOM_CAPACITY[r]} 人{lock_s}）：{occ_s}")
-                extra += "\n截至目前各房间进入情况（顺序结算，规则书 §6）：" + "；".join(bits) + "。"
+                        bits.append(f"{r}（{len(occ)}/{ROOM_CAPACITY[r]} 人）：{occ_s}")
+                extra += ("\n截至目前各房间进入情况（顺序结算"
+                          + ("" if self.lite else "，规则书 §6") + "）：" + "；".join(bits) + "。")
             inviters = [v for t, v in pending_invite.items() if t == name]
             for v in inviters:
                 extra += f"\n{v} 邀请你同往 {assignments.get(v, '（未知）')}——接受就把 choose_room 选为同一房间，不接受就自选。"
@@ -1168,6 +1202,16 @@ class Orchestrator:
             if ev["ok"]:
                 self.route(ev)
                 self.script_private(ev)
+                if self.state.get("blackout_news") == period:
+                    # v3.11：停电逐人发现——每位玩家在抵达自己所选房间时各自发现停电；
+                    # 在他之前进入者的结果不会提前暴露（规则书 §7.5）
+                    placed = self.state["positions"].get(name, HALL)
+                    if placed == HALL:
+                        self.tell(name, "你留在会客室——壁炉的火光还亮着，但你注意到走廊与其他房间的灯全部熄灭了："
+                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录）。")
+                    else:
+                        self.tell(name, f"你走向{placed}——灯骤然熄灭，四周一片漆黑，门上的锁全部失效："
+                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录）。")
             else:
                 self.reject_note(p, ev)
             w["done"].append(name)

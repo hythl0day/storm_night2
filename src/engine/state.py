@@ -283,7 +283,10 @@ def consume_unlock_means(state: dict, name: str, means: str) -> None:
 
 
 def check_winner(state: dict) -> str | None:
-    """通用胜负检查：反派全灭→平民胜；平民全灭→反派胜。其余胜负在各自裁决点检查。"""
+    """通用胜负检查：反派全灭→平民胜；存活平民只剩 1 人（含全灭）→反派胜。
+    v3.13（game/31 复盘）：≤1 平民的即时判定上收到这里，覆盖谋杀等全部路径——
+    此前只在投票/指认后检查，谋杀把平民杀到剩 1 人后游戏不结束，白白拖一天垃圾时间。
+    其余胜负（倒计时/指认/主神）在各自裁决点检查。"""
     if state["winner"]:
         return state["winner"]
     civ = [p for p in state["players"] if p["alive"] and p["identity"] == "平民"]
@@ -294,4 +297,7 @@ def check_winner(state: dict) -> str | None:
     elif not civ:
         state["winner"] = "反派"
         state["win_reason"] = "所有平民死亡或被投票出局"
+    elif len(civ) == 1:
+        state["winner"] = "反派"
+        state["win_reason"] = "存活平民只剩 1 人"
     return state["winner"]

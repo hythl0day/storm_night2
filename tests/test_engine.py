@@ -540,6 +540,22 @@ class TestVote(unittest.TestCase):
         self.assertEqual(ev.get("winner"), "反派")
         self.assertIn("只剩 1 人", ev["win_reason"])
 
+    def test_murder_leaving_one_civilian_ends_game(self):
+        """v3.13（game/31 复盘）：谋杀后存活平民只剩 1 人 → 反派立即获胜。
+        修复前 ≤1 平民的即时判定只在投票/指认路径，谋杀路径只查全灭——
+        平民被杀到剩 1 人后游戏不结束，白拖一天垃圾时间（1 平民对 2 反派投票必输）。"""
+        players = default_players()
+        players[2]["alive"] = False
+        players[3]["alive"] = False  # C、D（平民）已死：存活 = A杀手、B帮凶、E平民、F平民
+        eng = Engine(mk_state(players=players, day=2))
+        goto(eng, "自由活动", day=2)
+        ev = eng.enter_rooms({"A": "书房", "E": "书房", "B": "会客室", "F": "会客室"})
+        assert ev["ok"], ev
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.winner, "反派")  # 只剩 F 一名平民 → 当场收束
+        self.assertIn("只剩 1 人", eng.state["win_reason"])
+
     def test_memory_implant(self):
         players = default_players()
         players[1] = P("B", "帮凶", "心理医生", "不明药剂", gender="女", physique=2)
@@ -1304,6 +1320,51 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(ev["private"]["F"]["verdicts"]["职业声明「化学家」"], "谎言")
         # 空 claims 驳回
         self.assertFalse(eng.see_through("F", "C", {})["ok"])
+
+    def test_see_through_blackout_gap_unverifiable(self):
+        """v3.12（game/20 复盘：格罗克真实待过会客室，因停电监控空白被误判"谎言"票出）：
+        存在停电空白时，行踪声称的"无记录"不构成谎言证据（判无法验证）；有记录为证的声称不受影响。"""
+        players = default_players()
+        players[5] = P("F", "平民", "心理医生", "窃听器", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "书房", "D": "会客室", "E": "会客室", "F": "会客室"})
+        goto(eng, "公共发言", day=2)
+        eng.state["blackout_days"] = [2]  # 本局存在停电空白（监控缺失日）
+        ev = eng.see_through("F", "C", {"visited_rooms": ["书房", "会客室"], "denied_rooms": ["会客室"]})
+        self.assertTrue(ev["ok"], ev)
+        v = ev["private"]["F"]["verdicts"]
+        self.assertEqual(v["去过书房"], "属实")                       # 有记录为证，不受空白影响
+        self.assertTrue(v["去过会客室"].startswith("无法验证"))        # 无记录+空白：不能排除空白期进入
+        self.assertTrue(v["没去过会客室"].startswith("无法验证"))      # 无记录+空白：不能确认从未进入
+        self.assertFalse(ev["private"]["F"]["lies"])
+        # 无停电空白时恢复原口径：无记录 = 谎言/属实
+        eng.state["blackout_days"] = []
+        ev = eng.see_through("F", "C", {"visited_rooms": ["会客室"], "denied_rooms": ["书房"]})
+        v = ev["private"]["F"]["verdicts"]
+        self.assertEqual(v["去过会客室"], "谎言")
+        self.assertEqual(v["没去过书房"], "谎言")
+        self.assertTrue(ev["private"]["F"]["lies"])
+
+    def test_see_through_all_invalid_rejected_no_consume(self):
+        """v3.12（game/20 复盘：豆包把整句描述填进 item 白白消耗一次看破伪装）：
+        claims 全部为非法名目 → 整体驳回、不消耗次数（走驳回重报）；部分合法则正常消耗。
+        单个房间允许直接填字符串（容错）。"""
+        players = default_players()
+        players[5] = P("F", "平民", "心理医生", "窃听器", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "公共发言", day=1)
+        ev = eng.see_through("F", "C", {"item": "声称刀为狄西遗嘱遗留，贴身不拔，未触碰桌上的病毒U盘"})
+        self.assertFalse(ev["ok"])
+        self.assertIn("不消耗次数", ev["error"])
+        self.assertEqual(eng.state["skill_uses"]["F"]["看破伪装"], 2)  # 不消耗
+        # 部分合法（item 非法 + 房间合法）：正常消耗，非法项判"无法验证"；房间接受单字符串
+        ev = eng.see_through("F", "C", {"item": "一把刀", "visited_rooms": "书房"})
+        self.assertTrue(ev["ok"], ev)
+        v = ev["private"]["F"]["verdicts"]
+        self.assertTrue(v["道具声明「一把刀」"].startswith("无法验证"))
+        self.assertIn("去过书房", v)
+        self.assertEqual(eng.state["skill_uses"]["F"]["看破伪装"], 1)
 
     def test_detective_skips_dead_and_order_filtered(self):
         """v3.2 修复（game/42 死侦探）：清晨公告顺序与存活名单不含死者（v3.3 起侦探竞选产生、不再每日轮换）。"""

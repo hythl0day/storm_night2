@@ -111,13 +111,43 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_version({}), "≤v3.4")
 
     def test_rules_group_pooling(self):
-        """平衡统计分组：v3.8 起合并为一组（v3.9/v3.10 未改规则），更早版本保持独立。"""
-        from tools.scorecard import rules_group
+        """平衡统计分组：v3.8 起合并为一组（v3.9/v3.10 未改规则），更早版本保持独立；
+        lite 规则集单独成组、不跨版本合并、永不并入高级规则池；旧档缺 is_lite_rule 字段视为高级规则。"""
+        from tools.scorecard import is_lite, rules_group
         self.assertEqual(rules_group({"rules_version": "v3.8"}), "v3.8+")
         self.assertEqual(rules_group({"rules_version": "v3.9"}), "v3.8+")
         self.assertEqual(rules_group({"rules_version": "v3.10"}), "v3.8+")
         self.assertEqual(rules_group({"rules_version": "v3.5"}), "v3.5")
         self.assertEqual(rules_group({}), "≤v3.4")
+        # lite 规则集：不与 full 同池，同版本也不同组
+        self.assertEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}), "lite·v3.12")
+        self.assertNotEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}),
+                            rules_group({"rules_version": "v3.12"}))
+        # is_lite_rule 缺字段/None → False（旧档默认高级规则）
+        self.assertFalse(is_lite({}))
+        self.assertFalse(is_lite({"is_lite_rule": None}))
+        self.assertTrue(is_lite({"is_lite_rule": True}))
+
+    def test_min_version_filter(self):
+        """--min-version：多局报告只统计指定版本及以后的存档；无法解析版本的旧档被排除。"""
+        import json as _json
+        run_mock_game(self.sel / "1001", killer_script=True)
+        run_mock_game(self.sel / "1002", killer_script=False)
+        # 1001 手工打上 v3.9 标记；1002 无版本字段（推断 ≤v3.4）
+        sj = self.sel / "1001" / "state.json"
+        st = _json.loads(sj.read_text(encoding="utf-8"))
+        st["rules_version"] = "v3.9"
+        sj.write_text(_json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        text = multi_report(self.sel, min_version="v3.8")
+        self.assertIn("过滤掉 1 局", text)
+        self.assertIn("共 1 局", text)
+        self.assertIn("1001", text)
+        self.assertNotIn("1002", text)
+        # 全部不满足时的提示
+        text = multi_report(self.sel, min_version="v9.9")
+        self.assertIn("没有对局存档满足", text)
+        # 版本参数格式错误
+        self.assertIn("无法识别", multi_report(self.sel, min_version="3.8"))
 
     def test_multi_report_aggression_section(self):
         """多局报告新增「反派主动性」段（出手率/未遂防御/再出手/零谋杀局）；反派功能技能行。"""

@@ -1,0 +1,3 @@
+**Evaluating weapon contradictions**
+
+I'm trying to make sense of the contradiction involving weapons and their implications. It seems like if there are two villains, each weapon can either be a knife or a club, but only one can be a civilian's weapon. The dilemma is about how both weapons are perceived and who holds them. I want to clarify how the narratives shift with the presence of these weapons. It’s a bit tangled, but there’s something to unpack here!
