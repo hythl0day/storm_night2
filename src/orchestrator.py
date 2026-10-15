@@ -73,7 +73,7 @@ from .engine.state import (
     skill_left,
     unlock_means,
 )
-from .fmt import fmt_action
+from .fmt import fmt_action, third_person
 from .gamedata import ARMED_WEAPONS, WEAPONS, physique_desc
 from .prompts import render
 from .providers import Player, chat, find_player, load_config
@@ -238,6 +238,12 @@ class Orchestrator:
         with open(self.script_path, "a", encoding="utf-8") as f:
             f.write(f"\n## {text}\n\n")
 
+    def script_sub(self, text: str) -> None:
+        """阶段内的子分段（###）：自由活动按房间分段等，让全记录层次可读。"""
+        self._receipt_open = False
+        with open(self.script_path, "a", encoding="utf-8") as f:
+            f.write(f"\n### {text}\n\n")
+
     def _receipt_line(self, text: str) -> None:
         """行动回执：连续回执共享一个分隔块头，与正文（公告/发言/流程行）视觉上明确隔开。"""
         if not self._receipt_open:
@@ -246,11 +252,12 @@ class Orchestrator:
         self._receipt_open = True
 
     def script_private(self, ev: dict) -> None:
-        """把事件的私密回执逐条记入全记录（host 侧事实，不进 public/log.md）。console 经 on_private 上屏。"""
+        """把事件的私密回执逐条记入全记录（host 侧事实，不进 public/log.md）。console 经 on_private 上屏。
+        回执原文是发给 AI 的第二人称，落全记录时转第三人称。"""
         for name, msg in (ev.get("private") or {}).items():
             if not isinstance(msg, str):
                 msg = json.dumps(msg, ensure_ascii=False)
-            self._receipt_line(f"◆ {name}｜{msg}")
+            self._receipt_line(f"◆ {name}｜{third_person(name, msg)}")
             self._fire("on_private", name, msg)
         for note in ev.get("host") or []:
             # host 备注：引擎裁定的真实原因（对玩家保密的部分），如"未能进入（房内是杀手）"
@@ -271,8 +278,8 @@ class Orchestrator:
         if priv:
             if not isinstance(priv, str):
                 priv = json.dumps(priv, ensure_ascii=False)
-            self._receipt_line(f"    结果：{priv}")
-            detail += f"：{priv}"
+            self._receipt_line(f"    结果：{third_person(name, priv)}")  # 回执原文是第二人称，落全记录转第三人称
+            detail += f"：{third_person(name, priv)}"
         self._fire("on_result", name, ok, detail)
 
     def _fire(self, name: str, *args) -> None:
@@ -863,12 +870,14 @@ class Orchestrator:
         if not self.orch["feed"]:
             # 开局公告（保险箱内容/桌上凶器，§2 公开信息）此前只进 script.md/console，从未送达玩家
             # （game/5 复盘：全员引用"开局公告"但内容靠编）。新局首发进 feed。
+            # script.md 开头 _init_script 已写「开局公告（主人字条）」整节——这里只送 feed/public/console，不进 script（避免重复）
             ann = self.dir / "public" / "announcement.md"
             if ann.exists():
                 for ln in ann.read_text(encoding="utf-8").strip().splitlines():
                     ln = ln.strip()
                     if ln and not ln.startswith("#"):
-                        self.log_line(ln)
+                        self.feed_line(ln)
+                        self._fire("on_public", ln)
         day = self.state["phase"]["day"]
         w = self.wip(f"{day}:开局准备:布置", done=[])
         for p in self.alive():
@@ -1151,6 +1160,7 @@ class Orchestrator:
         alive_names = [p["name"] for p in self.alive()]
         if not w["done"]:
             self.state["positions"] = {}  # v3.5 顺序结算：选房轮开始时重置位置账本（续跑保留已结算部分）
+            self.script_sub("选房（按行动顺序秘密选择、逐个即时结算）")  # 全记录分段：自由活动按环节/房间分节
         self.blackout_declarations(day)  # 停电声明轮（rules-6 §7.5：阶段开始前秘密声明，先于任何进入）
         rooms_menu = (
             [f'- 选择房间（必选一项）：{{"type": "choose_room", "room": "房间名"}}；合法去向只有四种：{"、".join(ROOM_CHOICES)}',
@@ -1275,7 +1285,7 @@ class Orchestrator:
                     transcript.append(f"{occ_name}：{speech}")
             if transcript:
                 self.orch["talks"].setdefault(f"{day}:{room}", []).extend(transcript)  # 窃听器录音源
-                self.script_line(f"- {room}内交谈（{'、'.join(occ)}）：")
+                self.script_sub(f"{room}内交谈（{'、'.join(occ)}）")
                 for line in transcript:
                     self.script_line(f"    {line}")
                 for occ_name in occ:
@@ -1288,25 +1298,34 @@ class Orchestrator:
             self.check_stop()
 
     def room_actions(self, day: int) -> None:
+        """房间行动：按房间分组处理（全记录按房间分段，剪辑可读；各席行动在引擎层面相互独立，
+        组间顺序不影响裁决），组内仍按行动顺序。wip 断点仍是席位粒度。"""
         w = self.wip(f"{day}:自由活动:房间行动", done=[])
-        for name in self.state["order"]:
-            if name in w["done"]:
-                continue
-            p = self.player(name)
-            if not p or not p["alive"]:
-                continue
-            menu = self.action_menu(p, day)
-            if not menu:
-                continue
-            extra = f"现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。\n{NO_SPEECH_NOTE}"
-            briefing = self.build_briefing(p, f"第{day}天 · 自由活动（房间行动）", menu, extra)
-            payload = self.call_ai(p, "自由活动-房间行动", briefing)
-            self.apply_actions(p, payload["actions"], retry={
-                "label": "自由活动-房间行动", "title": f"第{day}天 · 自由活动（房间行动）",
-                "menu": menu, "extra": extra})
-            w["done"].append(name)
-            self.save_state()
-            self.check_stop()
+        positions = self.state["positions"]
+        for room in self.all_rooms():
+            occ = [n for n in self.state["order"]
+                   if positions.get(n) == room and (self.player(n) or {}).get("alive")]
+            room_opened = room in w.setdefault("rooms_sectioned", [])
+            for name in occ:
+                if name in w["done"]:
+                    continue
+                p = self.player(name)
+                menu = self.action_menu(p, day)
+                if not menu:
+                    continue
+                if not room_opened:
+                    self.script_sub(f"{room} · 房间行动（{'、'.join(occ)}）")
+                    w["rooms_sectioned"].append(room)  # 续跑不重复写子段头
+                    room_opened = True
+                extra = f"现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。\n{NO_SPEECH_NOTE}"
+                briefing = self.build_briefing(p, f"第{day}天 · 自由活动（房间行动）", menu, extra)
+                payload = self.call_ai(p, "自由活动-房间行动", briefing)
+                self.apply_actions(p, payload["actions"], retry={
+                    "label": "自由活动-房间行动", "title": f"第{day}天 · 自由活动（房间行动）",
+                    "menu": menu, "extra": extra})
+                w["done"].append(name)
+                self.save_state()
+                self.check_stop()
 
     def action_menu(self, p: dict, day: int) -> list[str]:
         """按当前位置与持有物列出合法房间行动菜单（引擎仍是最终裁决者）。"""

@@ -7,6 +7,17 @@ from __future__ import annotations
 import json
 
 
+def third_person(name: str, msg: str) -> str:
+    """回执第二人称 → 第三人称（script.md 与 console 的 host 侧展示）：
+    引擎回执是发给 AI 本人的第二人称文本（"你用螺丝起子打开了监控室"）。
+    含对话引用（：）的消息只转换开头，避免污染引文。"""
+    if msg.startswith("你"):
+        msg = name + msg[1:]
+    if "：" not in msg:
+        msg = msg.replace("你的", f"{name}的").replace("你", name)
+    return msg
+
+
 def fmt_action(a: dict) -> str:
     """动作 JSON → 人读文本（展示用；落盘的原始 JSON 不受影响）。"""
     if not isinstance(a, dict):

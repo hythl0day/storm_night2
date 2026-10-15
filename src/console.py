@@ -40,13 +40,16 @@ except ImportError:  # 非 Windows 无 msvcrt；本项目环境为 Windows
     msvcrt = None
 
 from . import viewer
-from .fmt import fmt_action
+from .fmt import fmt_action, third_person
 from .orchestrator import OPENING, AbortRun, Orchestrator, morning_roster_rows
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⦷⦯⦮⦿"
 SEPARATOR = "─" * 40
 STAGE_SEP = "═" * 46  # 阶段级双线分隔符（比席位级的 ── 更醒目）
 CURSOR = "▌"
+
+# 重大结果行（竞选/投票/出局/死亡/结局）：加分割线与席位行动段落区分开，避免混在各席行动之间
+RESULT_LINE = re.compile(r"侦探竞选：|本局不设侦探|投票结果：|出局。身份|死亡，案发房间|游戏结束")
 
 # 判断一段输出是否结束在行首（允许结尾跟着 ANSI 颜色码）——思考流按行吐出时带 \x1b[0m 尾巴，
 # 若只认 endswith("\n") 会让 _partial 卡死在 True，整个思考阶段提示块被擦除不回归（game/42 复盘）。
@@ -279,15 +282,22 @@ def make_hooks(ctx: Ctx) -> dict:
     def on_public(line: str) -> None:
         if line.startswith("**"):
             return  # 发言已由 on_payload 卡片渲染过一次，公开日志行是重复（game/42 复盘修复）
-        print(f"\x1b[92m{line}\x1b[0m")
+        if RESULT_LINE.search(line):
+            # 重大结果加分割线，与席位行动段落分层
+            print(f"\n\x1b[92m{SEPARATOR}\x1b[0m")
+            print(f"\x1b[1;92m{line}\x1b[0m")
+            print(f"\x1b[92m{SEPARATOR}\x1b[0m\n")
+        else:
+            print(f"\x1b[92m{line}\x1b[0m")
 
     def on_result(name: str, ok: bool, detail: str) -> None:
         """动作裁决结果（host 侧，与 on_payload 的红色声明行配对）。"""
         print(f"\x1b[90m  {'✓' if ok else '✗'} {detail}\x1b[0m")
 
     def on_private(name: str, msg: str) -> None:
-        """私密回执（host 侧全剧透）：调查/侧写结果、继任通知、记忆植入明细等。"""
-        print(f"\x1b[90m  [{name}] {msg}\x1b[0m")
+        """私密回执（host 侧全剧透）：调查/侧写结果、继任通知、记忆植入明细等。
+        回执原文是发给 AI 的第二人称，展示时转第三人称。"""
+        print(f"\x1b[90m  [{name}] {third_person(name, msg)}\x1b[0m")
 
     return {
         "on_call_start": on_call_start,

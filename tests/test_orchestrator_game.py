@@ -1077,5 +1077,55 @@ class TestLiteJustInTimeRules(MockGameTestBase):
             self.assertNotIn("§", f.read_text(encoding="utf-8"), f.name)
 
 
+class TestScriptFmt(MockGameTestBase):
+    """script.md / console 显示修复：开局公告不重复；自由活动按房间分段；
+    回执（发给 AI 的第二人称文本）在 host 侧转第三人称；console 重大结果行带分割线。"""
+
+    def test_no_duplicate_announcement(self):
+        d = write_game_dir(self.root, default_players())
+        (d / "public" / "announcement.md").write_text(
+            "# 开局公告\n\n欢迎来到暴风夜。\n规则书就放在大厅的桌上，自己读。\n—— 主人\n", encoding="utf-8")
+        self.run_game(d, killer_script=False)
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertEqual(script.count("规则书就放在大厅的桌上"), 1)  # 只在开头「开局公告」节出现一次
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("规则书就放在大厅的桌上", log)  # 公开口径（feed/public）不变
+
+    def test_room_sections_and_third_person(self):
+        d = write_game_dir(self.root, default_players())
+        self.run_game(d, killer_script=True)
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("### 选房", script)                      # 自由活动的环节子段
+        self.assertIn("### 书房内交谈（", script)              # 房内交谈按房间分段
+        self.assertIn("### 书房 · 房间行动（", script)         # 房间行动按房间分段
+        self.assertNotIn("｜你用", script)                     # 回执不再沿用第二人称
+        self.assertNotIn("结果：你", script)
+
+    def test_third_person_unit(self):
+        from src.fmt import third_person
+        self.assertEqual(third_person("克劳德", "你用螺丝起子打开了监控室"),
+                         "克劳德用螺丝起子打开了监控室")
+        self.assertEqual(third_person("狄西", "杰普特 接受了你的同入邀请，你也知道 TA 来了"),
+                         "杰普特 接受了狄西的同入邀请，狄西也知道 TA 来了")
+        # 含对话引用（：）只转换开头，引文内的"你"不动
+        self.assertEqual(third_person("A", "你在黑暗中潜入，听到密谈：C：你还好吗"),
+                         "A在黑暗中潜入，听到密谈：C：你还好吗")
+        self.assertEqual(third_person("A", "监控记录（公开口径）：无"), "监控记录（公开口径）：无")
+
+    def test_console_result_dividers(self):
+        import contextlib
+        import io
+        from src.console import Ctx, make_hooks
+        hooks = make_hooks(Ctx(None, None))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            hooks["on_public"]("投票结果：A 3票——A 过半数出局")
+            hooks["on_public"]("夜宿会客室公开：A、B")  # 普通公告不带分割线
+            hooks["on_private"]("B", "你用万能钥匙拉开了电闸")
+        out = buf.getvalue()
+        self.assertEqual(out.count("─" * 40), 2)          # 只有投票结果带前后分割线
+        self.assertIn("B用万能钥匙拉开了电闸", out)          # 私密回执转第三人称
+
+
 if __name__ == "__main__":
     unittest.main()
