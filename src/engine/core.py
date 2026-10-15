@@ -5,7 +5,7 @@
 - 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
 - 无杀倒计时：自第 2 天起算，连续两个完整天无谋杀行为（含未遂）则下一清晨平民胜。
-- 第 5 天晚间休息结束仍无结果 → 主神获胜（全员失败）。
+- 第 6 天为终审日（只有白天会议），其投票结束仍无结果 → 主神获胜（全员失败）。
 - 自由活动合法去向 = 会客室/书房/监控室/地下室（白天卧室清场）；会客室不限人数、
   永不黑暗、夜间可夜宿（v3.4）；v3.5 起监控覆盖会客室门口。
 - v3.5 选房为顺序结算（rules-6 §7.5）：按行动顺序逐人即时结算进入——进入即开锁
@@ -159,13 +159,12 @@ class Engine:
         elif stage == "公共发言":
             new_day, new_stage = day, ("投票" if day >= 2 else "自由活动")
         elif stage == "投票":
-            new_day, new_stage = day, "自由活动"
-        elif stage == "自由活动":
-            new_day, new_stage = day, "晚间休息"
-        elif stage == "晚间休息":
-            if day >= 5:
+            if day >= 6:
+                # v3.15：主神死线从第 5 天晚间移至第 6 天投票后——第 6 天为终审日
+                # （只有白天会议：案件调查/公共发言/投票，无自由活动与晚间休息）；
+                # 锁死的残局由终审投票自然了结，无需"票仓判定"等新概念
                 s["winner"] = "主神"
-                s["win_reason"] = "第 5 天晚间休息结束仍无阵营获胜，全员失败"
+                s["win_reason"] = "第 6 天投票结束仍无阵营获胜，全员失败"
                 return {
                     "ok": True,
                     "type": "game_over",
@@ -176,12 +175,16 @@ class Engine:
                     "winner": "主神",
                     "win_reason": s["win_reason"],
                 }
+            new_day, new_stage = day, "自由活动"
+        elif stage == "自由活动":
+            new_day, new_stage = day, "晚间休息"
+        elif stage == "晚间休息":
             new_day, new_stage = day + 1, "案件调查"
             s["order"] = s["order"][1:] + s["order"][:1]
             alive_names = [p["name"] for p in s["players"] if p["alive"]]
             s["gifts_used"] = []
             shown_order = " → ".join(n for n in s["order"] if n in alive_names)
-            ann = f"第 {new_day}/5 天开始。今日行动顺序：{shown_order}"
+            ann = f"第 {new_day}/6 天开始。今日行动顺序：{shown_order}"
             if s["detective"] and s["detective"] in alive_names:
                 ann += f"；侦探：{s['detective']}"
             public["announcements"].append(ann)

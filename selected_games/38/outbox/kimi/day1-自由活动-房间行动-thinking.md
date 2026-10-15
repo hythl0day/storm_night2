@@ -1,0 +1,1 @@
+I don't have lockpicking means anymore; safe is likely already open by Claude. No action needed.

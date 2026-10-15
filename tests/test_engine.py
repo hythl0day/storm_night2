@@ -166,14 +166,18 @@ class TestStageFlow(unittest.TestCase):
         free2(eng3, {"A": "会客室", "E": "会客室", "C": "会客室", "B": "监控室", "D": "书房", "F": "书房"})
         self.assertFalse(eng3.murder("A", "E")["ok"])  # 大厅是亮房：C 在场目击即不可动手
 
-    def test_maingod_on_day5_end(self):
-        """未遂重置倒计时后可拖至主神：第 3 天一次未遂，此后再无行为 → 第 5 天晚间主神胜。"""
+    def test_maingod_after_day6_vote(self):
+        """v3.15：主神死线移至第 6 天投票后（终审日：只有白天会议，无自由活动/晚间休息）。
+        第 2 天与第 4 天各一次谋杀行为（未遂/既遂）维持倒计时不归零，此后拖过第 5 天 → 第 6 天投票后主神胜。"""
         eng = Engine(mk_state())
-        goto(eng, "自由活动", day=3)
-        ev = eng.enter_rooms({"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
-        assert ev["ok"], ev
+        goto(eng, "自由活动", day=2)
+        eng.enter_rooms({"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
         ev = eng.murder("A", "D", weapon="刀")
         self.assertEqual(ev["type"], "murder_attempt")  # D【敏捷闪避】防御；未遂重置倒计时
+        goto(eng, "自由活动", day=4)
+        eng.enter_rooms({"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "D")  # 刀已耗、闪避已耗：徒手杀死 D（A 魁梧 ≥ D 健壮），维持倒计时
+        self.assertTrue(ev["ok"], ev)
         winner = None
         for _ in range(60):
             ev = eng.advance()
@@ -182,9 +186,8 @@ class TestStageFlow(unittest.TestCase):
                 self.assertEqual(ev["type"], "game_over")
                 break
         self.assertEqual(winner, "主神")
-        self.assertIn("第 5 天", eng.state["win_reason"])
-        ev = eng.advance()
-        self.assertFalse(ev["ok"])
+        self.assertIn("第 6 天", eng.state["win_reason"])
+        self.assertEqual(ev["from"], {"day": 6, "stage": "投票"})  # 终审日投票后宣判
 
 
 class TestMurderConditions(unittest.TestCase):
@@ -530,20 +533,25 @@ class TestVote(unittest.TestCase):
         self.assertEqual(ev["public"]["out"], "B")
         self.assertEqual(ev.get("winner"), "平民")
 
-    def test_one_civilian_left_villains_win(self):
+    def test_one_civilian_left_game_continues(self):
+        """v3.14：删去"只剩 1 平民反派直接胜"（v3.13 短命补丁回滚）——2v1 票仓锁死的残局
+        不再提前收束，由下一轮投票自然处决；平民全灭才判反派胜。"""
         players = default_players()
         players[2]["alive"] = False
         players[3]["alive"] = False
         eng = Engine(mk_state(players=players, day=2, stage="投票"))
         ev = eng.resolve_vote({"A": "E", "B": "E", "F": "E", "E": "A"})
         self.assertEqual(ev["public"]["out"], "E")
+        self.assertIsNone(ev.get("winner"))  # 剩 F 一名平民 + 2 反派：游戏继续
+        # 下一轮投票处决最后一名平民 → 全灭，反派胜
+        players[4]["alive"] = False  # E 已出局（上一票）
+        eng2 = Engine(mk_state(players=players, day=3, stage="投票"))
+        ev = eng2.resolve_vote({"A": "F", "B": "F", "F": "A"})
         self.assertEqual(ev.get("winner"), "反派")
-        self.assertIn("只剩 1 人", ev["win_reason"])
+        self.assertIn("所有平民", ev["win_reason"])
 
-    def test_murder_leaving_one_civilian_ends_game(self):
-        """v3.13（game/31 复盘）：谋杀后存活平民只剩 1 人 → 反派立即获胜。
-        修复前 ≤1 平民的即时判定只在投票/指认路径，谋杀路径只查全灭——
-        平民被杀到剩 1 人后游戏不结束，白拖一天垃圾时间（1 平民对 2 反派投票必输）。"""
+    def test_murder_leaving_one_civilian_continues(self):
+        """v3.14：谋杀把平民杀到剩 1 人同样不提前收束——规则回归"杀光/票光所有平民"。"""
         players = default_players()
         players[2]["alive"] = False
         players[3]["alive"] = False  # C、D（平民）已死：存活 = A杀手、B帮凶、E平民、F平民
@@ -553,8 +561,7 @@ class TestVote(unittest.TestCase):
         assert ev["ok"], ev
         ev = eng.murder("A", "E", weapon="刀")
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(eng.winner, "反派")  # 只剩 F 一名平民 → 当场收束
-        self.assertIn("只剩 1 人", eng.state["win_reason"])
+        self.assertIsNone(eng.winner)  # 只剩 F 一名平民：游戏继续
 
     def test_memory_implant(self):
         players = default_players()

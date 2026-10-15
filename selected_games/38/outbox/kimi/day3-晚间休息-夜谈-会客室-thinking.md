@@ -1,0 +1,1 @@
+I need to speak at the fireside. Goal: keep everyone in the hall, no one leaves. Kill risk: anyone leaving the bright hall gets killed in the dark. Also among us there may be the killer. Short speech.

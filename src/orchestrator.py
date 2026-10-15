@@ -327,8 +327,8 @@ class Orchestrator:
 
     def _stamp(self, line: str) -> str:
         """给事件行打天数·阶段标记〔第N天·阶段〕（game/5 复盘：互赠/停电/投票结果等记录行无日期，
-        跨天后在「关键记录」里极易混淆）。发言行（**名字**：）与"第 N/5 天开始"行自带头绪，不打。"""
-        if line.startswith("**") or "/5 天开始" in line:
+        跨天后在「关键记录」里极易混淆）。发言行（**名字**：）与"第 N/6 天开始"行自带头绪，不打。"""
+        if line.startswith("**") or "/6 天开始" in line:
             return line
         ph = self.state.get("phase", {})
         tag = f"〔第{ph.get('day')}天·{ph.get('stage')}〕"
@@ -580,7 +580,7 @@ class Orchestrator:
         last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
         quiet = max(0, day - 1 - last_behavior)
         alive_n = sum(1 for q in s["players"] if q["alive"])
-        lines = [f"- 进度：第 {day}/5 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
+        lines = [f"- 进度：第 {day}/6 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
                  f"｜无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（连续 2 个则平民直接获胜）"]
         deaths = {c["victim"]: c for c in s["cases"]}
         out_day = self.orch.get("out_day", {})
@@ -649,7 +649,7 @@ class Orchestrator:
         - 日序/存活/倒计时三类状态行各只保留最新一条；事件行（死亡/投票/遗嘱/监控宣读等）全保留。
         """
         has_result = any("侦探竞选：" in x or "本局不设侦探" in x for x in lines)
-        kinds = ("/5 天开始", "目前存活", "无杀倒计时：已连续")
+        kinds = ("/6 天开始", "目前存活", "无杀倒计时：已连续")
         last = {k: max((i for i, x in enumerate(lines) if k in x), default=-1) for k in kinds}
         out = []
         for i, x in enumerate(lines):
@@ -2033,7 +2033,8 @@ class Orchestrator:
                 elif stage == "投票":
                     self.run_vote()
                     if not self.state["winner"]:
-                        self.advance(f"第{day}天 · 自由活动")
+                        # v3.15：第 6 天投票后由引擎直接判主神（终审日无自由活动）
+                        self.advance(f"第{day}天 · {'终局宣判' if day >= 6 else '自由活动'}")
                 elif stage == "自由活动":
                     self.run_free_activity()
                     if not self.state["winner"]:

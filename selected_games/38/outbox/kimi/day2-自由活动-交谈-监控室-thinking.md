@@ -1,0 +1,1 @@
+Note: I gave screwdriver to 豆包 day 1, but now my state says 道具：无 — consistent. But my notes claim 格罗克 opened safe — actually from 私密记录 I don't have confirmation; my notes say 豆包测谎 verified. Just respond.

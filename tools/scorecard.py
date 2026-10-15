@@ -278,10 +278,10 @@ def drama(a: dict) -> tuple[float, list[str]]:
     add(f"停电 {a['blackouts']} 次", min(1.6, a["blackouts"] * 0.8))
     if a["succession"]:
         add("杀手继任", 1.0)
-    if a["days"] >= 5:
-        add("鏖战至第 5 天", 1.0)
-    elif a["days"] == 4:
-        add("战至第 4 天", 0.5)
+    if a["days"] >= 6:
+        add("鏖战至第 6 天", 1.0)
+    elif a["days"] == 5:
+        add("战至第 5 天", 0.5)
     if a["winner"] == "主神":
         add("主神结局（全员失败）", 1.0)
     if a["winner"] == "平民" and a["murders"] == 0:

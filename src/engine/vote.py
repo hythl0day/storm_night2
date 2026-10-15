@@ -4,7 +4,7 @@
 - v3.3：侦探（第 1 天竞选产生）一票计 1.5 票；侦探出局时警徽按遗嘱传承或销毁，不补选。
 - v3.5：侦探当选时获得桌上凶器「左轮手枪」（侦探佩枪）；有侦探时仅侦探可武装指认。
 - 出局者公布身份与职业；出局者是杀手时帮凶私下继任杀手。
-- 投票后存活平民只剩 1 人 → 反派立即获胜；反派全部出局 → 平民获胜。
+- 反派全部出局 → 平民获胜；平民全灭 → 反派获胜（v3.14：删去"只剩 1 平民直接判负"，残局自然打完）。
 - 【记忆植入】：反派心理医生强迫一名玩家改投指定对象；公告只说"票数被更改过"。
 - 武装指认（第 2 天首次投票起）：未产生出局者的投票后——有侦探时仅侦探（须持有武器）；
   无侦探时持武器平民可指认，桌上凶器仍在时平民也可临时取用指认。
@@ -33,10 +33,6 @@ def _seal_player_items(state: dict, p: dict) -> None:
         if e["uses_left"] > 0:
             state["sealed_items"].append({"name": e["name"], "uses_left": e["uses_left"], "from": p["name"]})
             p["items"].remove(e)
-
-
-def _civilian_count(state: dict) -> int:
-    return sum(1 for p in state["players"] if p["alive"] and p["identity"] == "平民")
 
 
 def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None = None) -> dict:
@@ -102,12 +98,7 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
                 heir["identity"] = "杀手"
                 private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）"
     s["last_vote"] = {"day": day, "out": out}
-    # 具体原因先于通用检查（v3.13 起 check_winner 已含 ≤1 平民兜底，此处保留更精确的"投票后"文案；
-    # 反派存活保护：反派全灭时应由 check_winner 判平民胜，不能误判反派胜）
-    if not s["winner"] and _civilian_count(s) <= 1 and any(p["alive"] and is_villain(p) for p in s["players"]):
-        s["winner"] = "反派"
-        s["win_reason"] = "投票后存活平民只剩 1 人"
-    check_winner(s)
+    check_winner(s)  # v3.14：删去"只剩 1 平民反派直接胜"——残局由下一轮投票自然了结，死锁由主神兜底
     ev = {"ok": True, "type": "vote", "public": public, "private": private}
     if s["winner"]:
         ev["winner"] = s["winner"]
@@ -173,11 +164,7 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
         f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误，{accuser} 出局。身份：{ap['identity']}；职业：{ap['profession']}"
         + ("（桌上凶器仍在会客室桌上）" if temp_grab else "")
     ]}
-    # 同 resolve_vote：具体"投票后"文案先于通用检查（v3.13），并加反派存活保护
-    if not s["winner"] and _civilian_count(s) <= 1 and any(p["alive"] and is_villain(p) for p in s["players"]):
-        s["winner"] = "反派"
-        s["win_reason"] = "投票后存活平民只剩 1 人"
-    check_winner(s)
+    check_winner(s)  # v3.14：同 resolve_vote，不再单独复查"只剩 1 平民"
     ev = {"ok": True, "type": "armed_accusation", "public": public, "private": {}}
     if s["winner"]:
         ev["winner"] = s["winner"]

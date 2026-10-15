@@ -1,0 +1,1 @@
+**Choosing to inspect study room**

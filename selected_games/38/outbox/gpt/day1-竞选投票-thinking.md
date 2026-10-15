@@ -1,0 +1,1 @@
+**Selecting vote candidate 狄西**

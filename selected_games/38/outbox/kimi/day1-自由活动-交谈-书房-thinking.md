@@ -1,0 +1,3 @@
+Odd: my notes say I gave screwdriver to 豆包, and I had a screwdriver per private card—but 当前状态 says 道具：无 and key record says 奇米 gave 螺丝起子 to 豆包. Wait, I don't remember giving it, but it's recorded. Fine.
+
+I'm in 书房 with 克劳德 and 杰普特. 克劳德 says she'll open the safe. Hmm—but the safe contains 不明药剂, which only killer can use as weapon... actually anyone can hold it; only killer can use to kill. I should respond.

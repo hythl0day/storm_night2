@@ -1,0 +1,1 @@
+**Choosing night hall with conditional virus**

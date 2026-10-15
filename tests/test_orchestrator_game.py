@@ -2,7 +2,7 @@
 
 用脚本化全知策略驱动 run_game() 主循环，验证：
 - 倒计时结局（全程消极：无谋杀行为、投票全弃权 → 第 4 天清晨平民胜，倒计时自第 2 天起算）
-- 主神结局（一次未遂重置倒计时后再无行为 → 拖至第 5 天晚间）
+- 主神结局（第 4 天一次未遂重置倒计时后再无行为 → 拖至第 6 天终审投票，v3.15）
 - 平民胜结局（杀手第 2 天谋杀 → 第 3 天投票出局 → 帮凶继任再杀 → 第 4 天被投出）
 - 阶段边界停止 + 重建 Orchestrator 续跑至结局（--resume 语义）
 - 归档产物：public/log.md 结局行、private 内心独白、inbox/outbox 存档
@@ -174,7 +174,8 @@ class TestMainGodEnding(MockGameTestBase):
         self.assertNotIn("……", script)  # mock 的 inner 固定为 "……"：内心独白不得进全记录
 
     def test_maingod_after_failed_attempt(self):
-        """未遂重置倒计时：第 3 天一次未遂后再无行为，游戏拖至第 5 天晚间主神胜。"""
+        """v3.15 主神死线=第 6 天终审投票后。倒计时联动：第 2 天未遂 + 第 4 天既遂维持倒计时不归零
+        （若只在第 4 天出手，第 4 天清晨就已倒计时平民胜；只在第 3 天出手则第 6 天清晨平民胜）。"""
         d = write_game_dir(self.root, default_players())
         base = make_fake_chat(False)
 
@@ -182,22 +183,26 @@ class TestMainGodEnding(MockGameTestBase):
             title = messages[-1]["content"].splitlines()[0]
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
-            if day == 3 and "选房" in title and player.name in ("A", "D"):
+            if day in (2, 4) and "选房" in title and player.name in ("A", "D"):
                 return ChatResult(player.name, ok=True,
                                   content=payload(actions=[{"type": "choose_room", "room": "书房"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if day == 3 and "房间行动" in title and player.name == "A" and '"type": "murder"' in messages[-1]["content"]:
+            if day in (2, 4) and "房间行动" in title and player.name == "A" and '"type": "murder"' in messages[-1]["content"]:
+                # 第 2 天用刀（被敏捷闪避防下，未遂）；第 4 天刀已耗，徒手杀 D（A 魁梧 ≥ D 健壮，既遂）
+                act = {"type": "murder", "target": "D"} | ({"weapon": "刀"} if day == 2 else {})
                 return ChatResult(player.name, ok=True,
-                                  content=payload(actions=[{"type": "murder", "target": "D", "weapon": "刀"}]),
+                                  content=payload(actions=[act]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
         orch = self.run_game_with(d, chat_attempt)
         s = orch.state
         self.assertEqual(s["winner"], "主神")
-        self.assertEqual(s["phase"], {"day": 5, "stage": "晚间休息"})
-        self.assertEqual(len(s["attempts"]), 1)   # D 运动员【敏捷闪避】防下唯一一次未遂
-        self.assertTrue(all(p["alive"] for p in s["players"]))
+        self.assertEqual(s["phase"], {"day": 6, "stage": "投票"})
+        self.assertEqual(len(s["attempts"]), 1)   # 第 2 天未遂（敏捷闪避）
+        self.assertEqual([c["victim"] for c in s["cases"]], ["D"])  # 第 4 天既遂
+        self.assertFalse(next(p for p in s["players"] if p["name"] == "D")["alive"])
+        self.assertTrue(all(p["alive"] for p in s["players"] if p["name"] != "D"))
 
     def test_stop_and_resume(self):
         d = write_game_dir(self.root, default_players())
@@ -608,14 +613,14 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
     def test_compact_public_election_and_status_lines(self):
         lines = ["A 宣告参选侦探", "B 宣告不参选", "退选结果：无人退选；留任候选人：A",
                  "- 侦探竞选：A 当选侦探（略）；侦探佩枪：桌上凶器「左轮手枪」归 A 持有",
-                 "- 第 2/5 天开始。今日行动顺序：B → A", "- 目前存活 6 人：A、B",
+                 "- 第 2/6 天开始。今日行动顺序：B → A", "- 目前存活 6 人：A、B",
                  "- 无杀倒计时：已连续 0 个完整天无谋杀行为", "- 投票结果：无人得票",
-                 "- 第 3/5 天开始。今日行动顺序：A → B", "- 目前存活 5 人：A、B",
+                 "- 第 3/6 天开始。今日行动顺序：A → B", "- 目前存活 5 人：A、B",
                  "- 无杀倒计时：已连续 1 个完整天无谋杀行为"]
         out = Orchestrator._compact_public(lines)
         self.assertTrue(any("侦探竞选：" in x for x in out))                 # 结果行保留
         self.assertFalse(any("宣告参选" in x or "宣告不参选" in x or "退选结果" in x for x in out))  # 仪式行折叠
-        self.assertEqual([x for x in out if "/5 天开始" in x], ["- 第 3/5 天开始。今日行动顺序：A → B"])
+        self.assertEqual([x for x in out if "/6 天开始" in x], ["- 第 3/6 天开始。今日行动顺序：A → B"])
         self.assertEqual([x for x in out if "目前存活" in x], ["- 目前存活 5 人：A、B"])
         self.assertEqual([x for x in out if "无杀倒计时：已连续" in x], ["- 无杀倒计时：已连续 1 个完整天无谋杀行为"])
         self.assertTrue(any("投票结果" in x for x in out))                   # 事件行全保留
@@ -680,7 +685,7 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
         pub = briefing.split("### 公共记录")[1].split("### 与你相关的私密记录")[0]
         self.assertIn("侦探竞选：", pub)
         self.assertNotIn("宣告参选", pub)
-        self.assertEqual(pub.count("/5 天开始"), 1)
+        self.assertEqual(pub.count("/6 天开始"), 1)
 
     def test_night_raid_menu_requires_means_or_blackout(self):
         """夜袭菜单门槛：无开锁手段且非停电时不提供该项（菜单只列合法动作——game/2 复盘同源的菜单准确性）。"""
@@ -908,7 +913,7 @@ class TestGameStateSection(MockGameTestBase):
         p = next(q for q in orch.state["players"] if q["name"] == "C")
         b = orch.build_briefing(p, "第1天 · 公共发言", [], "")
         self.assertIn("## 游戏状态", b)
-        self.assertIn("第 1/5 天", b)
+        self.assertIn("第 1/6 天", b)
         self.assertIn("存活 6 人", b)
         self.assertIn("侦探：无", b)
         self.assertIn("无杀倒计时：已连续 0 个完整天", b)
@@ -925,7 +930,7 @@ class TestGameStateSection(MockGameTestBase):
         s["last_murder_day"] = 2
         s["detective"] = "E"
         b2 = orch.build_briefing(p, "第3天 · 公共发言", [], "")
-        self.assertIn("第 3/5 天", b2)
+        self.assertIn("第 3/6 天", b2)
         self.assertIn("存活 4 人", b2)
         self.assertIn("侦探：E", b2)
         self.assertIn("已连续 0 个完整天", b2)  # 第 2 天有谋杀行为，倒计时清零

@@ -1,0 +1,3 @@
+No detective, so armed accusation: any civilian with weapon can accuse, or table weapon still on table? Left revolver on table (no detective). Table weapon still present presumably (no one took it, or unannounced). I could use table revolver to accuse. But accusation must be correct killer. I don't know who killer is. Too risky.
+
+Vote: abstain or vote 格罗克. Voting him out would reveal identity — if he's killer, great; if帮凶, also great. If civilian, we lose one. Gr格罗克 holds the 不明药剂 (凶器). Voting him out is decent: if he's反派 revealed; if平民... dangerous. 3.5 needed, unlikely anyway. I'll vote 格罗克 — moderate suspicion. Actually risk: if he's civilian and out, villain wins closer. 6→5, fine. I'll vote him.

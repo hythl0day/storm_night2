@@ -1,0 +1,1 @@
+Speak: address Claude's U盘 claim, Glock, gun missing. Keep concise.
