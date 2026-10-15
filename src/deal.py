@@ -8,7 +8,7 @@
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
-                                                    # 裁决规则不变（仍 v3.17），state 记 is_lite_rule=True
+                                                    # 裁决规则不变（仍 v3.19），state 记 is_lite_rule=True
 
 随机调用顺序（影响复现，勿随意调整；v3.5 起保底凶器车道改为桌上凶器，不再选持有人）：
     席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
@@ -197,7 +197,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
     return {
         "seed": seed,
         "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
-        "rules_version": "v3.17",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
+        "rules_version": "v3.19",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
         "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
         "mode": "6人局",

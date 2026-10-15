@@ -55,8 +55,8 @@
 - `view_monitoring(user)` — 查看公开监控（篡改后的口径）；v3 起恒为全量返回（不接参数，杜绝格式幻觉）；v3.5 起监控覆盖所有房间门口（含会客室）
 - `tamper_monitoring(user, period, room, op, name, new_name=None)` — 【信号干扰】/「病毒U盘」，`op` ∈ `add`/`remove`/`replace`
 - `investigate(user, case_id, choice)` — 【现场调查】/「鲁米诺试剂」，`choice` ∈ `武器伤痕`/`死亡时间`/`尸体转移`
-- `falsify(user, case_id, kind)` — 伪造类反派技能（`kind` 区分伪造痕迹/销毁证物/伪造证物）
-- `move_body(user, case_id, to_room)` — 【转移尸体】/「裹尸袋」
+- `falsify(user, case_id, kind)` — 伪造类反派技能（`kind` 区分伪造痕迹/销毁证物/伪造证物）；v3.18：须身处案发现场（场外反派不可远程毁证，编排侧毁证窗口同样只通知案件房间内的反派）；v3.19：仅限案发当天（次日清晨调查后现场即无法改动；归宿选择时持有毁证手段的反派会收到"今晚可前往案发现场"提示——白天案件已全员公告，无额外泄漏）
+- `move_body(user, case_id, to_room)` — 【转移尸体】/「裹尸袋」；v3.18：同样须身处案发现场；v3.19：同样仅限案发当天
 - `profile(user, case_id, aspect)` — 【犯罪侧写】，`aspect` ∈ `性别`/`国籍`/`体格`
 - `see_through(user, target, claims)` — 【看破伪装】/「测谎仪」，以**真实**监控记录验证行踪声明（v3.5 起所有房间可验证；无效房间名仍为"无法验证"）；v3.12：存在停电空白时行踪"无记录"判"无法验证"而非谎言/属实；claims 全为非法名目整体驳回不消耗次数；房间字段容错接受单字符串
 

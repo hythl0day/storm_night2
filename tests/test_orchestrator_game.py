@@ -272,6 +272,33 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", script)
         self.assertIn("游戏结束：平民获胜", script)
 
+    def test_coverup_only_for_scene_villain(self):
+        """v3.18：毁证窗口只通知身处案发现场的反派——场外帮凶不再收到毁证机会
+        （也不再被即时告知"谋杀成功/案发房间/现场干净"）。"""
+        d = write_game_dir(self.root, self.players())
+        sj = d / "state.json"
+        st = json.loads(sj.read_text(encoding="utf-8"))
+        next(p for p in st["players"] if p["name"] == "A")["extra_items"] = ["裹尸袋"]  # 给杀手毁证手段
+        sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        self.run_game(d, killer_script=True)
+        self.assertTrue((d / "inbox" / "A" / "day2-毁证机会.md").exists())   # 杀手在案发现场（书房）
+        self.assertFalse((d / "inbox" / "B" / "day2-毁证机会.md").exists())  # 帮凶在会客室，不通知
+
+    def test_coverup_night_hint(self):
+        """v3.19：白天案件当晚归宿选择时，持有毁证手段的反派收到"今晚可前往案发现场毁证、
+        仅限案发当天"的提示（基于公开死亡公告+阵营自知，无额外泄漏）；无毁证手段者不提示。"""
+        d = write_game_dir(self.root, self.players())
+        sj = d / "state.json"
+        st = json.loads(sj.read_text(encoding="utf-8"))
+        next(p for p in st["players"] if p["name"] == "A")["extra_items"] = ["裹尸袋"]  # 给杀手毁证手段
+        sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        self.run_game(d, killer_script=True)
+        brief = (d / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("仅限案发当天", brief)  # A 第 2 天白天在书房杀 E → 当晚收到毁证提示
+        self.assertIn("书房", brief)
+        b_brief = (d / "inbox" / "B" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertNotIn("仅限案发当天", b_brief)  # B 无毁证手段（延时装置不算），不提示
+
     def test_briefing_key_records(self):
         """简报含"截至目前的关键记录"：公共事实流水 + 该席私密历史；不含发言与内心独白。"""
         d = write_game_dir(self.root, self.players())
@@ -427,9 +454,9 @@ class TestCivilianWinEnding(MockGameTestBase):
         orch = self.run_game_with(d, chat_blackout)
         s = orch.state
         script = (d / "script.md").read_text(encoding="utf-8")
-        self.assertIn("◆ B｜声明今晚停电 → 成功", script)  # v3.5 复盘修复：停电声明记入全记录（行动回执格式）
+        self.assertIn("◆ B｜声明今天停电 → 成功", script)  # v3.5 复盘修复：停电声明记入全记录（行动回执格式）
         # game/2 复盘修复：声明轮先于选房（script 中声明回执位于"选房结果"之前）；停电公告在收尾后公开
-        self.assertLess(script.index("声明今晚停电"), script.index("- 选房结果：B→会客室"))
+        self.assertLess(script.index("声明今天停电"), script.index("- 选房结果：B→会客室"))
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("停电了——", log)                     # 进入房间后向众人公布
         self.assertNotIn("第2天自由活动", json.dumps(s["monitoring"], ensure_ascii=False))  # 停电整段监控零记录

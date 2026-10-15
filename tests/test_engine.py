@@ -1066,6 +1066,39 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         ev = eng.falsify("B", 1, "伪造痕迹")
         self.assertFalse(ev["ok"])
 
+    def test_coverup_requires_scene_presence(self):
+        """v3.18：毁证须身处案发现场——场外帮凶不能远程毁证/移尸；在场反派（含粉末道具）不受影响。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"A": "书房", "E": "书房", "B": "会客室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E")  # 现场仅 E 一名非反派 → 可毁证案件
+        self.assertTrue(ev["ok"], ev)
+        ev = eng.falsify("B", 1, "伪造痕迹")   # B 在会客室，不在案发现场
+        self.assertFalse(ev["ok"])
+        self.assertIn("案发现场", ev["error"])
+        ev = eng.move_body("B", 1, "地下室")
+        self.assertFalse(ev["ok"])
+        self.assertIn("案发现场", ev["error"])
+        player(eng, "A")["items"].append({"name": "可疑的粉末", "uses_left": 1, "available_day": 1})
+        ev = eng.falsify("A", 1, "伪造证物")   # 杀手本人在场 → 仍可毁证
+        self.assertTrue(ev["ok"], ev)
+
+    def test_coverup_day_limit(self):
+        """v3.19：毁证/移尸仅限案发当天——次日（清晨调查后）即使身处案发现场也无法再改动。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        self.kill_e_day2(eng)  # 第 2 天 A 书房杀 E；A、B 同在案发现场
+        goto(eng, "自由活动", day=3)
+        eng.state["positions"]["B"] = "书房"  # 次日亲临现场也为时已晚
+        ev = eng.falsify("B", 1, "伪造痕迹")
+        self.assertFalse(ev["ok"])
+        self.assertIn("仅限案发当天", ev["error"])
+        ev = eng.move_body("B", 1, "地下室")
+        self.assertFalse(ev["ok"])
+        self.assertIn("仅限案发当天", ev["error"])
+
     def test_move_body(self):
         players = default_players()
         players[1] = P("B", "帮凶", "运动员", "不明药剂", gender="女", physique=2)

@@ -1470,6 +1470,15 @@ class Orchestrator:
                     v = pending_invite[name]
                     menu.append(f'- 接受 {v} 的守夜邀请：{{"type": "accept_invite"}}')
                     extra += f"\n{v} 邀请你今晚去 {bedroom_of(v)} 守夜。"
+                # v3.19：当天案件毁证提示（毁证仅限案发当天）——归宿选择时的可毁证案件只可能来自白天
+                # （夜间谋杀发生在归宿之后），白天谋杀阶段末已全员公告；反派凭公开信息+阵营自知即可
+                # 推知，此提示无额外泄漏
+                coverable = self._coverable_cases(day)
+                if coverable and is_villain(p) and self._has_coverup_means(p):
+                    rooms = "、".join(dict.fromkeys(c["room"] for c in coverable))
+                    extra += (f"\n提示：今天发生的案件（{rooms}）现场仍可处理——毁证/移尸仅限案发当天，"
+                              "明晨案件调查后现场即无法改动。今晚前往案发房间（night_room / 夜宿会客室），"
+                              "阶段末即可获得毁证机会。")
                 briefing = self.build_briefing(p, f"第{day}天 · 晚间休息", menu, extra)
                 payload = self.call_ai(p, "晚间休息", briefing)
                 for act in payload["actions"]:
@@ -2014,31 +2023,42 @@ class Orchestrator:
             self.save_state()
             self.check_stop()
 
+    def _coverable_cases(self, day: int) -> list[dict]:
+        """仍可毁证的案件（v3.19 起仅限案发当天；v3.18 起毁证者须身处案发现场）。"""
+        return [c for c in self.state["cases"]
+                if c["day"] == day and c["evidence_vulnerable"]
+                and (c["falsified"] is None or not c["body_moved"])]
+
+    def _has_coverup_means(self, p: dict) -> bool:
+        s, day = self.state, self.state["phase"]["day"]
+        return (any(skill_left(s, p["name"], sk) > 0 for sk in COVERUP_SKILLS)
+                or held_item(p, "可疑的粉末", day) is not None
+                or held_item(p, "裹尸袋", day) is not None)
+
     def run_coverup(self) -> None:
-        """毁证窗口（自由活动/晚间休息结束前）：存在可毁证案件且反派有手段时，按 杀手→帮凶 顺序提供机会。"""
+        """毁证窗口（自由活动/晚间休息结束前）：存在可毁证案件且反派有手段时，按 杀手→帮凶 顺序提供机会。
+        v3.18：毁证须身处案发现场（rules-6 §7.6）——只通知当前位置在案件房间的反派，
+        场外反派既不可远程毁证，也不再被即时告知案发信息。v3.19：仅限案发当天。"""
         s = self.state
         day = s["phase"]["day"]
-        vulnerable = [c for c in s["cases"]
-                      if c["evidence_vulnerable"] and (c["falsified"] is None or not c["body_moved"])]
+        vulnerable = self._coverable_cases(day)
         if not vulnerable:
             return
-
-        def has_means(p: dict) -> bool:
-            return (any(skill_left(s, p["name"], sk) > 0 for sk in COVERUP_SKILLS)
-                    or held_item(p, "可疑的粉末", day) is not None
-                    or held_item(p, "裹尸袋", day) is not None)
-
-        villains = sorted((p for p in self.alive() if is_villain(p) and has_means(p)),
+        villains = sorted((p for p in self.alive() if is_villain(p) and self._has_coverup_means(p)),
                           key=lambda p: 0 if p["identity"] == "杀手" else 1)
         if not villains:
             return
         w = self.wip(f"{day}:{s['phase']['stage']}:毁证", done=[])
-        case_lines = [f"案件 {c['id']}：{c['victim']}（{c['room']}）" for c in vulnerable]
         for p in villains:
             if self.state["winner"]:
                 return
             if p["name"] in w["done"]:
                 continue
+            here = [c for c in vulnerable if s["positions"].get(p["name"]) == c["room"]]
+            if not here:
+                w["done"].append(p["name"])  # 不在案发现场：本窗口与 TA 无关
+                continue
+            case_lines = [f"案件 {c['id']}：{c['victim']}（{c['room']}）" for c in here]
             menu = []
             if skill_left(s, p["name"], "伪造痕迹") > 0:
                 menu.append('- 伪造痕迹（该案件除武器伤痕外的调查结果全部出错）：{"type": "falsify", "case_id": 案件编号, "kind": "伪造痕迹"}')
@@ -2048,8 +2068,8 @@ class Orchestrator:
                 menu.append('- 伪造证物（该案件除尸体转移外的调查结果全部出错）：{"type": "falsify", "case_id": 案件编号, "kind": "伪造证物"}')
             if skill_left(s, p["name"], "转移尸体") > 0 or held_item(p, "裹尸袋", day) is not None:
                 menu.append('- 转移尸体到另一房间：{"type": "move_body", "case_id": 案件编号, "to_room": "会客室|书房|监控室|地下室|某人的卧室"}')
-            extra = ("以下案件的现场没有其他非反派角色，你可以动手毁证（也可以不动）：\n" + "\n".join(case_lines)
-                     + f"\n{NO_SPEECH_NOTE}")
+            extra = ("以下案件的现场没有其他非反派角色，且你就在案发现场——你可以动手毁证（也可以不动）：\n"
+                     + "\n".join(case_lines) + f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)
             payload = self.call_ai(p, "毁证机会", briefing)
             self.apply_actions(p, payload["actions"], retry={

@@ -69,14 +69,14 @@ def fmt_action(a: dict) -> str:
     if t == "set_device":
         return f"设置延时装置：{a.get('room', '?')}"
     if t == "declare_blackout":
-        return "声明今晚停电"
+        return "声明今天停电"
     if t == "murder":
         w = a.get("weapon")
         return f"谋杀 {a.get('target', '?')}" + (f"（凶器：{w}）" if w else "")
     if t == "stage_magic":
         return f"舞台魔术 → {a.get('target', '?')}"
     if t == "falsify":
-        return f"伪造痕迹（案件 {a.get('case_id', '?')}）"
+        return f"{a.get('kind', '伪造')}（案件 {a.get('case_id', '?')}）"
     if t == "move_body":
         return f"转移尸体（案件 {a.get('case_id', '?')} → {a.get('to_room', '?')}）"
     if t == "investigate":

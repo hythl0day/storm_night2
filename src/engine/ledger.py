@@ -334,7 +334,9 @@ def investigate(state: dict, user: str, case_id: int, choice: str) -> dict:
 def falsify(state: dict, user: str, case_id: int, kind: str) -> dict:
     """毁证类反派技能：【伪造痕迹】/【销毁证物】/【伪造证物】（「可疑的粉末」等同伪造证物）。
 
-    仅当谋杀现场没有其他非反派角色（evidence_vulnerable）时可发动；每起案件只生效一次伪造。
+    仅当谋杀现场没有其他非反派角色（evidence_vulnerable）时可发动；每起案件只生效一次伪造；
+    v3.18：发动者须身处案发现场（场外反派不能远程毁证，编排侧亦不再通知）；
+    v3.19：毁证仅限案发当天（次日清晨调查后现场即无法改动）。
     """
     s = state
     p = get_player(s, user)
@@ -349,8 +351,12 @@ def falsify(state: dict, user: str, case_id: int, kind: str) -> dict:
     case = next((c for c in s["cases"] if c["id"] == case_id), None)
     if case is None:
         return reject("falsify", "案件不存在")
+    if case["day"] != s["phase"]["day"]:
+        return reject("falsify", "毁证仅限案发当天——次日清晨调查后现场已无法改动")
     if not case["evidence_vulnerable"]:
         return reject("falsify", "现场有其他非反派角色，不能毁证")
+    if s["positions"].get(user) != case["room"]:
+        return reject("falsify", "你不在案发现场，无法毁证")
     if case["falsified"] is not None:
         return reject("falsify", "该案件已被伪造过")
     if skill_left(s, user, FALSY_SKILL[kind]) > 0:
@@ -364,7 +370,8 @@ def falsify(state: dict, user: str, case_id: int, kind: str) -> dict:
 
 
 def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
-    """【转移尸体】/「裹尸袋」：谋杀成功后把尸体移到另一房间而不被发现。"""
+    """【转移尸体】/「裹尸袋」：谋杀成功后把尸体移到另一房间而不被发现。
+    v3.18：发动者须身处案发现场（场外反派不能远程移尸）；v3.19：仅限案发当天。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
@@ -376,8 +383,12 @@ def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
     case = next((c for c in s["cases"] if c["id"] == case_id), None)
     if case is None:
         return reject("move_body", "案件不存在")
+    if case["day"] != s["phase"]["day"]:
+        return reject("move_body", "转移尸体仅限案发当天——次日清晨调查后现场已无法改动")
     if not case["evidence_vulnerable"]:
         return reject("move_body", "现场有其他非反派角色，不能转移尸体")
+    if s["positions"].get(user) != case["room"]:
+        return reject("move_body", "你不在案发现场，无法转移尸体")
     if case["body_moved"]:
         return reject("move_body", "尸体已被移动过")
     legal_rooms = FREE_ROOMS + [bedroom_of(q["name"]) for q in s["players"]]
