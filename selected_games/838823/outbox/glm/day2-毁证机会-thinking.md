@@ -1,0 +1,1 @@
+The scene is quiet, Qimi is in the room, use destroy evidence.

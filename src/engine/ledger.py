@@ -211,6 +211,7 @@ def declare_blackout(state: dict, user: str) -> dict:
         return reject("declare_blackout", "拉电闸需要消耗一次【暴力破解】（职业技能/「万能钥匙」/「螺丝起子」任一）")
     consume_unlock_means(s, user, means)
     s["power_out"] = True
+    s["power_restored"] = None  # 新停电清除修复时间戳（v3.20：晚间恢复公告与清晨缺口精确到时段用）
     s["blackout_news"] = f"第{s['phase']['day']}天自由活动"  # 进入房间后向众人公布（编排器在选房收尾后公告）
     if s["phase"]["day"] not in s["blackout_days"]:
         s["blackout_days"].append(s["phase"]["day"])
@@ -231,6 +232,7 @@ def fix_generator(state: dict, user: str) -> dict:
     if s["positions"].get(user) != "地下室":
         return reject("fix_generator", "你不在地下室")
     s["power_out"] = False
+    s["power_restored"] = current_period(s)  # v3.20：记录修复时点——晚间恢复公告与清晨监控缺口精确到时段
     return {
         "ok": True,
         "type": "fix_generator",

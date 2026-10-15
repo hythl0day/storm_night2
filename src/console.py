@@ -48,8 +48,8 @@ SEPARATOR = "─" * 40
 STAGE_SEP = "═" * 46  # 阶段级双线分隔符（比席位级的 ── 更醒目）
 CURSOR = "▌"
 
-# 重大结果行（竞选/投票/出局/死亡/结局）：加分割线与席位行动段落区分开，避免混在各席行动之间
-RESULT_LINE = re.compile(r"侦探竞选：|本局不设侦探|投票结果：|出局。身份|死亡，案发房间|游戏结束")
+# 重大结果行（竞选/投票/出局/死亡/结局）：连续的同类行共享一个分割线块，与席位行动段落区分开
+RESULT_LINE = re.compile(r"侦探竞选：|本局不设侦探|竞选票型：|退选结果：|投票结果：|出局。身份|死亡，案发房间|游戏结束")
 
 # 判断一段输出是否结束在行首（允许结尾跟着 ANSI 颜色码）——思考流按行吐出时带 \x1b[0m 尾巴，
 # 若只认 endswith("\n") 会让 _partial 卡死在 True，整个思考阶段提示块被擦除不回归（game/42 复盘）。
@@ -199,6 +199,8 @@ class Ctx:
         self.tokens = 0
         self.reason_buf = ""                # 思考流按行批量吐出的缓冲
         self.day_shown = 0                  # 已显示"天亮一览"的天数（每天开始只显示一次）
+        self.result_open = False            # 重大结果分割线块当前打开（连续结果行共享一块）
+        self.receipt_open = False           # 行动回执分割线块当前打开（席位调用外的回执连续归拢）
 
 
 def make_hooks(ctx: Ctx) -> dict:
@@ -222,7 +224,24 @@ def make_hooks(ctx: Ctx) -> dict:
             buf, ctx.reason_buf = ctx.reason_buf, ""
             ctx.display.write(f"\x1b[94m{buf}\x1b[0m")
 
+    def close_blocks() -> None:
+        """关闭打开中的结果块/回执块（在非同类输出前调用，保证块边界清晰）。"""
+        if ctx.receipt_open:
+            print(f"\x1b[90m{SEPARATOR}\x1b[0m")
+            ctx.receipt_open = False
+        if ctx.result_open:
+            print(f"\x1b[92m{SEPARATOR}\x1b[0m\n")
+            ctx.result_open = False
+
+    def emit_receipt(line: str) -> None:
+        """席位调用之外的回执（归宿结算/阶段路由等）：连续回执归拢进一个「行动回执」分割线块。"""
+        if not ctx.receipt_open:
+            ctx.receipt_open = True
+            print(f"\x1b[90m── 行动回执 {SEPARATOR}\x1b[0m")
+        print(line)
+
     def on_call_start(name: str, label: str) -> None:
+        close_blocks()
         ctx.current_seat, ctx.current_label = name, label
         ctx.call_start, ctx.tokens = time.monotonic(), 0
         ctx.reason_buf = ""
@@ -262,6 +281,7 @@ def make_hooks(ctx: Ctx) -> dict:
             print(f"\x1b[90m  ✗ {result.error}\x1b[0m")
 
     def on_stage(title: str) -> None:
+        close_blocks()
         if ctx.current_stage and ctx.current_stage != title:
             print(f"\n\x1b[90m── {ctx.current_stage} · 结束 {SEPARATOR}\x1b[0m\n")
         ctx.current_stage = title
@@ -279,25 +299,47 @@ def make_hooks(ctx: Ctx) -> dict:
                 print(f"\x1b[3;90m{line}\x1b[0m")
                 break
 
+    def on_summary(title: str, lines: list) -> None:
+        """选房/归宿结算总结段（host 侧）：谁去了哪里，独立分割线块。"""
+        close_blocks()
+        print(f"\n\x1b[36m{SEPARATOR}\x1b[0m")
+        for ln in lines:
+            print(f"\x1b[1;36m{ln}\x1b[0m")
+        print(f"\x1b[36m{SEPARATOR}\x1b[0m\n")
+
     def on_public(line: str) -> None:
         if line.startswith("**"):
             return  # 发言已由 on_payload 卡片渲染过一次，公开日志行是重复（game/42 复盘修复）
         if RESULT_LINE.search(line):
-            # 重大结果加分割线，与席位行动段落分层
-            print(f"\n\x1b[92m{SEPARATOR}\x1b[0m")
+            # 重大结果：连续的同类行共享一个分割线块（竞选票型与竞选结果同块等）
+            if ctx.receipt_open:
+                print(f"\x1b[90m{SEPARATOR}\x1b[0m")
+                ctx.receipt_open = False
+            if not ctx.result_open:
+                print(f"\n\x1b[92m{SEPARATOR}\x1b[0m")
+                ctx.result_open = True
             print(f"\x1b[1;92m{line}\x1b[0m")
-            print(f"\x1b[92m{SEPARATOR}\x1b[0m\n")
         else:
+            close_blocks()
             print(f"\x1b[92m{line}\x1b[0m")
 
     def on_result(name: str, ok: bool, detail: str) -> None:
-        """动作裁决结果（host 侧，与 on_payload 的红色声明行配对）。"""
-        print(f"\x1b[90m  {'✓' if ok else '✗'} {detail}\x1b[0m")
+        """动作裁决结果（host 侧，与 on_payload 的红色声明行配对）；
+        席位调用之外（归宿结算等批量回执）归拢进行动回执块。"""
+        line = f"\x1b[90m  {'✓' if ok else '✗'} {detail}\x1b[0m"
+        if ctx.current_seat:
+            print(line)
+        else:
+            emit_receipt(line)
 
     def on_private(name: str, msg: str) -> None:
         """私密回执（host 侧全剧透）：调查/侧写结果、继任通知、记忆植入明细等。
-        回执原文是发给 AI 的第二人称，展示时转第三人称。"""
-        print(f"\x1b[90m  [{name}] {third_person(name, msg)}\x1b[0m")
+        回执原文是发给 AI 的第二人称，展示时转第三人称；席位调用之外归拢进行动回执块。"""
+        line = f"\x1b[90m  [{name}] {third_person(name, msg)}\x1b[0m"
+        if ctx.current_seat:
+            print(line)
+        else:
+            emit_receipt(line)
 
     return {
         "on_call_start": on_call_start,
@@ -305,6 +347,7 @@ def make_hooks(ctx: Ctx) -> dict:
         "on_payload": on_payload,
         "on_call_end": on_call_end,
         "on_stage": on_stage,
+        "on_summary": on_summary,
         "on_public": on_public,
         "on_result": on_result,
         "on_private": on_private,

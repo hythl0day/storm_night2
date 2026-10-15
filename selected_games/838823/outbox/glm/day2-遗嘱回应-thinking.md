@@ -1,0 +1,1 @@
+Accept powder; could be evidence. Accepting keeps it out of others' hands.

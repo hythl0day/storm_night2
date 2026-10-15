@@ -583,6 +583,11 @@ class Orchestrator:
         alive_n = sum(1 for q in s["players"] if q["alive"])
         lines = [f"- 进度：第 {day}/6 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
                  f"｜{countdown_text(day, s['last_murder_day'])}"]
+        # 供电状态（v3.20）：仅停电中或当日停电已修复时显示——白天修复后 AI 仍误以为停电的案例见 game/838823
+        if s["power_out"]:
+            lines.append("- 供电：停电中（除会客室外全部黑暗、门锁失效、监控停止记录；修复发电机前不会恢复）")
+        elif day in s.get("blackout_days", []) and s.get("power_restored"):
+            lines.append("- 供电：今日停电已被修复（门锁与监控正常工作，不再有黑暗）")
         deaths = {c["victim"]: c for c in s["cases"]}
         out_day = self.orch.get("out_day", {})
         prof_pub = set(s.get("profession_public", []))
@@ -873,14 +878,15 @@ class Orchestrator:
     def advance(self, title: str) -> dict:
         ev = self.eng.advance()
         self.log_header(title)
+        ph = self.state["phase"]
+        if not self.hooks.get("on_stage"):  # 无头模式的阶段标记；console 由 on_stage 画双线横幅
+            print(f"== 进入 第{ph['day']}天 · {ph['stage']} ==")
+        # 阶段横幅先于本阶段公告上屏（console 复盘：清晨的行动顺序/存活/倒计时曾跑到上阶段结束分隔符上方）
+        self._fire("on_stage", title)
         self.route(ev)
         if self.state["phase"]["stage"] == "案件调查":
             self.script_morning_status()
         self.save_state()
-        ph = self.state["phase"]
-        if not self.hooks.get("on_stage"):  # 无头模式的阶段标记；console 由 on_stage 画双线横幅
-            print(f"== 进入 第{ph['day']}天 · {ph['stage']} ==")
-        self._fire("on_stage", title)
         return ev
 
     def script_morning_status(self) -> None:
@@ -1289,9 +1295,12 @@ class Orchestrator:
                 # 停电在全员进入房间后才向众人公布（rules-6 §7.5）；三出口同写（feed/public/script + console）
                 self.log_line("- 停电了——除会客室外所有房间一片黑暗，所有门锁失效（保险箱除外），监控停止记录；可前往地下室修复发电机恢复供电——未修复则停电一直持续（跨天延续）")
                 self.state["blackout_news"] = None
-            self.script_line("- 选房结果：" + "、".join(f"{n}→{self.state['positions'].get(n, HALL)}" for n in assignments))
+            summary = ["选房结果：" + "、".join(f"{n}→{self.state['positions'].get(n, HALL)}" for n in assignments)]
             if invited:
-                self.script_line("  同入邀请成立：" + "、".join(f"{t} 随 {v}（{assignments[t]}）" for t, v in invited.items()))
+                summary.append("同入邀请成立：" + "、".join(f"{t} 随 {v}（{assignments[t]}）" for t, v in invited.items()))
+            for ln in summary:
+                self.script_line("- " + ln if ln.startswith("选房结果") else "  " + ln)
+            self._fire("on_summary", "选房结果", summary)  # console：结算总结独立分隔段
             for v in ev.get("device_triggers", []):
                 self.script_line(f"  延时装置触发：{v}")
             self.save_state()
@@ -1558,15 +1567,19 @@ class Orchestrator:
                 print(f"  晚间归宿结算失败：{ev.get('error')}")
                 return
             self.route(ev)
-            self.script_line("- 晚间归宿：" + "、".join(f"{n}→{r}" for n, r in ev["positions"].items()))
+            summary = ["晚间归宿：" + "、".join(f"{n}→{r}" for n, r in ev["positions"].items())]
+            self.script_line("- " + summary[0])
             if invited:
                 # 按归宿结果区分成立/未成（应邀未成的原因在行动回执的主持备注里，对玩家仍保密）
                 ok_pairs = [f"{t} 进入 {v} 的卧室" for t, v in invited.items() if ev["positions"].get(t) == bedroom_of(v)]
                 no_pairs = [f"{t} 未能进入 {v} 的卧室" for t, v in invited.items() if ev["positions"].get(t) != bedroom_of(v)]
                 if ok_pairs:
-                    self.script_line("  守夜成立：" + "、".join(ok_pairs))
+                    summary.append("守夜成立：" + "、".join(ok_pairs))
+                    self.script_line("  " + summary[-1])
                 if no_pairs:
-                    self.script_line("  守夜未成：" + "、".join(no_pairs))
+                    summary.append("守夜未成：" + "、".join(no_pairs))
+                    self.script_line("  " + summary[-1])
+            self._fire("on_summary", "晚间归宿", summary)  # console：结算总结独立分隔段
             self.script_private(ev)
             for v in ev.get("device_triggers", []):
                 self.script_line(f"  延时装置触发：{v}")
@@ -1840,9 +1853,9 @@ class Orchestrator:
             self.script_line(f"- 投票明细：{detail_votes}")
             self._fire("on_public", f"投票明细：{detail_votes}")
             w["voters"] = len(alive_names)
-            ev = self.eng.resolve_vote(votes, implant)
+            ev = self.eng.resolve_vote(votes, implant, defer_out=True)
             if not ev["ok"] and implant is not None:
-                ev = self.eng.resolve_vote(votes, None)  # 植入声明非法（如目标已死）：作废植入，不影响投票本身
+                ev = self.eng.resolve_vote(votes, None, defer_out=True)  # 植入声明非法（如目标已死）：作废植入，不影响投票本身
             elif ev["ok"] and implant is not None:
                 self.script_line(f"  记忆植入：{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
                 self._fire("on_private", "记忆植入", f"{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
@@ -1861,6 +1874,31 @@ class Orchestrator:
         public = ev.get("public") or {}
         out = public.get("out")
         tally = public.get("tally") or {}
+        # v3.21：出局执行前窗口——投票将导致最后一名平民出局时，先公布票型，
+        # 该平民可行使武装指认（背水一战）；指认结算（宣言/遗言/公布/遗嘱）由 run_armed_accusation 接管
+        if out and self.state.get("pending_out") and not w.get("pre_exec_done"):
+            civilians = [q["name"] for q in self.alive() if q["identity"] == "平民"]
+            if len(civilians) == 1 and civilians[0] == out:
+                detail = "、".join(f"{t} {_fmt_votes(c)}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
+                voters = w.get("voters") or len(self.alive())
+                self.log_line(f"投票结果：{detail}——{out} 过半数（存活 {voters} 人，需 >{voters / 2:g} 票）"
+                              f"——出局结算前，{out} 仍可行使武装指认")
+                self.run_armed_accusation()
+                if not self.state.get("pending_out"):
+                    w["pre_exec_done"] = True
+                    w["routed"] = True
+                    self.save_state()
+                    return
+            if self.state.get("pending_out"):
+                exec_ev = self.eng.execute_pending_out()
+                public["identity"] = exec_ev["public"].get("identity")
+                public["profession"] = exec_ev["public"].get("profession")
+                public.setdefault("announcements", [])
+                public["announcements"] += exec_ev["public"]["announcements"]
+                ev["private"] = {**ev.get("private", {}), **exec_ev.get("private", {})}
+                w["ev"] = ev
+            w["pre_exec_done"] = True
+            self.save_state()
         if out and not w["last_words"]:
             op = self.player(out)
             owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == out]
@@ -1983,13 +2021,15 @@ class Orchestrator:
         self.save_state()
 
     def run_armed_accusation(self) -> None:
-        """武装指认（rules-6 §7.3，本轮投票无人出局）：有侦探时仅侦探（须持有武器）；
-        无侦探时持武器平民可指认，桌上凶器仍在时任意平民可临时取用。每次投票至多一次指认。"""
+        """武装指认（rules-6 §7.3，v3.21 淘汰制）：指对→杀手出局（帮凶继任，游戏继续），指错→指认者出局。
+        触发：① 本轮投票无人出局；② 最后一名平民出局执行前（pending_out 为本人，背水一战）。
+        出局者的遗言（先于身份公布）与遗嘱流程与投票出局一致。每次投票至多一次（引擎级守卫）。"""
         day = self.state["phase"]["day"]
         w = self.wip(f"{day}:投票:武装指认", done=[], fired=False)
         if w["fired"]:
             return
         det = self.state.get("detective")
+        pending = self.state.get("pending_out")
         table_armed = any(e["name"] in ARMED_WEAPONS for e in self.state.get("table_items", []))
         for name in self.state["order"]:
             if self.state["winner"]:
@@ -1999,6 +2039,8 @@ class Orchestrator:
             p = self.player(name)
             if not p or not p["alive"] or p["identity"] != "平民":
                 continue
+            if pending is not None and name != pending:
+                continue  # 触发②：仅即将出局的最后一名平民
             armed = bool(held_item_names(p, day) & set(ARMED_WEAPONS))
             if det is not None:
                 if name != det or not armed:
@@ -2006,15 +2048,21 @@ class Orchestrator:
             elif not armed and not table_armed:
                 continue  # 无侦探：持武器平民，或桌上凶器仍在时的任意平民（临时取用）
             others = [q["name"] for q in self.alive() if q["name"] != name]
+            payoff = "指对 → 杀手出局（帮凶继任，游戏继续）；指错 → 你出局"
             if armed:
-                menu = [f'- 武装指认某人为杀手（指对平民立即获胜；指错你直接出局）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
+                menu = [f'- 武装指认某人为杀手（{payoff}）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
                         "- 不指认则 actions 为 []"]
-                hint = "本轮投票无人出局。你持有武器，可以选择武装指认——机会只有一次，慎重。"
-                if name == det:
-                    hint = "本轮投票无人出局。你是侦探——本局仅你可行使武装指认；你持有武器，可以选择指认——机会只有一次，慎重。"
             else:
-                menu = [f'- 临时拿起会客室桌上的凶器，武装指认某人为杀手（指对平民立即获胜；指错你直接出局，凶器仍在桌上）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
+                menu = [f'- 临时拿起会客室桌上的凶器，武装指认某人为杀手（{payoff}；凶器不消耗、指认后仍在桌上）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}',
                         "- 不指认则 actions 为 []"]
+            if pending is not None:
+                hint = ("投票结果将使你出局——这是你最后的机会：武装指认，背水一战。"
+                        "指对，杀手伏法、你获救（游戏继续）；指错，你按原判决出局。也可以选择不指认。")
+            elif name == det:
+                hint = "本轮投票无人出局。你是侦探——本局仅你可行使武装指认；你持有武器，可以选择指认——机会只有一次，慎重。"
+            elif armed:
+                hint = "本轮投票无人出局。你持有武器，可以选择武装指认——机会只有一次，慎重。"
+            else:
                 hint = "本轮投票无人出局。桌上凶器仍在会客室桌上，你可以临时取用进行武装指认——机会只有一次，慎重。"
             briefing = self.build_briefing(p, f"第{day}天 · 武装指认", menu, hint)
             payload = self.call_ai(p, "武装指认", briefing)
@@ -2026,26 +2074,46 @@ class Orchestrator:
                         speech = str(payload.get("speech") or "").strip()
                         if speech:
                             self.log_line(f"**{name}**（武装指认宣言）：{speech}")  # 指认宣言公开（v3.8）
-                        self.route(ev)
                         fired = True
-                        if not self.player(name)["alive"]:
-                            self.orch["out_day"][name] = day
+                        out_name = ev["public"].get("out")
+                        if out_name:
+                            self._accuse_aftermath(out_name, ev, day)
+                            self.orch["out_day"][out_name] = day
                     else:
                         self.reject_note(p, ev)
             w["done"].append(name)
             if fired:
                 w["fired"] = True
                 self.save_state()
-                # 指认错误出局者的遗留道具（与侦探徽章）同样走遗嘱流程（v3.2/v3.3）
-                if not self.player(name)["alive"] and (any(e.get("from") == name for e in self.state["sealed_items"])
-                                                       or name == self.state.get("detective")):
-                    mapping = self.ask_bequest_map(
-                        p, f"第{day}天 · 遗嘱",
-                        "你的指认错误，你出局了（身份已公布）。你的遗留道具由你指定归属。")
-                    self.run_bequest(name, mapping)
                 return  # 一次投票后至多一次指认
             self.save_state()
             self.check_stop()
+
+    def _accuse_aftermath(self, out: str, ev: dict, day: int) -> None:
+        """武装指认出局者的后事（v3.21，与投票出局同口径）：遗言（先于身份公布）→ 路由公布 → 遗嘱。"""
+        op = self.player(out)
+        owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == out]
+        has_badge = out == self.state.get("detective")
+        menu = ["- 本环节无动作可做，actions 返回 []"]
+        extra = "你被武装指认出局了。发表你的遗言（可以撒谎）——遗言之后主持人将公布你的身份。"
+        if owned or has_badge:
+            menu = ['- 遗嘱：逐件指定遗留归属（未指定/被拒收的放回会客室桌上；遗嘱公开）：'
+                    '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']
+        if owned:
+            extra += f"\n你留下的未使用道具：{'、'.join(owned)}。在遗言中一并指定归属。"
+        if has_badge:
+            extra += "\n你是侦探——侦探徽章也在遗嘱之列（mapping 里以「警徽」为键指定一名存活玩家继任；不指定则销毁，本局不再设侦探）。"
+        payload = self.call_ai(op, "遗言", self.build_briefing(op, f"第{day}天 · 遗言", menu, extra))
+        last_words = str(payload.get("speech") or "").strip()
+        if last_words:
+            self.log_line(f"**{out} 的遗言**：{last_words}")
+        mapping = {}
+        for act in payload["actions"]:
+            if act.get("type") == "bequeath" and isinstance(act.get("mapping"), dict):
+                mapping = {str(k): (None if v in (None, "销毁") else str(v)) for k, v in act["mapping"].items()}
+        self.route(ev)  # 出局公告与身份公布、帮凶继任私密通知（遗言之后）
+        if owned or has_badge:
+            self.run_bequest(out, mapping)
 
     def _coverable_cases(self, day: int) -> list[dict]:
         """仍可毁证的案件（v3.19 起仅限案发当天；v3.18 起毁证者须身处案发现场）。"""

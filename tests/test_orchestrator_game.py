@@ -299,6 +299,56 @@ class TestCivilianWinEnding(MockGameTestBase):
         b_brief = (d / "inbox" / "B" / "day2-晚间休息.md").read_text(encoding="utf-8")
         self.assertNotIn("仅限案发当天", b_brief)  # B 无毁证手段（延时装置不算），不提示
 
+    def test_last_civilian_pre_execution_accusation(self):
+        """v3.21 集成（1v2 残局）：投票将导致最后平民出局 → 结算前窗口发动指认 → 指对则杀手出局
+        （遗言/身份公布/遗嘱同投票出局）、帮凶继任、本人获救、游戏继续。"""
+        players = [p for p in self.players() if p["name"] in ("A", "B", "D")]  # 1 平民 D + 2 反派
+        d = write_game_dir(self.root, players)
+        sj = d / "state.json"
+        st = json.loads(sj.read_text(encoding="utf-8"))
+        st["phase"] = {"day": 4, "stage": "投票"}
+        st["table_items"] = [{"name": "左轮手枪", "uses_left": 1}]  # D 手无武器，桌上枪可临时取用
+        sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        base = make_fake_chat(False)
+
+        def chat_endgame(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            name = player.name
+            if "武装指认" in title:
+                return ChatResult(name, ok=True,
+                                  content=payload(speech="你们要票我？那先回答我——你就是杀手！",
+                                                  actions=[{"type": "armed_accuse", "target": "A"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "夜袭" in title and name == "B":
+                return ChatResult(name, ok=True, content=payload(actions=[{"type": "murder", "target": "D"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "晚间休息" in title and name == "B" and day == 4:
+                return ChatResult(name, ok=True, content=payload(actions=[{"type": "night_raid", "room": "D的卧室"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "投票" in title:
+                tgt = "D" if name in ("A", "B") else "A"
+                return ChatResult(name, ok=True, content=payload(actions=[{"type": "vote", "target": tgt}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_endgame)
+        s = orch.state
+        names = {p["name"]: p for p in s["players"]}
+        self.assertFalse(names["A"]["alive"])              # 杀手被指认出局（第 4 天投票处）
+        self.assertTrue(s["orch"]["out_day"].get("A") == 4)
+        self.assertEqual(names["B"]["identity"], "杀手")   # 帮凶继任
+        self.assertFalse(names["D"]["alive"])              # 平民获救后当夜被继任者杀死（决斗真实发生）
+        self.assertEqual(s["winner"], "反派")
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("仍可行使武装指认", log)
+        self.assertIn("指认正确", log)
+        self.assertIn("**A 的遗言**", log)                  # 处决流程与投票出局一致
+        self.assertIn("A 出局。身份：杀手", log)
+        self.assertTrue((d / "inbox" / "D" / "day4-武装指认.md").exists())
+
     def test_briefing_key_records(self):
         """简报含"截至目前的关键记录"：公共事实流水 + 该席私密历史；不含发言与内心独白。"""
         d = write_game_dir(self.root, self.players())
@@ -1093,6 +1143,44 @@ class TestBlackoutDiscovery(MockGameTestBase):
         night2 = next(v for t, v in locks_snap.items() if "第2天" in t and "晚间休息" in t)
         self.assertTrue(night2["监控室"])
 
+    def test_power_restored_notifications(self):
+        """v3.20：白天修复发电机后——晚间休息公告供电已恢复、当夜监控恢复记录、
+        清晨缺口精确到"仅自由活动时段"（不再与夜间记录矛盾）、简报「游戏状态」显示供电已修复。
+        （game/838823：杀手白天拉闸、平民当天修复，杀手仍误以为当夜"监控空白"）"""
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+
+        def chat_repair(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            name = player.name
+            if day == 2 and "停电声明" in title and name == "B":
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 2 and "选房" in title:
+                acts = [{"type": "choose_room", "room": "会客室"}]
+                if name == "C":
+                    acts = [{"type": "choose_room", "room": "地下室"}]
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 2 and "房间行动" in title and name == "C":
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=[{"type": "fix_generator"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_repair)
+        s = orch.state
+        self.assertFalse(s["power_out"])
+        self.assertEqual(s["power_restored"], "第2天自由活动")
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作", log)
+        self.assertIn("第2天晚间休息", s["monitoring_true"])  # 当夜归宿进入恢复记录（空白不回溯，修复后正常）
+        night_brief = (d / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("供电：今日停电已被修复", night_brief)
+
     def test_permanently_opened_doors_in_game_state(self):
         """E（万能钥匙）第 2 天首开监控室后，「游戏状态」段列出「已永久开启」——跨天锁台账
         不再依赖 AI 自己记笔记（替代被删除的选房锁标注）。"""
@@ -1263,12 +1351,33 @@ class TestScriptFmt(MockGameTestBase):
         hooks = make_hooks(Ctx(None, None))
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            hooks["on_public"]("投票结果：A 3票——A 过半数出局")
-            hooks["on_public"]("夜宿会客室公开：A、B")  # 普通公告不带分割线
-            hooks["on_private"]("B", "你用万能钥匙拉开了电闸")
+            hooks["on_public"]("竞选票型：C→D、E→D")          # 连续结果行共享一个分割线块
+            hooks["on_public"]("侦探竞选：D 当选侦探")
+            hooks["on_public"]("夜宿会客室公开：A、B")          # 普通公告：关闭块，不带分割线
+            hooks["on_private"]("B", "你用万能钥匙拉开了电闸")  # 席位调用外 → 行动回执块
         out = buf.getvalue()
-        self.assertEqual(out.count("─" * 40), 2)          # 只有投票结果带前后分割线
-        self.assertIn("B用万能钥匙拉开了电闸", out)          # 私密回执转第三人称
+        self.assertEqual(out.count("─" * 40), 3)              # 结果块前后 2 条 + 回执块头 1 条（尾部无后续输出则不补）
+        self.assertLess(out.index("竞选票型"), out.index("侦探竞选"))
+        self.assertIn("行动回执", out)
+        self.assertIn("B用万能钥匙拉开了电闸", out)              # 私密回执转第三人称
+
+    def test_console_summary_and_receipt_blocks(self):
+        import contextlib
+        import io
+        from src.console import Ctx, make_hooks
+        ctx = Ctx(None, None)
+        hooks = make_hooks(ctx)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            hooks["on_summary"]("晚间归宿", ["晚间归宿：A→A的卧室、B→B的卧室", "守夜成立：C 进入 D 的卧室"])
+            hooks["on_private"]("B", "你无法进入（不知原因）")
+            hooks["on_private"]("C", "你进入了书房")
+            hooks["on_call_start"]("A", "晚间休息")
+        out = buf.getvalue()
+        self.assertIn("晚间归宿：A→A的卧室", out)      # 总结段上屏（此前只写 script.md）
+        self.assertIn("守夜成立：C 进入 D 的卧室", out)
+        self.assertEqual(out.count("行动回执"), 1)          # 连续回执归拢为一块，不窜行
+        self.assertLess(out.index("行动回执"), out.index("B无法进入"))
 
 
 if __name__ == "__main__":

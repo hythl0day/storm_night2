@@ -1,0 +1,3 @@
+**Choosing the right invitation**
+
+I’m thinking about how to coordinate the invites for night one. It’s important to invite allies and ensure the conversation can happen privately without monitoring. Using 智谱 allows for that private talk setting. So, I’m focusing on choosing the best invitation method to facilitate that. It sounds like having this coordination is going to be key for an effective gathering. I definitely want to make sure it’s set up just right!

@@ -1,0 +1,1 @@
+Plan: blackout, then go to kill Qimi. But I need action order: 豆包→杰普特→智谱→克劳德→奇米→格罗克(out). After blackout everyone is in dark except会客室. I'm 3rd. 豆包 and 杰普特 chose rooms before blackout; I enter after them—can't see where they went (dark). Risk: 豆包 might be with 奇米? Blackout declared secretly. Proceed.

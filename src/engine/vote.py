@@ -6,9 +6,11 @@
 - 出局者公布身份与职业；出局者是杀手时帮凶私下继任杀手。
 - 反派全部出局 → 平民获胜；平民全灭 → 反派获胜（v3.14：删去"只剩 1 平民直接判负"，残局自然打完）。
 - 【记忆植入】：反派心理医生强迫一名玩家改投指定对象；公告只说"票数被更改过"。
-- 武装指认（第 2 天首次投票起）：未产生出局者的投票后——有侦探时仅侦探（须持有武器）；
-  无侦探时持武器平民可指认，桌上凶器仍在时平民也可临时取用指认。
-  正确→平民立即获胜；指认为帮凶/平民→指认者出局（揭示身份职业，并复査平民人数）。
+- 武装指认（第 2 天首次投票起，v3.21 淘汰制）：投票结算后、出局执行前发动——① 未产生出局者的投票后；
+  ② 投票将导致最后一名平民出局时，该平民在出局执行前（背水一战）。
+  正确→被指认的杀手出局（帮凶私下继任，游戏继续；帮凶已不在则反派全灭平民胜）；
+  指认为帮凶/平民→指认者出局。指认不消耗武器；临时取用桌上凶器指认后放回（无论对错）。
+  有侦探时仅侦探（须持有武器）；无侦探时持武器平民可指认，桌上凶器仍在时平民也可临时取用指认。
 - v3.5 遗嘱制：接受的道具当天即可用；未指定/被拒收的道具不销毁，放回会客室桌上。
 """
 from __future__ import annotations
@@ -35,10 +37,48 @@ def _seal_player_items(state: dict, p: dict) -> None:
             p["items"].remove(e)
 
 
-def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None = None) -> dict:
+def _execute_out(s: dict, out: str, public: dict, private: dict) -> None:
+    """出局结算（投票处决/武装指认处决共用）：死亡、未使用道具封存、身份职业公开；
+    出局者是杀手时帮凶私下继任（rules-6 §7.3）。"""
+    op = get_player(s, out)
+    op["alive"] = False
+    if out not in s["profession_public"]:
+        s["profession_public"].append(out)
+    _seal_player_items(s, op)
+    public["identity"] = op["identity"]
+    public["profession"] = op["profession"]
+    public["announcements"].append(f"{out} 出局。身份：{op['identity']}；职业：{op['profession']}")
+    if op["identity"] == "杀手":
+        heir = next((p for p in s["players"] if p["alive"] and p["identity"] == "帮凶"), None)
+        if heir is not None:
+            heir["identity"] = "杀手"
+            private[heir["name"]] = "杀手已出局，你立即继任为杀手（此消息不公开）"
+
+
+def execute_pending_out(state: dict) -> dict:
+    """v3.21：执行被 defer 的出局结算（最后平民的结算前武装指认窗口关闭——放弃或被驳回后）。"""
+    s = state
+    out = s.pop("pending_out", None)
+    if out is None:
+        return reject("execute_pending_out", "没有待执行的出局结算")
+    public: dict = {"announcements": []}
+    private: dict = {}
+    _execute_out(s, out, public, private)
+    check_winner(s)
+    ev = {"ok": True, "type": "execute_out", "public": public, "private": private}
+    if s["winner"]:
+        ev["winner"] = s["winner"]
+        ev["win_reason"] = s["win_reason"]
+    return ev
+
+
+def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None = None,
+                 defer_out: bool = False) -> dict:
     """投票结算。votes: {投票人: 目标或 None(弃权)}，缺席者按弃权计。
 
     implant: {"by": 反派心理医生, "voter": 被强迫者, "target": 指定目标}（【记忆植入】）。
+    defer_out=True：只计票不执行出局（out 写入 pending_out）——v3.21 最后一名平民的
+    结算前武装指认窗口用；窗口关闭后由 execute_pending_out / armed_accusation 完成结算。
     """
     s = state
     if s["winner"]:
@@ -84,19 +124,11 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
         public["announcements"].append("票数被更改过")
     private: dict = {}
     if out is not None:
-        op = get_player(s, out)
-        op["alive"] = False
-        if out not in s["profession_public"]:
-            s["profession_public"].append(out)
-        _seal_player_items(s, op)
-        public["identity"] = op["identity"]
-        public["profession"] = op["profession"]
-        public["announcements"].append(f"{out} 出局。身份：{op['identity']}；职业：{op['profession']}")
-        if op["identity"] == "杀手":
-            heir = next((p for p in s["players"] if p["alive"] and p["identity"] == "帮凶"), None)
-            if heir is not None:
-                heir["identity"] = "杀手"
-                private[heir["name"]] = "杀手已被投票出局，你立即继任为杀手（此消息不公开）"
+        if defer_out:
+            s["pending_out"] = out  # v3.21：出局结算待执行——最后平民可先武装指认
+            public["deferred"] = True
+        else:
+            _execute_out(s, out, public, private)
     s["last_vote"] = {"day": day, "out": out}
     check_winner(s)  # v3.14：删去"只剩 1 平民反派直接胜"——残局由下一轮投票自然了结，死锁由主神兜底
     ev = {"ok": True, "type": "vote", "public": public, "private": private}
@@ -107,26 +139,37 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
 
 
 def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
-    """武装指认（rules-6 §7.3）：第 2 天首次投票起，一次未产生出局者的投票后。
+    """武装指认（rules-6 §7.3，v3.21 淘汰制）：第 2 天首次投票起，投票结算后、出局执行前发动。
 
-    资格（v3.5）：
-    - 仅限平民；有侦探时仅侦探本人（且须持有武器——枪/刀/棍）；
-    - 无侦探时，持有武器的平民可指认；桌上仍有凶器（枪/刀/棍）时任何平民可临时取用指认
-      （临时取用不进入道具栏，指认错误出局后凶器仍在桌上）。
-    指认正确 → 平民立即获胜；指认为帮凶/平民 → 指认者出局（揭示身份职业，并复查平民人数）。
+    收益：指对 → 被指认的**杀手出局**（遗言/身份公布/遗嘱同投票出局；帮凶私下继任，游戏继续——
+    帮凶已不在则反派全灭、平民获胜）；指错（帮凶/平民）→ **指认者出局**（公开可推知所指非杀手）。
+    发动时机：① 一次投票未产生出局者时（last_vote.out 为空）；
+    ② 投票将导致**最后一名平民**出局时——该平民在出局执行前（pending_out 为本人且平民仅剩 1 人）。
+    资格（v3.5）：仅限平民；有侦探时仅侦探本人（且须持有武器——枪/刀/棍）；
+    无侦探时，持有武器的平民可指认；桌上仍有凶器时任何平民可临时取用指认
+    （临时取用不进入道具栏，指认后凶器仍在桌上——无论对错）。指认不消耗武器。
     """
     s = state
     if s["winner"]:
         return reject("armed_accusation", "游戏已结束")
     day = s["phase"]["day"]
     if s["phase"]["stage"] != "投票":
-        return reject("armed_accusation", "只能在投票后指认")
+        return reject("armed_accusation", "只能在投票阶段指认")
     lv = s["last_vote"]
-    if not lv or lv["day"] != day or lv["out"] is not None:
-        return reject("armed_accusation", "只能在未产生出局者的投票后指认")
+    if not lv or lv["day"] != day:
+        return reject("armed_accusation", "当前不在投票结算后的指认窗口")
+    if s.get("accusation_fired_day") == day:
+        return reject("armed_accusation", "本轮投票已有一次指认（每次投票至多一次）")
+    pending = s.get("pending_out")
+    if pending is None and lv["out"] is not None:
+        return reject("armed_accusation", "本轮投票已产生出局者（仅最后一名平民可在结算前指认）")
+    if pending is not None and accuser != pending:
+        return reject("armed_accusation", "只有即将出局的最后一名平民能在结算前指认")
     ap = get_player(s, accuser)
     if ap is None or not ap["alive"] or ap["identity"] != "平民":
         return reject("armed_accusation", "只有存活平民能武装指认")
+    if pending is not None and sum(1 for p in s["players"] if p["identity"] == "平民") != 1:
+        return reject("armed_accusation", "结算前指认仅限最后一名平民")
     det = s.get("detective")
     temp_grab = False
     if det is not None:
@@ -145,26 +188,26 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
     if sp is None or not sp["alive"]:
         return reject("armed_accusation", "指认对象必须是存活玩家")
     grab_note = f"{accuser} 拿起会客室桌上的凶器，" if temp_grab else ""
+    table_note = "（临时取用的凶器已放回桌上）" if temp_grab else ""
+    s["accusation_fired_day"] = day  # 每次投票至多一次指认（引擎级守卫，防续跑重复）
     if sp["identity"] == "杀手":
-        s["winner"] = "平民"
-        s["win_reason"] = "武装指认杀手成功"
-        return {
-            "ok": True,
-            "type": "armed_accusation",
-            "public": {"announcements": [f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认正确，平民获胜"]},
-            "private": {},
-            "winner": s["winner"],
-            "win_reason": s["win_reason"],
-        }
-    ap["alive"] = False
-    if accuser not in s["profession_public"]:
-        s["profession_public"].append(accuser)
-    _seal_player_items(s, ap)
-    public = {"announcements": [
-        f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误，{accuser} 出局。身份：{ap['identity']}；职业：{ap['profession']}"
-        + ("（桌上凶器仍在会客室桌上）" if temp_grab else "")
-    ]}
-    check_winner(s)  # v3.14：同 resolve_vote，不再单独复查"只剩 1 平民"
+        s.pop("pending_out", None)  # 触发②：处决对象替换为杀手——最后平民获救
+        public = {"out": suspect, "announcements": [
+            f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认正确{table_note}"]}
+        private: dict = {}
+        _execute_out(s, suspect, public, private)
+        check_winner(s)  # 帮凶继任则游戏继续；帮凶已不在则反派全灭、平民胜
+        ev = {"ok": True, "type": "armed_accusation", "public": public, "private": private}
+        if s["winner"]:
+            ev["winner"] = s["winner"]
+            ev["win_reason"] = s["win_reason"]
+        return ev
+    s.pop("pending_out", None)  # 触发②且指错：按原处决——指认者（最后平民）出局
+    public = {"out": accuser, "announcements": [
+        f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误"
+        + ("（桌上凶器仍在会客室桌上）" if temp_grab else "")]}
+    _execute_out(s, accuser, public, {})
+    check_winner(s)
     ev = {"ok": True, "type": "armed_accusation", "public": public, "private": {}}
     if s["winner"]:
         ev["winner"] = s["winner"]

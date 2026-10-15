@@ -1,0 +1,1 @@
+I killed 奇米. Investigation choice—pick something useful for fabricating narrative. 死亡时间 could reveal details; I already used 伪造证物. Choose 武器伤痕 to know what's known, or 死亡时间. To craft alibi, 死亡时间 useful. Pick 死亡时间.

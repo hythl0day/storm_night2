@@ -65,8 +65,12 @@ class Engine:
     def stage_magic(self, user: str, target: str) -> dict:
         return murder_mod.stage_magic(self.state, user, target)
 
-    def resolve_vote(self, votes: dict[str, str | None], implant: dict | None = None) -> dict:
-        return vote_mod.resolve_vote(self.state, votes, implant)
+    def resolve_vote(self, votes: dict[str, str | None], implant: dict | None = None,
+                     defer_out: bool = False) -> dict:
+        return vote_mod.resolve_vote(self.state, votes, implant, defer_out=defer_out)
+
+    def execute_pending_out(self) -> dict:
+        return vote_mod.execute_pending_out(self.state)
 
     def armed_accusation(self, accuser: str, suspect: str) -> dict:
         return vote_mod.armed_accusation(self.state, accuser, suspect)
@@ -250,6 +254,9 @@ class Engine:
                 s["locks"][HALL] = True  # v3.4：会客室夜间自动落锁（第 4 天起全开）
             if s["power_out"]:
                 public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗——含卧室（守夜密谈/围炉夜谈仍可低声进行）；修复发电机前不会恢复")
+            elif s["phase"]["day"] in s.get("blackout_days", []) and s.get("power_restored"):
+                # v3.20：白天修复后，晚间开始时明确告知供电已恢复（game/838823：杀手误以为当夜仍停电）
+                public["announcements"].append("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作，不再有黑暗")
 
     def _morning_report(self, day: int, public: dict, private: dict) -> None:
         """清晨公告：昨日死亡与未遂、强制开锁、职业公开、尸体道具封存、桌上物品变动、监控公开宣读。"""
@@ -293,7 +300,13 @@ class Engine:
             public["monitoring"] = monitoring_public
             public["announcements"].append("监控公开宣读：案发时间段（案发房间 + 死者卧室）的进入者名单如下")
             if yday in s.get("blackout_days", []):
-                public["announcements"].append("（昨日停电，当日时段监控记录缺失——缺失不代表无人进入）")
+                # v3.20：缺口精确到时段——修复于自由活动则仅该时段缺失；修复于晚间（归宿结算后）或
+                # 未修复则当夜同样缺失（game/838823：粗口径"当日时段缺失"与随后宣读的夜间记录矛盾）
+                missing = [f"第{yday}天自由活动"]
+                if s.get("power_restored") != f"第{yday}天自由活动":
+                    missing.append(f"第{yday}天晚间休息")
+                public["announcements"].append(
+                    f"（昨日停电，{'与'.join(missing)}时段监控记录缺失——缺失不代表无人进入）")
 
     def choose_room_one(self, name: str, room: str) -> dict:
         """顺序结算的单人进入（v3.5）：进入即开锁（自动消耗手段）；无法进入者滞留会客室。

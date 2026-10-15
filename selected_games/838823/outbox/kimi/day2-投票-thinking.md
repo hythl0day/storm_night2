@@ -1,0 +1,1 @@
+Vote for Grock. Evidence strongest, powder unexplained. 3.5 threshold, need to rally but no speech here.

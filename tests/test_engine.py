@@ -590,7 +590,8 @@ class TestVote(unittest.TestCase):
         self.assertEqual(eng.state, snap)
 
     def test_armed_accusation(self):
-        """v3：首次投票（第 2 天）无人出局即可武装指认；非平民不可指认。"""
+        """v3：首次投票（第 2 天）无人出局即可武装指认；非平民不可指认。
+        v3.21 淘汰制：指对 → 杀手出局、帮凶继任、游戏继续；帮凶已不在才平民胜。"""
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
@@ -599,8 +600,21 @@ class TestVote(unittest.TestCase):
         self.assertFalse(eng.armed_accusation("C", "A")["ok"])  # C 手无武器
         ev = eng.armed_accusation("E", "A")
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev.get("winner"), "平民")
-        self.assertIn("武装指认", eng.state["win_reason"])
+        self.assertIsNone(eng.winner)                            # 帮凶继任，游戏继续
+        self.assertEqual(ev["public"]["out"], "A")
+        self.assertFalse(player(eng, "A")["alive"])              # 杀手出局
+        self.assertEqual(player(eng, "B")["identity"], "杀手")   # 帮凶私下继任
+        self.assertFalse(eng.armed_accusation("E", "B")["ok"])   # 每次投票至多一次（引擎级守卫）
+        # 帮凶已不在时指认杀手 → 反派全灭、平民胜
+        players2 = default_players()
+        players2[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
+        eng2 = Engine(mk_state(players=players2))
+        player(eng2, "B")["alive"] = False
+        goto(eng2, "投票", day=2)
+        eng2.resolve_vote({"C": "A", "D": "A", "E": None, "F": None})  # 平票无人出局
+        ev2 = eng2.armed_accusation("E", "A")
+        self.assertTrue(ev2["ok"], ev2)
+        self.assertEqual(ev2.get("winner"), "平民")
 
     def test_armed_accusation_wrong_target(self):
         players = default_players()
@@ -1093,6 +1107,30 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         player(eng, "A")["items"].append({"name": "可疑的粉末", "uses_left": 1, "available_day": 1})
         ev = eng.falsify("A", 1, "伪造证物")   # 杀手本人在场 → 仍可毁证
         self.assertTrue(ev["ok"], ev)
+
+    def test_morning_gap_note_precise_periods(self):
+        """v3.20：停电监控缺口公告精确到时段——白天（自由活动）修复则仅该时段缺失，
+        不与宣读到的夜间记录矛盾；未修复则自由活动与当夜一并报缺失（game/838823 粗口径误导）。"""
+        eng = Engine(mk_state())
+        self.kill_e_day2(eng)  # 第 2 天有案件 → 清晨有监控宣读与缺口公告
+        eng.state["blackout_days"] = [2]
+        eng.state["power_restored"] = "第2天自由活动"
+        ev = None
+        while eng.state["phase"] != {"day": 3, "stage": "案件调查"}:
+            ev = eng.advance()
+        text = "\n".join(ev["public"]["announcements"])
+        self.assertIn("第2天自由活动时段监控记录缺失", text)
+        self.assertNotIn("第2天晚间休息时段监控记录缺失", text)
+        # 未修复（或晚间才修复）：当夜记录同样缺失
+        eng2 = Engine(mk_state())
+        self.kill_e_day2(eng2)
+        eng2.state["blackout_days"] = [2]
+        eng2.state["power_restored"] = None
+        ev2 = None
+        while eng2.state["phase"] != {"day": 3, "stage": "案件调查"}:
+            ev2 = eng2.advance()
+        text2 = "\n".join(ev2["public"]["announcements"])
+        self.assertIn("第2天自由活动与第2天晚间休息时段监控记录缺失", text2)
 
     def test_coverup_day_limit(self):
         """v3.19：毁证/移尸仅限案发当天——次日（清晨调查后）即使身处案发现场也无法再改动。"""
@@ -1595,7 +1633,9 @@ class TestTableWeapon(unittest.TestCase):
         self.assertIn("侦探", ev["error"])  # 有侦探时仅侦探本人
         ev = eng.armed_accusation("C", "A")
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev.get("winner"), "平民")
+        self.assertFalse(player(eng, "A")["alive"])              # v3.21：杀手出局、帮凶继任
+        self.assertEqual(player(eng, "B")["identity"], "杀手")
+        self.assertIsNone(eng.winner)
 
     def test_accusation_detective_needs_weapon(self):
         """侦探须持有武器才能指认（佩枪被缴获/送出后指认能力悬空）。"""
@@ -1628,7 +1668,9 @@ class TestTableWeapon(unittest.TestCase):
         eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})
         ev = eng.armed_accusation("C", "A")  # C 手无武器，临时取用桌上凶器
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev.get("winner"), "平民")
+        self.assertFalse(player(eng, "A")["alive"])              # v3.21：杀手出局、帮凶继任
+        self.assertEqual(player(eng, "B")["identity"], "杀手")
+        self.assertIsNone(eng.winner)
         self.assertIn("桌上的凶器", ev["public"]["announcements"][0])
 
     def test_accusation_temp_grab_wrong_keeps_gun_on_table(self):
@@ -1650,6 +1692,49 @@ class TestTableWeapon(unittest.TestCase):
         ev = eng.armed_accusation("C", "A")
         self.assertFalse(ev["ok"])
         self.assertIn("武器", ev["error"])
+
+    def test_accusation_last_civilian_pre_execution(self):
+        """v3.21：投票将导致最后一名平民出局时，该平民可在出局执行前武装指认（背水一战）——
+        指对则杀手出局、本人获救、帮凶继任；指错按原处决；放弃则 execute_pending_out 按原处决。"""
+        trio = [P("A", "杀手", "魔术师", "刀", gender="男", physique=4),
+                P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2),
+                P("C", "平民", "医师", "急救箱", gender="女", physique=3)]
+
+        # 指对：杀手伏法、最后平民获救
+        eng = Engine(mk_state(players=[dict(p) for p in trio]))
+        goto(eng, "投票", day=2)
+        eng.resolve_vote({"A": "C", "B": "C", "C": "A"}, defer_out=True)  # C 2 票过半 → 待执行
+        self.assertEqual(eng.state["pending_out"], "C")
+        self.assertTrue(player(eng, "C")["alive"])  # 尚未执行
+        self.assertFalse(eng.armed_accusation("B", "A")["ok"])  # 仅本人可用
+        player(eng, "C")["items"].append({"name": "左轮手枪", "uses_left": 1, "available_day": 1})
+        ev = eng.armed_accusation("C", "A")
+        self.assertTrue(ev["ok"], ev)
+        self.assertFalse(player(eng, "A")["alive"])   # 杀手出局
+        self.assertTrue(player(eng, "C")["alive"])    # 最后平民获救
+        self.assertEqual(player(eng, "B")["identity"], "杀手")  # 帮凶继任
+        self.assertIsNone(eng.winner)
+        self.assertIsNone(eng.state.get("pending_out"))
+
+        # 指错（指到帮凶）：按原处决，本人出局 → 反派胜
+        eng2 = Engine(mk_state(players=[dict(p) for p in trio]))
+        goto(eng2, "投票", day=2)
+        eng2.resolve_vote({"A": "C", "B": "C", "C": "A"}, defer_out=True)
+        player(eng2, "C")["items"].append({"name": "左轮手枪", "uses_left": 1, "available_day": 1})
+        ev2 = eng2.armed_accusation("C", "B")
+        self.assertTrue(ev2["ok"], ev2)
+        self.assertFalse(player(eng2, "C")["alive"])
+        self.assertEqual(eng2.state["winner"], "反派")
+
+        # 放弃指认：execute_pending_out 按原处决
+        eng3 = Engine(mk_state(players=[dict(p) for p in trio]))
+        goto(eng3, "投票", day=2)
+        eng3.resolve_vote({"A": "C", "B": "C", "C": "A"}, defer_out=True)
+        ev3 = eng3.execute_pending_out()
+        self.assertTrue(ev3["ok"], ev3)
+        self.assertFalse(player(eng3, "C")["alive"])
+        self.assertEqual(eng3.state["winner"], "反派")
+        self.assertFalse(eng3.execute_pending_out()["ok"])  # 无待执行结算 → 驳回
 
     def test_take_table_item_night_alone(self):
         """夜间独处会客室可取走桌上物品：当夜即可用，变动次日清晨公告。"""

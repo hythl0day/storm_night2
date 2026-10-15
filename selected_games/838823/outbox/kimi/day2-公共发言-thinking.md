@@ -1,0 +1,3 @@
+Let me assess. Day 2, public speech. I should speak, maybe use see_through on someone. Candidates: 克劳德 claims she was only one in study at night and saw 格罗克 entering study day 1 evening... actually 克劳德 claims "昨晚我在监控室看到格罗克进书房" — monitor records. Verify 克劳德's claim? Claims about rooms visited. I could verify 格罗克's claim but he hasn't spoken yet—order: 奇米 speaks before 格罗克. So 格罗克 hasn't declared anything. I can verify 克劳德's claim of being in 监控室 night 1? Actually she said 昨晚在监控室——晚间休息 she was in 监控室? Odd. Verify her visited_rooms 监控室. Or verify 智谱's claim 地下室门锁着没进去 — visited 地下室.
+
+Use see_through on 克劳德: claims visited 监控室 (夜间). That's a specific claim worth checking. Cost fine.
