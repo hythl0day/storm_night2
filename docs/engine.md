@@ -46,7 +46,7 @@
 
 房间与道具台账：
 - `unlock(user, room)` / `open_safe(user)` / `transfer(giver, receiver, item, accept=True)` / `use_flashlight(user)`
-- `declare_blackout(user)` / `fix_generator(user)` — 停电声明窗口 = 公共发言/投票阶段，或自由活动阶段选房结算开始前（首个进入落定后以 `selection_begun` 驳回，rules-6 §7.5"阶段开始前声明"）；成功记 `blackout_news`，由编排器在选房收尾后公开公告（"进入房间后向众人公布"）；**停电持续至 `fix_generator` 为止——无人修复则跨日延续，不会自动恢复**（AI 侧公告/菜单/回执均已明示）；v3.11 起编排器在选房阶段向每位进入者私密送达「停电发现」回执（逐人发现，后续选房者无法从进入结果推断停电；选房简报也不再标注锁状态，锁台账由简报「游戏状态」段的「已永久开启」承载）
+- `declare_blackout(user)` / `fix_generator(user)` — 停电声明窗口 = 公共发言/投票阶段，或自由活动阶段选房结算开始前（首个进入落定后以 `selection_begun` 驳回，rules-6 §7.5"阶段开始前声明"）；成功记 `blackout_news`，由编排器在选房收尾后公开公告（"进入房间后向众人公布"）；**停电持续至 `fix_generator` 为止——无人修复则跨日延续，不会自动恢复**（AI 侧公告/菜单/回执均已明示）；v3.11 起编排器在选房阶段向每位进入者私密送达「停电发现」回执（逐人发现，后续选房者无法从进入结果推断停电；选房简报也不再标注锁状态，锁台账由简报「游戏状态」段的「已永久开启」承载）；v3.23：`blackout_news` 非空期间（已声明未公布）「游戏状态」段供电行一并隐藏——此前选房者能从供电行提前得知停电
 - `take_table_item(user, item)` — v3.5 取桌上物品：仅晚间休息、身处会客室且室内无其他存活者；物品保留剩余次数、当夜即可用；变动记入 `table_events`，次日清晨公告
 - `place_bug(user, room)`（可放会客室——唯一能听到大厅交谈的手段）/ `bug_listen(user)`（v3：晚间休息在卧室收听，×2 次）
 - `seal_room(user, allowed=None)`（建筑师【封闭空间】，不能对会客室；第 4 天门锁全开后仍可用）、`set_passage(user)` / `use_passage(user, room)`（v3.22 密道：仅晚间休息，出口会客室/书房/监控室/地下室任选，进入条件=谋杀人数条件，失败不损毁，成功一次后损毁；经密道进会客室者不上夜宿名单）

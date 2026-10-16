@@ -582,7 +582,9 @@ class Orchestrator:
         lines = [f"- 进度：第 {day}/6 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
                  f"｜{countdown_text(day, s['last_murder_day'])}"]
         # 供电状态（v3.20）：仅停电中或当日停电已修复时显示——白天修复后 AI 仍误以为停电的案例见 game/838823
-        if s["power_out"]:
+        # v3.23：blackout_news 非空 = 当天刚秘密拉闸、尚未在选房收尾公布（rules-6 §7.5）——
+        # 此时「游戏状态」段不得显示供电行，否则选房者在进入房间前就能提前得知停电
+        if s["power_out"] and not s.get("blackout_news"):
             lines.append("- 供电：停电中（除会客室外全部黑暗、门锁失效、监控停止记录；修复发电机前不会恢复）")
         elif day in s.get("blackout_days", []) and s.get("power_restored"):
             lines.append("- 供电：今日停电已被修复（门锁与监控正常工作，不再有黑暗）")

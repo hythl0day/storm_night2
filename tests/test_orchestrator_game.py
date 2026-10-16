@@ -1166,6 +1166,14 @@ class TestBlackoutDiscovery(MockGameTestBase):
         self.assertTrue(any("各房间进入情况" in b for _, b in briefings))
         for name, b in briefings:
             self.assertNotIn("门仍上锁", b, name)
+        # v3.23 修复：拉闸后、进入前，选房简报不得提前泄漏停电（游戏状态段供电行在公布前隐藏）
+        for name, b in briefings:
+            if name == "B":
+                continue  # 拉闸者本人的私密回执含"停电开始"，属合法知情
+            self.assertNotIn("停电", b, name)
+        # 选房收尾公告后恢复显示：晚间简报「游戏状态」含供电行（本局无人修复）
+        night_brief = (d / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("供电：停电中", night_brief)
         # 停电不动物理锁台账：第 2 天选房结束（进入晚间休息）时监控室仍记为上锁，供电恢复后回到原状态
         night2 = next(v for t, v in locks_snap.items() if "第2天" in t and "晚间休息" in t)
         self.assertTrue(night2["监控室"])
