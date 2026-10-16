@@ -1,1 +1,0 @@
-Confess mostly, spin. 奇米 style dry, competitive. Explain: gave screwdriver to weak 豆包 as defense/opening tool; went to study to supervise safe opening; detective vote — who did I vote? I can lie about vote, but private. Give a plausible answer.

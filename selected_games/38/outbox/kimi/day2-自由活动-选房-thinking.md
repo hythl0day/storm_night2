@@ -1,1 +1,0 @@
-Options: monitor room has 克劳德 (1/2). I could join her. Or basement. I'll invite 杰普特 to monitor room with me? Actually going to monitor room lets me see records; but joining 克劳德 in same room is fine, 2 max. Actually inviting someone means they come with me. I want to talk to 克劳德. Let's choose 监控室 and invite 杰普特 (who challenged me last night).

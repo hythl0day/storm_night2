@@ -1,1 +1,0 @@
-Claude invited me to study room (2/3). Accept: choose 书房. Study room already has Jeppet and Claude, so the safe—wait, study room lock? Record says study room (2/3) occupied, so door is open. Powder still there? Choose 书房.

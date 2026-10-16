@@ -109,8 +109,6 @@ def fmt_action(a: dict) -> str:
         return f"遗嘱回应：{a.get('decisions', {})}"
     if t == "armed_accuse":
         return f"武装指认 → {a.get('target', '?')}"
-    if t == "night_raid":
-        return f"夜袭 → {a.get('room', '?')}"
     if t == "take_table":
         return f"取桌上物品：「{a.get('item', '?')}」"
     return json.dumps(a, ensure_ascii=False)

@@ -1,3 +1,0 @@
-As killer, I want detective power? Detective gets gun and weighted vote. But risk. Better not run; let Grok vs Doubao vs Jeppt fight. Actually running could be beneficial—1.5 votes, gun. But as killer, gun is good. Yet scrutiny. I'll run, claim a benign profession (e.g., carpenter). Lie will be logged; lie-detection risk. Safer: declare a vague true-ish claim? I must lie about profession since I'm a killer... actually my profession is a psychologist—the truth. Can declare "psychologist" truthfully! That's safe. Declare props? Skip or lie minimally—better stay silent about props.
-
-Should I run? Gun at hand, 1.5 vote, final speech power. Risk: attention. I'll run.

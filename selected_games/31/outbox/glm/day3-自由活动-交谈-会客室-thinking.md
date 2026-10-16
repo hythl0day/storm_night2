@@ -1,1 +1,0 @@
-Freestyle conversation in the reception room. Grok has the bat, can defend against the knife. Goal: win tomorrow by voting. Speak to Grok and Jeppe, probe Grok's suspicion. No murder—keep it safe. Keep speech short.

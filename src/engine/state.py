@@ -11,7 +11,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
 - skill_uses: {名字: {技能: 剩余}}      技能台账（反派技能仅反派登记；使用时仍校验身份与次数）
 - cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/伪造状态/证物是否可毁/是否已封存
-- attempts: [未遂]                      谋杀未遂（含"夜袭未能进入"，target 为 None）；供公告与无杀倒计时
+- attempts: [未遂]                      谋杀未遂记录；供公告与无杀倒计时
 - last_murder_day: int|None             最近一次谋杀行为（含未遂）的日期；None=倒计时未启动
 - winner / win_reason                   胜负结果（"平民"/"反派"/"主神"）
 - detective: 名字|None                  侦探（第 1 天竞选产生；出局时警徽按遗嘱传承或销毁，不补选，见 rules-6 §7.4）
@@ -44,7 +44,7 @@ from pathlib import Path
 
 from ..gamedata import ITEM_USES
 
-PUBLIC_ROOMS = ["书房", "监控室", "地下室"]  # 功能房：监控覆盖，夜间开放（每房限 1 人）
+PUBLIC_ROOMS = ["书房", "监控室", "地下室"]  # 功能房：监控覆盖，夜间开放（v3.22 起容量与白天一致）
 HALL = "会客室"  # 大厅：白天会议场所，自由活动同样开放；永不黑暗、不可封闭、不限人数；桌上物品所在地
 FREE_ROOMS = [HALL] + PUBLIC_ROOMS  # 自由活动合法去向（白天卧室清场，见 rules-6 §5）
 ENV_WEAPON = {"书房": "雕像", "地下室": "电线"}
@@ -217,14 +217,19 @@ def countdown_text(day: int, last_murder_day: int | None) -> str:
 
 
 def is_dark(state: dict, room: str) -> bool:
-    """黑暗判定（v3.2）：地下室永久黑暗；会客室永不黑暗；停电期间除会客室外全部黑暗（含卧室，取消紧急照明）；手电筒照亮的房间本次除外。"""
+    """黑暗判定（v3.22）：地下室永久黑暗；会客室永不黑暗；卧室在晚间休息阶段黑暗（v3.22 起不再
+    依赖停电——夜间卧室本就无照明）；停电期间除会客室外全部黑暗；手电筒照亮的房间本次除外。"""
     if room in state["flashlight_lit"]:
         return False
     if room == HALL:
         return False
     if room == "地下室":
         return True
-    return bool(state["power_out"])
+    if state["power_out"]:
+        return True
+    if is_bedroom(room) and state["phase"]["stage"] == "晚间休息":
+        return True
+    return False
 
 
 def door_locked(state: dict, room: str) -> bool:

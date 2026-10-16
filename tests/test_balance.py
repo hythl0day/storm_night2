@@ -145,17 +145,17 @@ class TestHallCamping(unittest.TestCase):
         self.assertFalse(player(eng, "C")["alive"])
 
     def test_b4_paired_bedroom_beats_night_raid(self):
-        """反制的边界：两人合住一间亮房卧室，夜袭无法进入（v3.2：消耗当夜机会但不计谋杀行为），无人遇害。"""
+        """反制的边界：两人合住一间卧室即满员，杀手无法进入（v3.22：容量拦截，不消耗机会），无人遇害。"""
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["A"], "A的卧室")
-        self.assertTrue(eng.state["stage_murder_used"])
-        self.assertIsNone(eng.state["last_murder_day"])  # 不再重置无杀倒计时
+        self.assertFalse(eng.state["stage_murder_used"])
+        self.assertIsNone(eng.state["last_murder_day"])  # 不重置无杀倒计时
         self.assertFalse(eng.state["cases"])
-        # v3.5 复盘修复：守夜邀请成立对主人私密可见（黑暗中也知道应邀者到来）
-        self.assertIn("接受了你的守夜邀请", ev["private"].get("C", ""))
+        # 邀请成立对主人私密可见（黑暗中也知道应邀者到来）
+        self.assertIn("接受了你的邀请", ev["private"].get("C", ""))
 
 
 class TestDealVillainGuarantees(unittest.TestCase):

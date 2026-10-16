@@ -1,1 +1,0 @@
-Continue: no detective. Exchange phase. Gift? Maybe keep flashlight. Could gift to豆包 to build alliance? Keep it simple: no gift, brief statement.

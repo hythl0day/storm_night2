@@ -1,1 +1,0 @@
-**Deciding against accusation without evidence**

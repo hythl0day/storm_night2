@@ -1,3 +1,0 @@
-Gift my 刀 to 狄西? Giving the 刀 to the killer is useful—he can use it. But then it could be traced... Actually killing with the knife reveals weapon "利器", fine. Giving knife to 狄西 publicly—people already know 刀 missing. Risky but the knife is useless to me. Alternatively keep. But if I die,遗嘱... Actually hand the knife to 狄西: if he kills with it, 刀 will be suspected... he could kill and take items. Better: don't give publicly; but I could pass powder to 狄西 too. Both are incriminating transfers. Safer: not gift. But holding 刀 as 帮凶 offers no use except self-defense... 刀 defends vs 棒球棍 — useless. If I'm searched... no such mechanic.
-
-Maybe gift 粉末 to 狄西 secretly? Gifting is public. Hmm, gift could be to myself... I'll just not gift, speak briefly supporting 狄西, deflect.

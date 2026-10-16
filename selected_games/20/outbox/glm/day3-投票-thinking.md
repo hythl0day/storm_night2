@@ -1,1 +1,0 @@
-Doubts: 格罗克 lied about whereabouts (豆包测谎). 克劳德修电 unverifiable but电确实恢复。格罗克健康壮、有刀，撒谎行踪最可疑。投格罗克。

@@ -1,1 +1,0 @@
-**Planning view monitor implementation**

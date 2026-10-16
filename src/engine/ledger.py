@@ -16,7 +16,6 @@ from .state import (
     ALL_SKILLS,
     FREE_ROOMS,
     HALL,
-    PUBLIC_ROOMS,
     bedroom_of,
     consume_item_entry,
     consume_skill,
@@ -593,16 +592,17 @@ def set_passage(state: dict, user: str) -> dict:
     consume_skill(s, user, "建造密道")
     s["passage"] = {"used": False}
     return {"ok": True, "type": "set_passage", "public": None,
-            "private": {user: "你确认了古堡的密道网：晚间休息时可经密道前往书房/监控室/地下室（监控不留记录；出口房间人数须满足谋杀人数条件，否则当晚无法使用；成功使用一次后密道损毁）"}}
+            "private": {user: "你确认了古堡的密道网：晚间休息时可经密道前往会客室/书房/监控室/地下室（监控不留记录；出口房间人数须满足谋杀人数条件，否则当晚无法使用；成功使用一次后密道损毁）"}}
 
 
 def use_passage(state: dict, user: str, room: str) -> dict:
-    """使用密道（v3）：晚间休息时从自己卧室经密道前往书房/监控室/地下室之一。
+    """使用密道（v3.22）：晚间休息时从自己卧室经密道前往会客室/书房/监控室/地下室之一。
 
     - 进入条件与谋杀人数条件相同：出口房间在场非反派 ≤1（黑暗房间 ≤2）；
       不满足则当晚无法使用——密道保留、不暴露（返回 ok=True, failed=True）；
     - 成功：监控不留记录（当晚记录上你一直在卧室），密道损毁（整局至多成功一次）；
-    - 进入后可正常行动（含谋杀——杀手限定，由编排器的夜间谋杀窗口提供）。
+      经密道进入会客室者不上次日清晨的夜宿名单（隐身，见 core._morning_report）；
+    - 进入后可正常行动（含谋杀——杀手限定，由编排器的房间行动窗口提供）。
     """
     s = state
     p = get_player(s, user)
@@ -617,8 +617,8 @@ def use_passage(state: dict, user: str, room: str) -> dict:
         return reject("use_passage", "只有反派建筑师能使用密道")
     if s["positions"].get(user) != bedroom_of(user):
         return reject("use_passage", "你必须在自己卧室才能使用密道")
-    if room not in PUBLIC_ROOMS:
-        return reject("use_passage", "密道只能通往书房/监控室/地下室")
+    if room not in FREE_ROOMS:
+        return reject("use_passage", "密道只能通往会客室/书房/监控室/地下室")
     non_villains = [
         q for q in s["players"]
         if q["alive"] and not is_villain(q) and s["positions"].get(q["name"]) == room

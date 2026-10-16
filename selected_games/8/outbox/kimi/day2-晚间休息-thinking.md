@@ -1,3 +1,0 @@
-I'm currently in the basement, dark. Night: I should just stay in my bedroom. No talk. Maybe invite? Inviting someone as accomplice could be risky. Just stay.
-
-Inner: plan—power still out, night is dark, killer can infiltrate a 2-person bedroom during blackout. So inviting someone could expose them... Actually as accomplice, staying alone in bedroom is safe from being attacked? Killer is 狄西, won't attack me. Just stay.

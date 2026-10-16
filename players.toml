@@ -31,7 +31,7 @@ reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模�
 [[player]]
 id = 'gemini'
 name = "杰米尼"     # Gemini
-model = "gemini-4-argon"
+model = "gemini-3.8-flash"
 base_url = "https://api.apinebula.ai/v1"
 api_key_env = "RELAY_API_KEY_GEMINI"
 

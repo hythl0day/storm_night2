@@ -1,1 +1,0 @@
-**Planning night talk strategy with gun evidence**

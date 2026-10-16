@@ -15,7 +15,7 @@ src/          Python 代码（跑局管线）
   orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
   viewer.py       视图层（M4.5）：读存档渲染 status/log/peek/inner/host，与跑局解耦
   view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host/follow 子命令
-  console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；M7/M8 的载体
+  console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；跑局时即实时观战（M8 已取消），M7 的载体
   smoke.py        连通性测试（席位选择/随机/真人席位）
   ping.py         单席位连通性诊断
   prompts.py      prompt 模板加载器（__file__ 锚定项目根）
@@ -54,9 +54,11 @@ tests/        unittest（python -m unittest discover -s tests）
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
-python -m unittest discover -s tests   # 197 测试用例
+python -m unittest discover -s tests   # 220 测试用例
 ```
 
 ## 当前进度与待办
 
-里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成。
+里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成；M8（watch 看海模式）已取消——console 驾驶舱跑局时即实时观战，且暂不做多局并发（API 稳定性）。
+
+当前处于**试玩调优期**：反复手动跑局（`python -m src.console --game game/<seed>`，必要时 `--resume` 断点续跑），边跑边检查 bug、修订规则（规则书 `docs/rules-6.md`，引擎 `src/engine/` 同步改）。每局跑完后分析存档（`python -m src.view status --game ...` / `python -m tools.scorecard --game <seed>`），挑合格的完整局入 `selected_games/`。

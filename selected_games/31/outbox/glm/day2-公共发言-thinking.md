@@ -1,1 +1,0 @@
-Verify狄西's claims: profession 机械师, item 棒球棍, rooms监控室. Use 看破伪装 on 狄西.

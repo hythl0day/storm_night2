@@ -1,1 +1,0 @@
-We're in basement, dark, power out. As accomplice, should I fix the generator? Darkness helps villains. Keep it dark. But I'm trapped? No. I could use 封闭空间 to lock the basement... not useful. Just do nothing, stay hidden.

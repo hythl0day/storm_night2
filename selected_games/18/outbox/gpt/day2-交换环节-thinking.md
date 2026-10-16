@@ -1,1 +1,0 @@
-**Planning exchange response with stance**

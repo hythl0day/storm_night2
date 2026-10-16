@@ -1,1 +1,0 @@
-Choose room. Monitor room has 杰普特, 1/2. Book room full (2/3, could join). Interest: watch? Monitor room—join 杰普特, see records? Day 1 nothing much. I want to observe 保险箱 openers—book room full? 2/3, space for one. Going to book room puts me with 格罗克+克劳德 near safe. But 保险箱 opening would be visible. Book room: 格罗克(运动员+鲁米诺), 克劳德. Go 书房.

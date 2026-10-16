@@ -1,1 +1,0 @@
-Vote 格罗克 per plan.

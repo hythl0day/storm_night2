@@ -1,1 +1,0 @@
-I have nothing to gift. Speech: comment on exchange, maybe pressure Doubao on the lie detector result? The lie detector result hasn't been announced. I can speak.

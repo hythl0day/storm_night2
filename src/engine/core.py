@@ -11,12 +11,13 @@
 - v3.5 选房为顺序结算（rules-6 §7.5）：按行动顺序逐人即时结算进入——进入即开锁
   （自动消耗手段），满员/无手段/被封闭空间挡住者滞留会客室；顺序靠后者可见先前结果。
   延时装置仍在全员结算后统一判定（触发时机不变）。
+- v3.22：晚间休息与自由活动同构（合法去向含卧室；卧室夜间黑暗；平民慎入功能房；
+  每阶段独立一次谋杀机会）；死亡/未遂不再阶段末即时公告，统一由次日清晨发布。
 """
 from __future__ import annotations
 
 from . import ledger, murder as murder_mod, vote as vote_mod
 from .state import (
-    ACTION_STAGES,
     BEDROOM_CAPACITY,
     FREE_ROOMS,
     HALL,
@@ -33,7 +34,6 @@ from .state import (
     ensure,
     get_player,
     is_bedroom,
-    is_dark,
     is_villain,
     record_entry,
     reject,
@@ -72,8 +72,8 @@ class Engine:
     def execute_pending_out(self) -> dict:
         return vote_mod.execute_pending_out(self.state)
 
-    def armed_accusation(self, accuser: str, suspect: str) -> dict:
-        return vote_mod.armed_accusation(self.state, accuser, suspect)
+    def armed_accusation(self, accuser: str, suspect: str, weapon: str | None = None) -> dict:
+        return vote_mod.armed_accusation(self.state, accuser, suspect, weapon)
 
     def bequest(self, owner: str, mapping: dict, replies: dict) -> dict:
         return vote_mod.bequest(self.state, owner, mapping, replies)
@@ -152,13 +152,7 @@ class Engine:
         for r in s["bedroom_relock"]:
             s["locks"][r] = True
         s["bedroom_relock"] = []
-        if stage in ACTION_STAGES:
-            for c in s["cases"]:
-                if c["day"] == day and c["stage"] == stage:
-                    public["announcements"].append(f"{c['victim']} 死亡，案发房间：{c['room']}")
-            for a in s["attempts"]:
-                if a["day"] == day and a["stage"] == stage and a["target"]:
-                    public["announcements"].append(f"{a['target']} 遇袭但幸存（袭击者与方式未公布）")
+        # v3.22：死亡/未遂不再即时公告（不暴露死亡时段），统一由次日清晨 _morning_report 发布
         if stage == "开局准备":
             new_day, new_stage = day, "公共发言"
         elif stage == "公共发言":
@@ -245,15 +239,14 @@ class Engine:
                 # 当天新声明的停电在选房收尾后统一公布（rules-6 §7.5）；这里只公告跨日延续的停电
                 public["announcements"].append("停电中：除卧室外所有房间一片黑暗（可前往地下室修复发电机恢复供电——未修复则停电一直持续）")
         if stage == "晚间休息":
-            s["stage_murder_used"] = any(
-                c["day"] == s["phase"]["day"] and c["stage"] == "自由活动" for c in s["cases"]
-            )
+            # v3.22：每阶段独立一次谋杀机会——白天成功杀人不再占用当夜机会（rules-6 §7.6"每阶段一次"）
+            s["stage_murder_used"] = False
             s["flashlight_lit"] = []
             s["passage_stealth"] = []
             if s["phase"]["day"] < 4:
                 s["locks"][HALL] = True  # v3.4：会客室夜间自动落锁（第 4 天起全开）
             if s["power_out"]:
-                public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗——含卧室（守夜密谈/围炉夜谈仍可低声进行）；修复发电机前不会恢复")
+                public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗（含卧室——受邀组合仍可摸黑低语）；修复发电机前不会恢复")
             elif s["phase"]["day"] in s.get("blackout_days", []) and s.get("power_restored"):
                 # v3.20：白天修复后，晚间开始时明确告知供电已恢复（game/838823：杀手误以为当夜仍停电）
                 public["announcements"].append("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作，不再有黑暗")
@@ -278,7 +271,8 @@ class Engine:
         for a in attempts:
             public["announcements"].append(f"{a['target']} 遇袭但幸存（袭击者与方式未公布）")
         hall_sleepers = [n for n, r in s["positions"].items()
-                         if r == HALL and (get_player(s, n) or {}).get("alive")]
+                         if r == HALL and n not in s["passage_stealth"]
+                         and (get_player(s, n) or {}).get("alive")]  # v3.22：密道者隐身，不上夜宿名单
         if hall_sleepers:
             public["announcements"].append(f"夜宿会客室公开：{'、'.join(hall_sleepers)}（大厅无隐私）")
         if s["table_events"]:
@@ -294,11 +288,13 @@ class Engine:
                         vp["items"].remove(e)
                 c["sealed"] = True
             rooms = {c["room"], bedroom_of(c["victim"])}
-            records = s["monitoring"].get(c["period"], {})
-            monitoring_public[c["period"]] = {r: records.get(r, []) for r in sorted(rooms)}
+            # v3.22：宣读覆盖案发当日全天两个时段（不暴露死亡时段——死亡时间只能靠调查获知）
+            for period in (f"第{yday}天自由活动", f"第{yday}天晚间休息"):
+                records = s["monitoring"].get(period, {})
+                monitoring_public[period] = {r: records.get(r, []) for r in sorted(rooms)}
         if monitoring_public:
             public["monitoring"] = monitoring_public
-            public["announcements"].append("监控公开宣读：案发时间段（案发房间 + 死者卧室）的进入者名单如下")
+            public["announcements"].append("监控公开宣读：案发当日全天（自由活动 + 晚间休息）（案发房间 + 死者卧室）的进入者名单如下")
             if yday in s.get("blackout_days", []):
                 # v3.20：缺口精确到时段——修复于自由活动则仅该时段缺失；修复于晚间（归宿结算后）或
                 # 未修复则当夜同样缺失（game/838823：粗口径"当日时段缺失"与随后宣读的夜间记录矛盾）
@@ -420,19 +416,21 @@ class Engine:
         return ev
 
     def night_assign(self, assignments: dict[str, str] | None = None, invited: dict[str, str] | None = None) -> dict:
-        """晚间休息归宿结算（按行动顺序逐个安置，冲突者默认返回自己卧室）。
+        """晚间休息进入结算（v3.22 与白天同一套结构：按行动顺序逐个安置，进入结果互不可见）。
 
-        assignments 缺省回自己卧室。规则要点：
-        - 每个夜间房间（书房/监控室/地下室）只能进入 1 人，靠后者失败；
-        - 应邀/夜宿等普通进入：卧室满 2 人后他人无法进入（不按房内身份拦截——v3.6 起杀手当房主的
-          卧室应邀可入，守夜即与虎谋皮：密谈照常，深夜谋杀照 §7.6 判定，尸体在杀手卧室形成自曝制衡）；
-        - 杀手夜袭他人卧室需开锁手段（停电期间门锁失效除外）；拦截看**非反派人数**（v3.7 内应口径）：
-          房内 2 名非反派同守才无法进入——当夜谋杀机会消耗，但不计为谋杀行为（不重置无杀倒计时）；
-          同房有反派（帮凶做内应）则可照常进入，亮房闯入会被房内两人看见（密谈中断，编排器处理）；
-          停电黑暗中杀手可潜入已满 2 人的卧室并袭击其一。
-        - 停电期间所有门锁失效（door_locked 统一裁定）。
-        夜袭空房补结算（§7.7）：杀手未经邀请进入他人卧室且房内最终无人——机会照常消耗、
-        私下告知杀手并留 host 记录，但不产生谋杀判定、不计入无杀倒计时（v3.10 落实）。
+        assignments 缺省回自己卧室；invited={应邀者: 邀请者}（同入/守夜邀请，成立条件 =
+        邀请者已安置在应邀者的目标房间）。规则要点（rules-6 §7.7 v3.22）：
+        - 合法去向：自己卧室（默认）/ 他人卧室 / 会客室 / 书房 / 监控室 / 地下室；
+        - 锁：他人卧室上锁——对所有人一视同仁（含反派）：需【暴力破解】手段或受邀
+          （被他人开锁后下一阶段复锁）；会客室夜锁（手段或停电/第 4 天起免费）；
+          监控室上锁（首开需手段，开后永久开启）；书房/地下室无锁；停电全部锁失效；
+        - 容量与白天一致：书房 3 / 监控室 2 / 地下室 3 / 卧室 2 / 会客室不限；
+        - 平民慎入：平民非受邀进入已有他人的功能房（书房/监控室/地下室）→ 失败回卧室
+          （"已经有人了，出于安全考虑，你没有进入"）；被邀请者与反派豁免
+          （豁免仅限本规则——反派进他人卧室仍须开锁或受邀）；
+        - 无法进入者一律默认回自己卧室：功能房/会客室失败告知简要原因，卧室失败仅告知"无法进入"；
+        - 卧室夜间黑暗（is_dark 统一裁定）：空手谋杀豁免附加条件、谋杀条件非反派 ≤2、
+          受邀组合可摸黑低语（编排层分发）。
         结算后自动检查延时装置触发。
         """
         s = self.state
@@ -440,7 +438,6 @@ class Engine:
             return reject("night_assign", "游戏已结束")
         if s["phase"]["stage"] != "晚间休息":
             return reject("night_assign", "当前不是晚间休息阶段")
-        day = s["phase"]["day"]
         assignments = assignments or {}
         invited = invited or {}
         positions: dict[str, str] = {}
@@ -459,46 +456,14 @@ class Engine:
                 owner = bedroom_owner(want)
                 occupants = [n for n, r in positions.items() if r == want]
                 is_invited = invited.get(name) == owner and positions.get(owner) == want
-                is_night_raid = p["identity"] == "杀手" and day >= 2 and not s["stage_murder_used"] and not is_invited
                 if len(occupants) >= BEDROOM_CAPACITY:
-                    # v3.7 内应口径：守夜拦截看"非反派人数"——同房有反派时卧室不算严防（深夜可正常谋杀）
-                    nv = [n for n in occupants if not is_villain(get_player(s, n))]
-                    if is_night_raid and is_dark(s, want):
-                        # 停电黑暗中卧室满员也可潜入（v3.2 破守夜）；谋杀条件在深夜判定（黑暗 ≤2）
-                        placed = want
-                        private[name] = "你在黑暗中潜入了这间已有两人的卧室"
-                    elif is_night_raid and len(nv) >= 2:
-                        s["stage_murder_used"] = True  # 消耗当夜机会，但不计为谋杀行为（不重置无杀倒计时）
-                        note = "无法进入（房内满员，当夜谋杀机会已消耗）"
-                    elif is_night_raid:
-                        # 亮房且房内有反派（帮凶做内应）：照常进入（付开锁成本），但会被房内两人看见
-                        means = unlock_means(s, name)
-                        if door_locked(s, want) and means is None:
-                            s["stage_murder_used"] = True
-                            note = "无法进入（当夜谋杀机会已消耗）"
-                            host.append(f"{name} 未能进入{want}（真实原因：房门上锁且 TA 无开锁手段）")
-                        else:
-                            if door_locked(s, want):
-                                consume_unlock_means(s, name, means)
-                                s["locks"][want] = False
-                                s["bedroom_relock"].append(want)
-                            placed = want
-                            seen = f"房里亮着灯，{'、'.join(occupants)}都看见了你"
-                            private[name] = f"你用{means}进入了{want}——{seen}" if means else f"你进入了{want}——{seen}"
-                            for occ_name in occupants:
-                                private[occ_name] = (private.get(occ_name, "") + "；" if private.get(occ_name) else "") + \
-                                    f"{name} 闯入了你们的卧室——灯亮着，你们看清了来人的脸"
-                    else:
-                        note = "无法进入（不知原因）"
-                        host.append(f"{name} 未能进入{want}（真实原因：房内满员——{'、'.join(occupants)}）")
+                    note = "无法进入"
+                    host.append(f"{name} 未能进入{want}（真实原因：房内满员——{'、'.join(occupants)}）")
                 elif not is_invited and door_locked(s, want):
                     means = unlock_means(s, name)
                     if means is None:
-                        note = "无法进入（不知原因）"
+                        note = "无法进入"
                         host.append(f"{name} 未能进入{want}（真实原因：房门上锁且 TA 无开锁手段）")
-                    elif p["identity"] == "杀手" and s["stage_murder_used"]:
-                        note = "无法进入（不知原因）"
-                        host.append(f"{name} 未能进入{want}（真实原因：杀手当夜袭击机会已消耗）")
                     else:
                         consume_unlock_means(s, name, means)
                         s["locks"][want] = False
@@ -507,13 +472,11 @@ class Engine:
                         private[name] = f"你用{means}进入了{want}"
                 else:
                     placed = want
-                    if is_invited:
-                        # 守夜邀请成立对主人私密可见（停电黑暗中也知道应邀者到来——与白天同入邀请同口径）
-                        private[owner] = (private.get(owner, "") + "；" if private.get(owner) else "") + \
-                            f"{name} 接受了你的守夜邀请，进入了你的卧室——即使房间黑暗，你也知道 TA 来了。"
+                if placed == want and is_invited:
+                    private[owner] = (private.get(owner, "") + "；" if private.get(owner) else "") + \
+                        f"{name} 接受了你的邀请，进入了{want}——即使房间黑暗，你也知道 TA 来了。"
             elif want == HALL:
-                # v3.4：会客室夜宿——夜间上锁（停电时锁失效可直接进入；第 4 天起全开）；
-                # 【暴力破解】开锁后当夜他人可随入，夜锁每日重新落下。人数不限，亮房谋杀条件。
+                # 会客室夜宿：夜间上锁（停电时锁失效可直接进入；第 4 天起全开）；人数不限，亮房
                 if door_locked(s, HALL):
                     means = unlock_means(s, name)
                     if means is None:
@@ -528,11 +491,17 @@ class Engine:
             elif want in PUBLIC_ROOMS:
                 occupants = [n for n, r in positions.items() if r == want]
                 sealed = s["sealed_room"]
+                is_invited = invited.get(name) in occupants  # 邀请者已在该房间 → 应邀成立
                 if sealed and want == sealed["room"] and name != sealed["owner"] and name not in sealed["allowed"]:
-                    note = "无法进入（不知原因）"
+                    note = "无法进入（房间被临时锁死）"
                     host.append(f"{name} 未能进入{want}（真实原因：被【封闭空间】锁死，主人：{sealed['owner']}）")
-                elif occupants:
-                    note = "无法进入（夜间房间已满）"
+                elif len(occupants) >= ROOM_CAPACITY[want]:
+                    note = f"无法进入（{want}已满员）"
+                    host.append(f"{name} 未能进入{want}（真实原因：满员——{'、'.join(occupants)}）")
+                elif occupants and not is_villain(p) and not is_invited:
+                    # v3.22 平民慎入：平民不敢非受邀进入已有他人的功能房；反派与被邀请者不受此限
+                    note = "已经有人了，出于安全考虑，你没有进入"
+                    host.append(f"{name} 未进入{want}（平民慎入：房内已有——{'、'.join(occupants)}）")
                 elif door_locked(s, want):
                     means = unlock_means(s, name)
                     if means is None:
@@ -544,6 +513,10 @@ class Engine:
                         private[name] = f"你用{means}进入了{want}"
                 else:
                     placed = want
+                if placed == want and is_invited:
+                    inviter = invited[name]
+                    private[inviter] = (private.get(inviter, "") + "；" if private.get(inviter) else "") + \
+                        f"{name} 接受了你的邀请，进入了{want}——即使房间黑暗，你也知道 TA 来了。"
             if placed is None:
                 placed = bedroom_of(name)
                 if note:
@@ -551,19 +524,6 @@ class Engine:
             positions[name] = placed
             record_entry(s, name, placed)
         s["positions"] = positions
-        # 夜袭空房补结算（§7.7）：杀手未经邀请进入他人卧室、房内最终无任何他人——
-        # 当夜机会照常消耗、私下告知并留 host 记录，但不产生谋杀判定、不计入无杀倒计时
-        # （game/8 复盘：狄西夜袭空卧室全程静默，杀手不知机会已消耗）
-        kp = next((p for p in s["players"] if p["alive"] and p["identity"] == "杀手"), None)
-        if kp is not None and day >= 2 and not s["stage_murder_used"]:
-            kroom = positions.get(kp["name"])
-            owner = bedroom_owner(kroom) if kroom and is_bedroom(kroom) else None
-            if owner and owner != kp["name"] and invited.get(kp["name"]) != owner:
-                if not any(n != kp["name"] and r == kroom for n, r in positions.items()):
-                    s["stage_murder_used"] = True
-                    private[kp["name"]] = (private.get(kp["name"], "") + "；" if private.get(kp["name"]) else "") + \
-                        f"你在{kroom}等到深夜，始终没有别人回来——空房白跑，当夜谋杀机会已消耗（不计谋杀行为）"
-                    host.append(f"{kp['name']} 夜袭{kroom}：空房白跑（当夜机会消耗，不计谋杀行为）")
         s["night_assigned"] = current_period(s)
         device_events = murder_mod.trigger_devices(s)
         for dev_ev in device_events:

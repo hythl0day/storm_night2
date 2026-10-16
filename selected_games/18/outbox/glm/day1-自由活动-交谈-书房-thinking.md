@@ -1,1 +1,0 @@
-Respond in room: I'm magician, no lockpick. Speech short. Note observation.

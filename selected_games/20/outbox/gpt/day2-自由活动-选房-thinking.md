@@ -1,3 +1,0 @@
-**Evaluating safety options**
-
-I need to weigh my choices between prioritizing safety in the hall versus using camouflage in a blackout scenario with no action. Going with the hall option allows me to avoid drawing attention when moving alone at night. It seems reasonable to choose the hall since it provides cover during the day while keeping me safer at night. If others are around, they might notice me more, so I need to think carefully.

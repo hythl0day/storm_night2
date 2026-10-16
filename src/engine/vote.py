@@ -9,7 +9,8 @@
 - 武装指认（第 2 天首次投票起，v3.21 淘汰制）：投票结算后、出局执行前发动——① 未产生出局者的投票后；
   ② 投票将导致最后一名平民出局时，该平民在出局执行前（背水一战）。
   正确→被指认的杀手出局（帮凶私下继任，游戏继续；帮凶已不在则反派全灭平民胜）；
-  指认为帮凶/平民→指认者出局。指认不消耗武器；临时取用桌上凶器指认后放回（无论对错）。
+  指认为帮凶/平民→指认者出局。v3.22：指认消耗武器（等同攻击）——自己的武器扣次数销毁；
+  临时取用的桌上凶器用掉即消耗，不再放回。
   有侦探时仅侦探（须持有武器）；无侦探时持武器平民可指认，桌上凶器仍在时平民也可临时取用指认。
 - v3.5 遗嘱制：接受的道具当天即可用；未指定/被拒收的道具不销毁，放回会客室桌上。
 """
@@ -18,9 +19,11 @@ from __future__ import annotations
 from ..gamedata import ARMED_WEAPONS
 from .state import (
     check_winner,
+    consume_item_entry,
     consume_skill,
     get_player,
     grant_item,
+    held_item,
     held_item_names,
     is_villain,
     reject,
@@ -138,16 +141,17 @@ def resolve_vote(state: dict, votes: dict[str, str | None], implant: dict | None
     return ev
 
 
-def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
-    """武装指认（rules-6 §7.3，v3.21 淘汰制）：第 2 天首次投票起，投票结算后、出局执行前发动。
+def armed_accusation(state: dict, accuser: str, suspect: str, weapon: str | None = None) -> dict:
+    """武装指认（rules-6 §7.3，v3.22）：第 2 天首次投票起，投票结算后、出局执行前发动。
 
     收益：指对 → 被指认的**杀手出局**（遗言/身份公布/遗嘱同投票出局；帮凶私下继任，游戏继续——
-    帮凶已不在则反派全灭、平民获胜）；指错（帮凶/平民）→ **指认者出局**（公开可推知所指非杀手）。
+    帮凶已不在则反派全灭、平民获胜）；指错（帮凶/平民）→ **指认者出局**（公众可推知所指非杀手）。
     发动时机：① 一次投票未产生出局者时（last_vote.out 为空）；
     ② 投票将导致**最后一名平民**出局时——该平民在出局执行前（pending_out 为本人且平民仅剩 1 人）。
     资格（v3.5）：仅限平民；有侦探时仅侦探本人（且须持有武器——枪/刀/棍）；
-    无侦探时，持有武器的平民可指认；桌上仍有凶器时任何平民可临时取用指认
-    （临时取用不进入道具栏，指认后凶器仍在桌上——无论对错）。指认不消耗武器。
+    无侦探时，持有武器的平民可指认；桌上仍有凶器时任何平民可临时取用指认。
+    v3.22：**指认消耗武器（等同攻击）**——自己的武器扣一次次数（×1 即销毁）；
+    临时取用的桌上凶器用掉即消耗，不再放回桌上。weapon 可指定使用哪件（须在持有/桌上范围内）。
     """
     s = state
     if s["winner"]:
@@ -172,28 +176,39 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
         return reject("armed_accusation", "结算前指认仅限最后一名平民")
     det = s.get("detective")
     temp_grab = False
-    if det is not None:
-        if accuser != det:
-            return reject("armed_accusation", "有侦探时，仅侦探本人可武装指认")
-        if not (held_item_names(ap, day) & set(ARMED_WEAPONS)):
-            return reject("armed_accusation", "侦探须持有武器（左轮手枪/刀/棒球棍）才能武装指认")
+    used: str | None = None
+    held = sorted(held_item_names(ap, day) & set(ARMED_WEAPONS), key=ARMED_WEAPONS.index)
+    on_table = [e["name"] for e in s["table_items"] if e["name"] in ARMED_WEAPONS]
+    if det is not None and accuser != det:
+        return reject("armed_accusation", "有侦探时，仅侦探本人可武装指认")
+    if weapon is not None and weapon not in held and weapon not in on_table:
+        return reject("armed_accusation", f"你没有可用的「{weapon}」")
+    if held:
+        used = weapon or held[0]
+    elif det is not None:
+        return reject("armed_accusation", "侦探须持有武器（左轮手枪/刀/棒球棍）才能武装指认")
+    elif on_table:
+        temp_grab = True  # 临时取用桌上凶器（v3.22：用掉即消耗，不再放回）
+        used = weapon or sorted(on_table, key=ARMED_WEAPONS.index)[0]
     else:
-        if held_item_names(ap, day) & set(ARMED_WEAPONS):
-            pass
-        elif any(e["name"] in ARMED_WEAPONS for e in s["table_items"]):
-            temp_grab = True  # 临时取用桌上凶器
-        else:
-            return reject("armed_accusation", "指认需要持有武器（左轮手枪/刀/棒球棍），或桌上凶器仍在会客室桌上")
+        return reject("armed_accusation", "指认需要持有武器（左轮手枪/刀/棒球棍），或桌上凶器仍在会客室桌上")
     sp = get_player(s, suspect)
     if sp is None or not sp["alive"]:
         return reject("armed_accusation", "指认对象必须是存活玩家")
-    grab_note = f"{accuser} 拿起会客室桌上的凶器，" if temp_grab else ""
-    table_note = "（临时取用的凶器已放回桌上）" if temp_grab else ""
+    # v3.22：消耗武器（等同攻击）——自己的扣次数销毁；临时取用的桌上凶器消耗掉不放回
+    if temp_grab:
+        s["table_items"].remove(next(e for e in s["table_items"] if e["name"] == used))
+        grab_note = f"{accuser} 拿起会客室桌上的「{used}」，"
+        consume_note = f"（临时取用的{used}已消耗）"
+    else:
+        consume_item_entry(ap, held_item(ap, used, day))
+        grab_note = ""
+        consume_note = f"（{used}已消耗）"
     s["accusation_fired_day"] = day  # 每次投票至多一次指认（引擎级守卫，防续跑重复）
     if sp["identity"] == "杀手":
         s.pop("pending_out", None)  # 触发②：处决对象替换为杀手——最后平民获救
         public = {"out": suspect, "announcements": [
-            f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认正确{table_note}"]}
+            f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认正确{consume_note}"]}
         private: dict = {}
         _execute_out(s, suspect, public, private)
         check_winner(s)  # 帮凶继任则游戏继续；帮凶已不在则反派全灭、平民胜
@@ -204,8 +219,7 @@ def armed_accusation(state: dict, accuser: str, suspect: str) -> dict:
         return ev
     s.pop("pending_out", None)  # 触发②且指错：按原处决——指认者（最后平民）出局
     public = {"out": accuser, "announcements": [
-        f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误"
-        + ("（桌上凶器仍在会客室桌上）" if temp_grab else "")]}
+        f"{grab_note}{accuser} 武装指认 {suspect} 为杀手——指认错误{consume_note}"]}
     _execute_out(s, accuser, public, {})
     check_winner(s)
     ev = {"ok": True, "type": "armed_accusation", "public": public, "private": {}}

@@ -1,1 +1,0 @@
-**Preparing concise speech evidence**

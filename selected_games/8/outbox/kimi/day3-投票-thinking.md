@@ -1,1 +1,0 @@
-Deflect attention from 狄西; vote 杰米尼.

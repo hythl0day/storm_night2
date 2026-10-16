@@ -1,1 +1,0 @@
-Three candidates: 格罗克 (suspicious, wants gun + night skills), 杰普特 (transparent, methodical), 智谱 (claims psychologist, verify ability). 杰普特 aligned with my stated standard: evidence-based, won't misuse gun. Vote 杰普特.

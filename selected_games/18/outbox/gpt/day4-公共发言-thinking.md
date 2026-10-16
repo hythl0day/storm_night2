@@ -1,1 +1,0 @@
-**Analyzing suspect roles and speech strategy**

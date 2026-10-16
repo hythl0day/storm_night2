@@ -301,7 +301,7 @@ class TestCivilianWinEnding(MockGameTestBase):
 
     def test_last_civilian_pre_execution_accusation(self):
         """v3.21 集成（1v2 残局）：投票将导致最后平民出局 → 结算前窗口发动指认 → 指对则杀手出局
-        （遗言/身份公布/遗嘱同投票出局）、帮凶继任、本人获救、游戏继续。"""
+        （遗言/身份公布/遗嘱同投票出局）、帮凶继任、本人获救、游戏继续。v3.22：指认消耗武器（桌上枪用掉即消失）。"""
         players = [p for p in self.players() if p["name"] in ("A", "B", "D")]  # 1 平民 D + 2 反派
         d = write_game_dir(self.root, players)
         sj = d / "state.json"
@@ -322,11 +322,12 @@ class TestCivilianWinEnding(MockGameTestBase):
                                   content=payload(speech="你们要票我？那先回答我——你就是杀手！",
                                                   actions=[{"type": "armed_accuse", "target": "A"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "夜袭" in title and name == "B":
-                return ChatResult(name, ok=True, content=payload(actions=[{"type": "murder", "target": "D"}]),
+            if "房间行动" in title and "晚间休息" in title and name == "B" and '"type": "murder"' in briefing:
+                return ChatResult(name, ok=True, content=payload(actions=[{"type": "murder", "target": "D", "weapon": "不明药剂"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "晚间休息" in title and name == "B" and day == 4:
-                return ChatResult(name, ok=True, content=payload(actions=[{"type": "night_raid", "room": "D的卧室"}]),
+                # 继任杀手夜间开锁进 D 的卧室（B 机械师的【暴力破解】；v3.22 锁对反派一视同仁）
+                return ChatResult(name, ok=True, content=payload(actions=[{"type": "choose_room", "room": "D的卧室"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "投票" in title:
                 tgt = "D" if name in ("A", "B") else "A"
@@ -342,9 +343,11 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertEqual(names["B"]["identity"], "杀手")   # 帮凶继任
         self.assertFalse(names["D"]["alive"])              # 平民获救后当夜被继任者杀死（决斗真实发生）
         self.assertEqual(s["winner"], "反派")
+        self.assertNotIn("左轮手枪", [e["name"] for e in s["table_items"]])  # v3.22：临时取用的桌上枪已消耗
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("仍可行使武装指认", log)
         self.assertIn("指认正确", log)
+        self.assertIn("已消耗", log)                       # 指认消耗武器（公告口径）
         self.assertIn("**A 的遗言**", log)                  # 处决流程与投票出局一致
         self.assertIn("A 出局。身份：杀手", log)
         self.assertTrue((d / "inbox" / "D" / "day4-武装指认.md").exists())
@@ -364,7 +367,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertNotIn("……", section)   # mock 的 inner 固定为 "……"：内心独白不进简报
 
     def test_night_features_v3(self):
-        """v3 夜间特性端到端：密道（建筑师帮凶夜用）、窃听器内容真实下发、守夜密谈、清晨状态行/状态表。"""
+        """夜间特性端到端（v3.22）：密道（建筑师帮凶夜用）、窃听器内容真实下发、受邀组合黑暗低语、清晨状态行/状态表。"""
         players = self.players()
         players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)  # 密道持有者
         d = write_game_dir(self.root, players)
@@ -384,21 +387,22 @@ class TestCivilianWinEnding(MockGameTestBase):
                     acts = [{"type": "place_bug", "room": "书房"}]
                 return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "晚间休息" in title and "夜袭" not in title and "密谈" not in title:
+            if "房间行动" in title and "晚间休息" in title and name == "F" and day == 1 and "bug_listen" in briefing:
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=[{"type": "bug_listen"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "内交谈" in title and "晚间休息" in title:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(speech=f"{name} 的密谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "晚间休息" in title:
                 acts = []
                 if name == "C" and day == 1:
                     acts = [{"type": "invite", "target": "D"}]
                 elif name == "D" and day == 1:
-                    acts = [{"type": "accept_invite"}]
-                elif name == "F" and day == 1:
-                    acts = [{"type": "bug_listen"}]
+                    acts = [{"type": "choose_room", "room": "C的卧室"}]  # 应邀 = 与邀请者同目的地
                 elif name == "B" and day == 2 and '"type": "use_passage"' in briefing:
                     acts = [{"type": "use_passage", "room": "书房"}]
                 return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
-                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "密谈" in title:
-                return ChatResult(player.name, ok=True,
-                                  content=payload(speech=f"{name} 的密谈内容", notes="x"),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
@@ -408,7 +412,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertTrue(s["passage"]["used"])  # 密道第 2 夜成功使用
         self.assertNotIn("B", s["monitoring_true"]["第2天晚间休息"].get("书房", []))  # 监控无痕
         script = (d / "script.md").read_text(encoding="utf-8")
-        self.assertIn("密谈", script)
+        self.assertIn("内低语（黑暗）", script)            # 受邀组合在黑暗卧室摸黑低语
         self.assertIn("C 的密谈内容", script)
         self.assertIn("窃听器录音下发给 F（书房）", script)  # 内容真实下发（不再是空头支票）
         self.assertIn("状态一览（全剧透）", script)          # 每日清晨状态表
@@ -419,7 +423,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertTrue(any("窃听器录音" in m for m in s["orch"]["hist"]["F"]))  # 私密历史留痕
 
     def test_hall_night_talk(self):
-        """v3.5：夜宿会客室者（≥2 人）睡前围炉夜谈——内容仅当夜夜宿者知晓，其他席位收不到。"""
+        """v3.22：夜宿会客室者（≥2 人）睡前围炉夜谈=亮房正常房间交谈——内容仅当夜夜宿者知晓。"""
         d = write_game_dir(self.root, self.players())
         base = make_fake_chat(False)
 
@@ -429,14 +433,14 @@ class TestCivilianWinEnding(MockGameTestBase):
             title = briefing.splitlines()[0]
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
-            if "晚间休息" in title and "夜谈" not in title and "夜袭" not in title:
-                # 第 2 夜 E（万能钥匙开锁）与 F（随入）夜宿会客室
-                acts = [{"type": "night_hall"}] if name in ("E", "F") and day == 2 else []
-                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
-                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "夜谈" in title:
+            if "内交谈" in title and "晚间休息" in title:
                 return ChatResult(player.name, ok=True,
                                   content=payload(speech=f"{name} 的夜谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "晚间休息" in title:
+                # 第 2 夜 E（万能钥匙开锁）与 F（随入）夜宿会客室
+                acts = [{"type": "choose_room", "room": "会客室"}] if name in ("E", "F") and day == 2 else []
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
@@ -444,20 +448,20 @@ class TestCivilianWinEnding(MockGameTestBase):
         s = orch.state
         self.assertEqual(s["winner"], "平民")  # 消极局照常倒计时收尾
         script = (d / "script.md").read_text(encoding="utf-8")
-        self.assertIn("- 会客室夜谈（E、F）：", script)
+        self.assertIn("会客室内交谈（E、F）", script)
         self.assertIn("E 的夜谈内容", script)
         self.assertIn("F 的夜谈内容", script)
-        # 仅当夜夜宿者可见：E/F 私密历史有夜谈记录，C（卧室过夜）没有
-        self.assertTrue(any("会客室夜谈" in m for m in s["orch"]["hist"]["E"]))
-        self.assertTrue(any("会客室夜谈" in m for m in s["orch"]["hist"]["F"]))
-        self.assertFalse(any("夜谈" in m for m in s["orch"]["hist"].get("C", [])))
+        # 仅当夜夜宿者可见：E/F 私密历史有夜谈内容，C（卧室过夜）听不到
+        self.assertTrue(any("夜谈内容" in m for m in s["orch"]["hist"]["E"]))
+        self.assertTrue(any("夜谈内容" in m for m in s["orch"]["hist"]["F"]))
+        self.assertFalse(any("夜谈内容" in m for m in s["orch"]["hist"].get("C", [])))
         # 夜宿名单清晨照常公开（夜谈不影响公开口径）
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("夜宿会客室公开：E、F", log)
 
-    def test_blackout_bedroom_talk_with_eavesdropper(self):
-        """v3.5 修订：停电黑暗中守夜密谈照常（摸黑也能谈）；杀手潜入满员卧室时旁听全部内容，
-        密谈者不知情（密谈不取消，避免"取消"本身泄漏潜入）。"""
+    def test_night_dark_whisper_with_lurker(self):
+        """v3.22：停电夜的黑暗书房中，同入邀请成立的组合（C、D）摸黑低语——未受邀的潜伏反派 A 旁听全部内容，
+        低语者不知情；黑暗中谋杀条件放宽（非反派 ≤2），A 可袭击二人之一（C 的急救箱自动防下）。"""
         d = write_game_dir(self.root, self.players())
         base = make_fake_chat(False)
 
@@ -481,23 +485,23 @@ class TestCivilianWinEnding(MockGameTestBase):
                                   content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"},
                                                                       {"type": "invite", "target": "D"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "晚间休息" in title and "密谈" not in title and "夜袭" not in title:
-                acts = []
-                if name == "C" and day == 2:
-                    acts = [{"type": "invite", "target": "D"}]
-                elif name == "D" and day == 2:
-                    acts = [{"type": "accept_invite"}]
-                elif name == "A" and day == 2:
-                    acts = [{"type": "night_raid", "room": "C的卧室"}]
-                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+            if "房间行动" in title and "晚间休息" in title and day == 2 and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "C", "weapon": "刀"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "密谈" in title:
+            if "内交谈" in title and "晚间休息" in title:
                 return ChatResult(player.name, ok=True,
                                   content=payload(speech=f"{name} 的密谈内容", notes="x"),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "夜袭" in title and name == "A" and '"type": "murder"' in briefing:
-                return ChatResult(player.name, ok=True,
-                                  content=payload(notes="x", actions=[{"type": "murder", "target": "C", "weapon": "刀"}]),
+            if "晚间休息" in title and day == 2:
+                acts = []
+                if name == "C":
+                    acts = [{"type": "choose_room", "room": "书房"}, {"type": "invite", "target": "D"}]
+                elif name == "D":
+                    acts = [{"type": "choose_room", "room": "书房"}]
+                elif name == "A":
+                    acts = [{"type": "choose_room", "room": "书房"}]  # 反派不受平民慎入限制
+                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
@@ -510,16 +514,16 @@ class TestCivilianWinEnding(MockGameTestBase):
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("停电了——", log)                     # 进入房间后向众人公布
         self.assertNotIn("第2天自由活动", json.dumps(s["monitoring"], ensure_ascii=False))  # 停电整段监控零记录
-        self.assertIn("C的卧室密谈（C、D）：【旁听：A】", script)
+        self.assertIn("书房内低语（黑暗）（C、D）【旁听：A】", script)
         self.assertIn("C 的密谈内容", script)
-        # 密谈双方正常收到；杀手作为旁听者收到；密谈者的记录不泄漏"被旁听"
-        self.assertTrue(any("C的卧室密谈" in m and "密谈内容" in m for m in s["orch"]["hist"]["C"]))
-        self.assertTrue(any("听到了他们的密谈" in m for m in s["orch"]["hist"]["A"]))
+        # 低语组合正常收到；潜伏者收到全部内容；低语者的记录不泄漏"被旁听"
+        self.assertTrue(any("内低语" in m and "密谈内容" in m for m in s["orch"]["hist"]["C"]))
+        self.assertTrue(any("低声交谈" in m for m in s["orch"]["hist"]["A"]))
         self.assertFalse(any("旁听" in m or "听到" in m for m in s["orch"]["hist"]["C"]))
-        # v3.5 复盘修复：同入/守夜邀请成立对邀请者私密可见（索尔不知桑娜已到而放弃谋杀的教训）
+        # 邀请成立对邀请者私密可见（白天同入 + 夜间同入）
         self.assertTrue(any("接受了你的同入邀请" in m for m in s["orch"]["hist"]["C"]))   # 白天选房邀请
-        self.assertTrue(any("接受了你的守夜邀请" in m for m in s["orch"]["hist"]["C"]))   # 夜间守夜邀请
-        # 黑暗中守夜对（2 名非反派）仍被杀手袭击：C 的急救箱自动防下（未遂）
+        self.assertTrue(any("接受了你的邀请" in m for m in s["orch"]["hist"]["C"]))       # 夜间邀请
+        # 黑暗中（非反派 ≤2）杀手可袭击二人之一：C 的急救箱自动防下（未遂）
         self.assertTrue(s["attempts"])
 
 
@@ -644,10 +648,11 @@ class StageHintsTest(MockGameTestBase):
         hints = self.orch._stage_hints("第1天 · 侦探竞选投票")
         self.assertTrue(any("未参选者" in h for h in hints), hints)
 
-    def test_night_raid_hint(self):
-        hints = self.orch._stage_hints("第2天 · 晚间休息（夜袭）")
-        self.assertTrue(any("非反派" in h for h in hints), hints)
-        self.assertTrue(any("不重置无杀倒计时" in h for h in hints), hints)
+    def test_night_hint(self):
+        hints = self.orch._stage_hints("第2天 · 晚间休息")
+        self.assertTrue(any("互不可见" in h for h in hints), hints)
+        self.assertTrue(any("卧室夜间黑暗" in h for h in hints), hints)
+        self.assertTrue(any("不敢" in h for h in hints), hints)  # 平民慎入
 
     def test_briefing_hints_before_menu(self):
         p = self.orch.player(self.orch.state["order"][0])
@@ -715,7 +720,7 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
         self.assertTrue(any("不明药剂" in x for x in out))
 
     def test_night_murder_rejection_then_retry(self):
-        """夜袭误报已消耗凶器 → 驳回后当场私下重报一次 → 改报空手落杀（重报独立存档/日志/host 全记录）。"""
+        """夜间房间行动误报已消耗凶器 → 驳回后当场私下重报一次 → 改报空手落杀（重报独立存档/日志/host 全记录）。"""
         d = write_game_dir(self.root / "g2", default_players())
         base = make_fake_chat(False)
 
@@ -726,13 +731,13 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
             acts = None
-            if "夜袭" in title and name == "A" and day == 3:
-                if "被驳回" in briefing:  # 驳回重报的第二次调用：改报空手
+            if "房间行动" in title and "晚间休息" in title and name == "A" and day == 3:
+                if "刚才的动作声明被驳回" in briefing:  # 驳回重报的第二次调用：改报空手
                     acts = [{"type": "murder", "target": "F"}]
                 else:                   # 第一次：误报已在第 2 天消耗掉的刀
                     acts = [{"type": "murder", "target": "F", "weapon": "刀"}]
-            elif "晚间休息" in title and "密谈" not in title and name == "A" and day == 3:
-                acts = [{"type": "night_raid", "room": "F的卧室"}]
+            elif "晚间休息" in title and name == "A" and day == 3:
+                acts = [{"type": "choose_room", "room": "F的卧室"}]  # 万能钥匙开锁进入
             elif "选房" in title and day == 2 and name == "A":
                 acts = [{"type": "choose_room", "room": "书房"}]
             elif "选房" in title and day == 2 and name == "E":
@@ -748,10 +753,10 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
         s = orch.state
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn("驳回（未持有可用凶器）", script)          # 驳回入 host 全记录
-        self.assertTrue(any(c["victim"] == "F" for c in s["cases"]))  # 重报后落杀成功
+        self.assertTrue(any(c["victim"] == "F" and c["room"] == "F的卧室" for c in s["cases"]))  # 重报后落杀成功
         host_log = (d / "host_log.jsonl").read_text(encoding="utf-8")
-        self.assertIn("晚间休息-夜袭#驳回重报", host_log)        # host_log 独立条目
-        self.assertTrue((d / "outbox" / "A" / "day3-晚间休息-夜袭#驳回重报.md").exists())  # 重报独立存档
+        self.assertIn("晚间休息-房间行动#驳回重报", host_log)    # host_log 独立条目
+        self.assertTrue((d / "outbox" / "A" / "day3-晚间休息-房间行动#驳回重报.md").exists())  # 重报独立存档
         self.assertTrue(any("你的动作被驳回：未持有可用凶器" in m for m in s["orch"]["hist"]["A"]))
         # 简报台账与压缩：A 第 3 天晚间简报——你的状态段实时道具（刀没了、缴获的万能钥匙在）；
         # 公共记录折叠竞选仪式行、保留结果行
@@ -764,44 +769,20 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
         self.assertNotIn("宣告参选", pub)
         self.assertEqual(pub.count("/6 天开始"), 1)
 
-    def test_night_raid_menu_requires_means_or_blackout(self):
-        """夜袭菜单门槛：无开锁手段且非停电时不提供该项（菜单只列合法动作——game/2 复盘同源的菜单准确性）。"""
-        # A=魔术师（无任何开锁手段）：整局夜间菜单无夜袭项
+    def test_night_menu_unified_choices(self):
+        """v3.22：夜间菜单统一为 choose_room（含他人卧室与四房间），不再有独立夜袭/夜宿菜单项。"""
         d1 = write_game_dir(self.root / "g4", default_players())
         self.run_game(d1, killer_script=False)
         night2 = (d1 / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("choose_room", night2)
+        self.assertIn("某人的卧室", night2)
         self.assertNotIn("night_raid", night2)
+        self.assertNotIn("night_hall", night2)
 
-        # A=黑客（暴力破解）：第 2 天起有夜袭项；第 1 天（全天禁杀）没有
+    def test_invited_killer_murders_host_at_night(self):
+        """v3.22：平民亲手邀请杀手进卧室（与虎谋皮）——杀手应邀进入（免开锁），黑暗卧室中谋杀。"""
         players = default_players()
-        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
-        d2 = write_game_dir(self.root / "g5", players)
-        self.run_game(d2, killer_script=False)
-        night1 = (d2 / "inbox" / "A" / "day1-晚间休息.md").read_text(encoding="utf-8")
-        self.assertNotIn("night_raid", night1)
-        night2 = (d2 / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
-        self.assertIn("night_raid", night2)
-
-        # 停电中（B 第 2 天声明）：门锁失效，无手段的杀手也显示夜袭项
-        d3 = write_game_dir(self.root / "g6", default_players())
-        base = make_fake_chat(False)
-
-        def chat_bo(player, messages, *, on_token=None, reasoning_effort=None):
-            title = messages[-1]["content"].splitlines()[0]
-            if "停电声明" in title and player.name == "B" and "第2天" in title:
-                return ChatResult(player.name, ok=True,
-                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
-                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
-
-        self.run_game_with(d3, chat_bo)
-        night2 = (d3 / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
-        self.assertIn("night_raid", night2)
-
-    def test_lit_breakin_interrupts_sleep_talk(self):
-        """v3.7 内应口径：帮凶邀平民守夜 + 杀手夜袭破门——亮房闯入被看见，守夜密谈中断，深夜照常判定。"""
-        players = default_players()
-        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        players[0] = P("A", "杀手", "魔术师", "刀", gender="男", physique=4)  # 无开锁手段——受邀免锁
         d = write_game_dir(self.root / "g3", players)
         base = make_fake_chat(False)
 
@@ -812,15 +793,13 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
             acts = None
-            if "夜袭" in title and name == "A" and day == 2:
+            if "房间行动" in title and "晚间休息" in title and name == "A" and day == 2:
                 acts = [{"type": "murder", "target": "F", "weapon": "刀"}]
-            elif "晚间休息" in title and "密谈" not in title and day == 2:
-                if name == "B":
-                    acts = [{"type": "invite", "target": "F"}]   # 帮凶邀平民守夜（请君入瓮）
-                elif name == "F":
-                    acts = [{"type": "accept_invite"}]
+            elif "晚间休息" in title and day == 2:
+                if name == "F":
+                    acts = [{"type": "invite", "target": "A"}]   # F 亲手邀请杀手守夜
                 elif name == "A":
-                    acts = [{"type": "night_raid", "room": "B的卧室"}]
+                    acts = [{"type": "choose_room", "room": "F的卧室"}]
                 else:
                     acts = []
             if acts is None:
@@ -830,13 +809,9 @@ class TestBriefingAndRetryFixes(MockGameTestBase):
 
         orch = self.run_game_with(d, chat_fn)
         s = orch.state
-        script = (d / "script.md").read_text(encoding="utf-8")
-        self.assertIn("密谈中断", script)                    # 亮房闯入打断密谈
-        self.assertNotIn("B的卧室密谈（B、F）：", script)     # 密谈没有发生
-        self.assertTrue(any("闯入了你们的卧室" in m for m in s["orch"]["hist"]["F"]))  # 守夜两人看清来人
-        self.assertTrue(any("都看见了你" in m for m in s["orch"]["hist"]["A"]))
-        self.assertTrue(any(c["victim"] == "F" and c["room"] == "B的卧室" for c in s["cases"]))
+        self.assertTrue(any(c["victim"] == "F" and c["room"] == "F的卧室" for c in s["cases"]))
         self.assertFalse(next(p for p in s["players"] if p["name"] == "F")["alive"])
+        self.assertTrue(any("接受了你的邀请" in m for m in s["orch"]["hist"]["F"]))  # 邀请成立对房主可见
 
 
 class TestSpeechRouting(MockGameTestBase):
@@ -1273,7 +1248,7 @@ class TestDarkWhisper(MockGameTestBase):
         c_brief = (d / "inbox" / "C" / "day2-自由活动-交谈-书房.md").read_text(encoding="utf-8")
         self.assertIn("摸黑低声交谈", c_brief)
         # 黑暗中的低语同样进入窃听器录音源（麦克风不受黑暗影响）
-        self.assertTrue(s["orch"]["talks"].get("2:书房"))
+        self.assertTrue(s["orch"]["talks"].get("2:自由活动:书房"))
 
 
 class TestLiteJustInTimeRules(MockGameTestBase):

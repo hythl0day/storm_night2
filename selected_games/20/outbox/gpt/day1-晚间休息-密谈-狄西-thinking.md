@@ -1,1 +1,0 @@
-**Planning target and timing for attack**

@@ -1,1 +1,0 @@
-Day1 no murder allowed. Pick a room, avoid书房 (杰普特 there, teammate—could talk actually, but visible pairing). Basement or监控室 full. Choose地下室; maybe invite奇米 to observe? Better go alone to地下室. Actually could join书房 with杰普特 to coordinate—visible though. Day1 no kills, just recon. Go地下室.

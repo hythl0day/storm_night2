@@ -1,1 +1,0 @@
-**Planning JSON response with vote inquiry**

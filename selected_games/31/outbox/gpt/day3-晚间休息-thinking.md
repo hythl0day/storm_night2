@@ -1,1 +1,0 @@
-**Choosing to invite detective for protection**

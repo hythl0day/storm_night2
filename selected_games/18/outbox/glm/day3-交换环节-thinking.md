@@ -1,3 +1,0 @@
-Need to respond. I have 看破伪装×2 — usable in public speech phase before my own speech. But current phase is exchange. The exchange phase: I can gift flashlight. Who to gift? Give to 豆包? She's least suspicious, or keep it. Actually gift could be used to probe. Maybe gift to 豆包 as trust-building, or keep for myself (useful in blackout). Keep — useful. But maybe give to build alliance. I'll keep it and say so.
-
-Speech: respond to accusations, clarify the vote error (already done), question 克劳德's night whereabouts.

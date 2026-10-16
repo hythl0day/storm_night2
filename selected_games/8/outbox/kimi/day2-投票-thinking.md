@@ -1,1 +1,0 @@
-Plan: vote 克劳德 as stated.

@@ -1,5 +1,0 @@
-We need answer in JSON. 
-
-The current task is roleplay, set in the monitoring room with the character Di Xi. I have used a screwdriver to open the room, and the confirmed interaction content is to ask Di Xi about his luminol claim. The action rules for this session only allow verbal communication, so checking the monitoring footage is not permitted now. I will keep an eye on Di Xi's suspicious level during the conversation and confirm safety first as he is a large-built male.
-
-I've confirmed the talking points: I'll ask Di Xi about his claim of luminol without mentioning his occupation, avoid using numbers, note that I also have on-site investigation capabilities, and keep the lie detector concealed. I've also recorded that Di Xi came after I opened the door and may be interested in the monitoring. I will output the required JSON content.

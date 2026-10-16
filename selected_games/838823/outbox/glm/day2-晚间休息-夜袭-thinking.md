@@ -1,1 +1,0 @@
-Kill 奇米, use knife? Knife limited; bare hands fine but knife could be defense later. Bare hands no condition, knife doesn't help. Use bare hands to save knife? But murder weapon discovery? Simplest: bare hands. Actually knife as weapon might matter for evidence—but empty hands okay. Save the knife.

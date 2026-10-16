@@ -1,1 +1,0 @@
-**Planning vote persuasion strategy**

@@ -1,1 +1,0 @@
-**Planning response emphasizing evidence and results**

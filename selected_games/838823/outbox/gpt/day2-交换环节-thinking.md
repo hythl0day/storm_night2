@@ -1,1 +1,0 @@
-**Planning accusation against Grok**

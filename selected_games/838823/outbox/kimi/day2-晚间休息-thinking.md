@@ -1,1 +1,0 @@
-Night. I'm currently in the basement? I can't stay there—must choose stay (default bedroom). Risky to go out; killer might act at night. Stay in bedroom.

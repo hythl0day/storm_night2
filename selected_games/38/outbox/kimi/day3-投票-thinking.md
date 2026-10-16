@@ -1,1 +1,0 @@
-克劳德 holds U盘 = 帮凶 (high confidence). Vote her; avoid ties. If no one gets majority, no-kill countdown likely ends tonight anyway if no murder.

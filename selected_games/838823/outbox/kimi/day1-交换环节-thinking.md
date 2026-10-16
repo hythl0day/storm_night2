@@ -1,1 +1,0 @@
-Exchange phase. I hold Luminol reagent. Should I gift? No detective, no reason. Keep it — my investigation tool. Decline to gift.

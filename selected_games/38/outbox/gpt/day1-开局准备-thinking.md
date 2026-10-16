@@ -1,1 +1,0 @@
-**Selecting public discussion room**

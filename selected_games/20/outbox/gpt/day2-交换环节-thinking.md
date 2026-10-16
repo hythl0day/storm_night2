@@ -1,1 +1,0 @@
-**Planning concise evidence-based speech**

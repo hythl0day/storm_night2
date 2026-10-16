@@ -1,1 +1,0 @@
-**Drafting concise incident summary**
