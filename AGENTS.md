@@ -13,6 +13,7 @@ src/          Python 代码（跑局管线）
   deal.py         开局生成器（M1）→ game/<seed>/
   engine/         规则裁决引擎（M3）：state / murder / vote / ledger / core
   orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
+  replay.py       存档分叉：目标前复用原 outbox 重建到指定席位前并另存为，console/orchestrator --resume 接续
   viewer.py       视图层（M4.5）：读存档渲染 status/log/peek/inner/host，与跑局解耦
   view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host/follow 子命令
   console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；跑局时即实时观战（M8 已取消），M7 的载体
@@ -43,11 +44,11 @@ tests/        unittest（python -m unittest discover -s tests）
 - 所有脚本入口头部 reconfigure stdout/stdin 为 UTF-8（GBK 控制台会炸）。
 - API 请求**不发送 temperature**（apinebula 的 Claude 上游只接受默认温度，全席统一不传）；`max_tokens` 由 `[settings]` 统一定义，席位可覆盖。`reasoning_effort` 同理全席统一（当前 low），claude 因上游限制例外不发（见 players.toml 注释）。
 - 席位以 `id` 为主键（gpt/claude/gemini/grok/deepseek/kimi/doubao/glm）；存档目录一律用 id，不用中文名。
-- 角色的性别/体格/国籍只写在 `personas.toml`（项目根）；规则书不含固定角色表（开局由 deal.py 生成并全员公布）；**体格数值绝不注入 prompt**——注入时转成文字（魁梧/健壮/普通/瘦弱），prompt 里禁止角色说数值。
+- 角色的性别/体格/国籍以项目根 `personas.toml` 为新局权威来源，生成时随局快照；规则书不含固定角色表（开局由 deal.py 生成并全员公布）；**体格数值绝不注入 prompt**——注入时转成文字（魁梧/健壮/普通/瘦弱），prompt 里禁止角色说数值。
 - 人设只写性格底色（失忆设定，无传记无职业）；prompt 要求"靠言行流露、禁止自我介绍性格、人设不影响推理"。
 - 随机选席为**中美 3+3 对称**（两家 API 渠道均衡）；手动 `--seats` 不对称仅提示。
 - deal.py 的随机调用顺序固定（见其 docstring），改顺序 = 改变 seed 语义。
-- 文件协议：`game/<id>/` 下 `seed.txt / state.json / rules.md / players.toml / script.md（主持人侧全记录，含剧透，不含内心独白）/ public/ / private|inbox|outbox/<席位id>/`。
+- 文件协议：`game/<id>/` 下 `seed.txt / deal.json（初始快照）/ state.json / rules.md / players.toml / personas.toml（人设快照，旧档缺则回退项目根）/ script.md（主持人侧全记录，含剧透，不含内心独白）/ public/ / private|inbox|outbox/<席位id>/`；分叉存档另有 `replay.json`（源存档与分叉节点，普通旧档可无）。
 
 ## 测试与自检
 

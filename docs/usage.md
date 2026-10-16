@@ -88,9 +88,11 @@ python -m src.deal --seed 42 --out games/test   # 自定义输出目录
 
 ```
 seed.txt               # 种子（复现与"对局未被操纵"凭证）
+deal.json              # 初始状态快照（供存档分叉重演）
 state.json             # 主状态（主持人侧，含身份等全部秘密）
 rules.md               # 本局规则书快照
 players.toml           # 阵容与参数快照
+personas.toml          # 本局人设快照（Orchestrator 优先于项目根配置读取）
 public/roster.md       # 全员公布角色表（体格为文字描述，不含数值）
 public/announcement.md # 开局公告（主人字条）
 private/<id>/card.md   # 每席私密卡：身份/同伙/职业技能/道具次数/开局准备义务
@@ -162,7 +164,25 @@ python -m src.console --game game/012345 [--resume]
 
 流式说明：console 跑局走 SSE 流式（推理内容淡色显示）；超时分层为连接 10s / 停滞看门狗 90s / 单次总墙钟 600s；上游不支持流式时自动回退非流式。无头模式（`python -m src.orchestrator`，供 M6 批量跑局）行为不变，与 console 共用同一个 `Orchestrator.run_game()`。
 
-### 3.6 速度诊断：tools/bench.py
+### 3.6 存档分叉：replay.py
+
+把既有对局另存为“某次席位 AI 调用之前”的分支。目标节点之前复用源存档 `outbox/` 的历史回复，不调用 API；这些回复仍会经过当前编排器与引擎，重建 state、公开/私密日志、笔记和 WIP。源目录全程只读。
+
+```bash
+python -m src.replay --game game/43501 \
+  --day 3 --seat claude --label "自由活动-房间行动" \
+  --out game/43501-d3-claude-r1
+
+# 从克劳德的房间行动开始实时生成并观战
+python -m src.console --game game/43501-d3-claude-r1 --resume
+# 也可无头续跑：python -m src.orchestrator --game game/43501-d3-claude-r1 --resume
+```
+
+`--seat` 接受席位 id 或角色名；`--label` 是 `call_ai` 的环节标签，例如 `自由活动-房间行动`、`公共发言`、`投票`。输出目录必须不存在且不能嵌入源目录。新存档带 `deal.json` 初始快照；旧存档则按 seed 和原配置重新 deal 并校验初始分配。分支的 `replay.json` 记录源存档、规则版本和分叉节点。
+
+重演是以**当前代码和当前对应 ruleset 规则书**构造的反事实分支，不承诺跨任意旧版本逐字节复刻。分叉后由 console/orchestrator 正常调用真实 API，并按现有断点语义续跑。
+
+### 3.7 速度诊断：tools/bench.py
 
 ```bash
 python tools/bench.py                      # 全部席位 ×（短/长）两种请求，串行
@@ -217,10 +237,11 @@ python tools/bench.py --skip-long
 | `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关），见 §3.1 |
 | `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出，见 §3.2 |
 | `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](engine.md) |
-| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归（test_balance，v3 会客室版）+ 编排 mock 全流程（test_orchestrator_game，含中断续跑/API 失败/关键记录/v3 夜间特性）共 188 用例：`python -m unittest discover -s tests` |
+| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归 + 编排 mock 全流程 + 存档分叉重演：`python -m unittest discover -s tests` |
 | `prompt/game_system.md` | ✅ 可用 | 对局系统提示模板（扮演设定 + 输出契约 + 规则书 + 私密卡），占位符 {name}/{profile}/{card}/{rules} |
-| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/三通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
+| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/四通道 JSON 收集/引擎裁决/落盘与断点续跑，见 §3.3 |
+| `src/replay.py` | ✅ 可用 | 存档分叉：目标前复用原 outbox，指定席位前另存为，console/orchestrator --resume 接续，见 §3.6 |
 | `src/viewer.py` | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py 与 console.py 共用 |
 | `src/view.py` | ✅ 可用 | 只读查看器（M4.5）：`status`/`log`/`peek`/`inner`/`host`/`follow` 子命令，与跑局解耦，见 §3.4 |
 | `src/console.py` | ✅ 可用 | 交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令，见 §3.5 |
-| `tools/bench.py` | ✅ 可用 | API 速度诊断（流式 TTFT/吞吐），见 §3.6 |
+| `tools/bench.py` | ✅ 可用 | API 速度诊断（流式 TTFT/吞吐），见 §3.7 |

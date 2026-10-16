@@ -178,7 +178,8 @@ class Orchestrator:
         self.state = json.loads((game_dir / "state.json").read_text(encoding="utf-8"))
         self.eng = Engine(self.state)
         self.players, _settings = load_config(str(game_dir / "players.toml"))
-        self.personas = load_personas(PERSONAS_PATH)
+        personas_path = game_dir / "personas.toml"
+        self.personas = load_personas(personas_path if personas_path.exists() else PERSONAS_PATH)
         self.rules = (game_dir / "rules.md").read_text(encoding="utf-8")
         self.orch = self.state.setdefault("orch", {})
         self.orch.setdefault("feed", [])

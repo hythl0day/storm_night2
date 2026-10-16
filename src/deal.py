@@ -48,6 +48,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
+RULES_VERSION = "v3.25"
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
 
@@ -197,7 +198,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
     return {
         "seed": seed,
         "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
-        "rules_version": "v3.25",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
+        "rules_version": RULES_VERSION,  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
         "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
         "mode": "6人局",
@@ -387,11 +388,12 @@ def main() -> None:
         (out / "outbox" / seat).mkdir(parents=True)
 
     (out / "seed.txt").write_text(f"{seed}\n", encoding="utf-8")
-    (out / "state.json").write_text(
-        json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    initial_json = json.dumps(state, ensure_ascii=False, indent=2) + "\n"
+    (out / "deal.json").write_text(initial_json, encoding="utf-8")
+    (out / "state.json").write_text(initial_json, encoding="utf-8")
     shutil.copyfile(rules_path, out / "rules.md")
     shutil.copyfile(args.config, out / "players.toml")
+    shutil.copyfile(args.personas, out / "personas.toml")
     (out / "public" / "roster.md").write_text(write_roster(state["players"]), encoding="utf-8")
     (out / "public" / "announcement.md").write_text(announcement(state["safe_item"]), encoding="utf-8")
     for p in state["players"]:

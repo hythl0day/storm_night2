@@ -36,6 +36,10 @@ python -m src.deal --seed 42 --lite    # 失忆版规则集（生存须知 + 临
 python -m src.console --game game/42        # 交互驾驶舱：流式输出 + 随时命令（输入 help 查看）
 python -m src.orchestrator --game game/42   # 无头模式（供批量跑局）
 
+# 从某次席位调用前分叉另存为（目标前复用原 outbox，不调用 API；源存档不变）
+python -m src.replay --game game/42 --day 3 --seat claude --label "自由活动-房间行动" --out game/42-r1
+python -m src.console --game game/42-r1 --resume  # 从分叉点实时生成并观战
+
 # 查看存档（只读，与跑局解耦）
 python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/peek/inner/host/follow
 
