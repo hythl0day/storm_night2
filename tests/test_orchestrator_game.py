@@ -1191,6 +1191,22 @@ class TestAnnouncementScope(MockGameTestBase):
         self.assertIn("A", calls)      # 杀手本人被调用并完成谋杀
         self.assertNotIn("B", calls)   # winner 产生后，后排房间的帮凶不再被调用
 
+    def test_room_actions_skip_seat_killed_earlier_in_loop(self):
+        """同房谋杀后，遇害者在本环节剩余行动被跳过：A 在地下室刀杀 E（E 无自卫手段、
+        顺序在 A 之后）→ E 不再收到房间行动调用（无简报/回执），同房幸存的 F 照常行动。"""
+        orch = self._orch_at("g45f", 2, {"A": "地下室", "E": "地下室", "F": "地下室",
+                                         "B": "会客室", "C": "会客室", "D": "会客室"})
+        calls = self._drive_room_actions(orch, 2, "E")
+        s = orch.state
+        self.assertTrue(any(c["victim"] == "E" and c["day"] == 2 for c in s["cases"]))
+        self.assertFalse(next(p for p in s["players"] if p["name"] == "E")["alive"])
+        self.assertIn("A", calls)      # 杀手本人完成谋杀
+        self.assertNotIn("E", calls)   # 已死亡：不再被调用（修复前 occ 快照会让 E 照常行动）
+        self.assertIn("F", calls)      # 同房幸存者的行动不受影响
+        d = orch.dir
+        self.assertFalse((d / "inbox" / "E" / "day2-自由活动-房间行动.md").exists())
+        self.assertFalse((d / "outbox" / "E" / "day2-自由活动-房间行动.md").exists())
+
     def test_talks_and_actions_skip_when_game_over(self):
         """进入结算的装置击杀终局后，房间交谈/房间行动均整环节跳过（门卫检查）。"""
         orch = self._orch_at("g45e", 2, {"C": "会客室", "D": "会客室"})

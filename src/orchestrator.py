@@ -1486,6 +1486,8 @@ class Orchestrator:
                 if name in w["done"]:
                     continue
                 p = self.player(name)
+                if not p or not p["alive"]:
+                    continue  # occ 在进房时快照：同房者先行动可能已谋杀/舞台魔术击杀 TA——死者不再有行动
                 menu = self.action_menu(p, day)
                 if not menu:
                     continue
