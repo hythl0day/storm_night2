@@ -18,6 +18,9 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - detective_election_done: bool         第 1 天侦探竞选是否已结算（防重复竞选）
 - stage_murder_used: bool               杀手本阶段谋杀机会是否已用
 - power_out: bool                       停电中（修复发电机后恢复）
+- blackout_days: [int]                  拉闸声明日（停电次数统计）
+- blackout_periods: [时段]              实际发生监控缺失的时段（含跨日延续与修复当日）
+- power_restored: 时段|None             最近一次发电机修复时点
 - flashlight_lit: [房间]                本阶段被「手电筒」照亮的房间
 - bedroom_relock: [房间]                被他人开锁的卧室，进入下一时间阶段时恢复上锁
 - sealed_room: dict|None                【封闭空间】临时锁死（至下一个自由活动时间失效）
@@ -132,7 +135,19 @@ def ensure(state: dict) -> dict:
     s.setdefault("detective_election_done", False)  # v3.3：第 1 天侦探竞选结算标记
     s.setdefault("stage_murder_used", False)
     s.setdefault("power_out", False)
-    s.setdefault("blackout_days", [])  # 发生过停电的天数（清晨监控宣读"空白"提示用）
+    s.setdefault("blackout_days", [])  # 拉闸声明日（评分卡统计停电次数用）
+    if "blackout_periods" not in s:
+        # 旧档迁移：按原口径推断监控缺失时段；跨日修复额外补记实际修复时段。
+        periods = []
+        for day in s["blackout_days"]:
+            free = f"第{day}天自由活动"
+            periods.append(free)
+            if s.get("power_restored") != free:
+                periods.append(f"第{day}天晚间休息")
+        restored = s.get("power_restored")
+        if restored and restored not in periods:
+            periods.append(restored)
+        s["blackout_periods"] = periods
     s.setdefault("power_restored", None)       # 发电机修复时点（current_period；None=未修复/无停电）
     s.setdefault("pending_out", None)          # 被 defer 的出局者（v3.21 最后平民结算前指认窗口用）
     s.setdefault("accusation_fired_day", None)  # 本轮投票已发生武装指认的天数（每次投票至多一次）
@@ -201,6 +216,14 @@ def alive_players(state: dict) -> list[dict]:
 def current_period(state: dict) -> str:
     ph = state["phase"]
     return f"第{ph['day']}天{ph['stage']}"
+
+
+def mark_blackout_period(state: dict, period: str | None = None) -> None:
+    """记录一个实际发生监控缺失的时段（与拉闸声明日的统计口径分开）。"""
+    period = period or current_period(state)
+    periods = state.setdefault("blackout_periods", [])
+    if period not in periods:
+        periods.append(period)
 
 
 def countdown_text(day: int, last_murder_day: int | None) -> str:

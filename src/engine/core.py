@@ -35,6 +35,7 @@ from .state import (
     get_player,
     is_bedroom,
     is_villain,
+    mark_blackout_period,
     record_entry,
     reject,
     unlock_means,
@@ -227,6 +228,8 @@ class Engine:
 
     def _enter_stage(self, stage: str, public: dict) -> None:
         s = self.state
+        if stage in ("自由活动", "晚间休息") and s["power_out"]:
+            mark_blackout_period(s)
         if stage in MEETING_STAGES:
             s["positions"] = {p["name"]: "会客室" for p in s["players"] if p["alive"]}
             s["locks"][HALL] = False  # 会客室夜锁随夜晚结束解除（v3.4）
@@ -237,7 +240,7 @@ class Engine:
             s["sealed_room"] = None
             if s["power_out"] and s.get("blackout_news") != current_period(s):
                 # 当天新声明的停电在选房收尾后统一公布（rules-6 §7.5）；这里只公告跨日延续的停电
-                public["announcements"].append("停电中：除卧室外所有房间一片黑暗（可前往地下室修复发电机恢复供电——未修复则停电一直持续）")
+                public["announcements"].append("停电中：除会客室外所有房间一片黑暗（可前往地下室修复发电机恢复供电——未修复则停电一直持续）")
         if stage == "晚间休息":
             # v3.22：每阶段独立一次谋杀机会——白天成功杀人不再占用当夜机会（rules-6 §7.6"每阶段一次"）
             s["stage_murder_used"] = False
@@ -247,9 +250,9 @@ class Engine:
                 s["locks"][HALL] = True  # v3.4：会客室夜间自动落锁（第 4 天起全开）
             if s["power_out"]:
                 public["announcements"].append("停电持续中：除会客室外所有房间一片黑暗（含卧室——受邀组合仍可摸黑低语）；修复发电机前不会恢复")
-            elif s["phase"]["day"] in s.get("blackout_days", []) and s.get("power_restored"):
-                # v3.20：白天修复后，晚间开始时明确告知供电已恢复（game/838823：杀手误以为当夜仍停电）
-                public["announcements"].append("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作，不再有黑暗")
+            elif (s.get("power_restored") or "").startswith(f"第{s['phase']['day']}天"):
+                # 当天修复后，晚间开始时明确告知供电已恢复；跨日停电按实际修复日判断
+                public["announcements"].append("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作；停电造成的黑暗已解除，地下室与夜间卧室仍黑暗")
 
     def _morning_report(self, day: int, public: dict, private: dict) -> None:
         """清晨公告：昨日死亡与未遂、强制开锁、职业公开、尸体道具封存、桌上物品变动、监控公开宣读。"""
@@ -295,12 +298,16 @@ class Engine:
         if monitoring_public:
             public["monitoring"] = monitoring_public
             public["announcements"].append("监控公开宣读：案发当日全天（自由活动 + 晚间休息）（案发房间 + 死者卧室）的进入者名单如下")
-            if yday in s.get("blackout_days", []):
-                # v3.20：缺口精确到时段——修复于自由活动则仅该时段缺失；修复于晚间（归宿结算后）或
-                # 未修复则当夜同样缺失（game/838823：粗口径"当日时段缺失"与随后宣读的夜间记录矛盾）
-                missing = [f"第{yday}天自由活动"]
-                if s.get("power_restored") != f"第{yday}天自由活动":
-                    missing.append(f"第{yday}天晚间休息")
+            free = f"第{yday}天自由活动"
+            night = f"第{yday}天晚间休息"
+            gaps = set(s.get("blackout_periods", []))
+            missing = [p for p in (free, night) if p in gaps]
+            if not gaps and yday in s.get("blackout_days", []):
+                # 兼容手工构造/极旧存档：没有时段台账时沿用原来的按日推断口径
+                missing = [free]
+                if s.get("power_restored") != free:
+                    missing.append(night)
+            if missing:
                 public["announcements"].append(
                     f"（昨日停电，{'与'.join(missing)}时段监控记录缺失——缺失不代表无人进入）")
 

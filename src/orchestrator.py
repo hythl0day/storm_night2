@@ -534,14 +534,15 @@ class Orchestrator:
         if "投票" in title:
             need = (n + 1) / 2  # 严格过半的最小票值（0.5 步进）：n=4→2.5，n=5→3，n=6→3.5
             accuse_ref = ("见规则书 §7.3" if not self.lite else
-                          "持武器的平民可当众指认某人为杀手：指对平民立即获胜、指错指认者出局；资格细节届时见菜单")
+                          "持武器的平民可当众指认某人为杀手：指对则当前杀手出局（帮凶存活会继任，反派全灭才平民获胜）、"
+                          "指错指认者出局；资格细节届时见菜单")
             return [f"存活 {n} 人：出局线 = 得票严格超过 {n}/2，即至少 {need:g} 票（普通票 1、侦探票 1.5）——"
                     f"{need - 0.5:g} 票不够。",
                     "可弃权；平票或未过线 → 本轮无人出局。",
                     f"本轮无人出局时，之后可能进入武装指认（{accuse_ref}）。"]
         if "武装指认" in title:
             return ["每次投票至多接受一次指认，按行动顺序先声明者优先。",
-                    "指认对象确为杀手 → 平民立即获胜；指错（帮凶/平民）→ 你直接出局，游戏继续。"]
+                    "指认对象确为杀手 → 当前杀手出局（帮凶存活会继任，反派全灭才平民获胜）；指错（帮凶/平民）→ 你直接出局。"]
         if "死者字条" in title or "遗言" in title:
             return ["遗言/死者字条在身份公布之前——可以撒谎。",
                     "有未使用的遗留道具时一并立遗嘱：逐件指定归属；接收人可拒收；未指定/被拒收的道具不销毁，"
@@ -595,8 +596,8 @@ class Orchestrator:
         # 此时「游戏状态」段不得显示供电行，否则选房者在进入房间前就能提前得知停电
         if s["power_out"] and not s.get("blackout_news"):
             lines.append("- 供电：停电中（除会客室外全部黑暗、门锁失效、监控停止记录；修复发电机前不会恢复）")
-        elif day in s.get("blackout_days", []) and s.get("power_restored"):
-            lines.append("- 供电：今日停电已被修复（门锁与监控正常工作，不再有黑暗）")
+        elif (s.get("power_restored") or "").startswith(f"第{day}天"):
+            lines.append("- 供电：今日停电已被修复（门锁与监控正常工作；停电造成的黑暗已解除，地下室与夜间卧室仍黑暗）")
         out_day = self.orch.get("out_day", {})
         prof_pub = set(s.get("profession_public", []))
         roster = []
@@ -710,8 +711,9 @@ class Orchestrator:
         notes_path = self.dir / "private" / self.seat(p) / "notes.md"
         notes = notes_path.read_text(encoding="utf-8").strip() if notes_path.exists() else "（空）"
         pos = self.state["positions"].get(name, HALL)
+        dark = bool(pos and is_dark(self.state, pos))
         roommates = []
-        if pos and not is_dark(self.state, pos):
+        if pos and (not dark or is_villain(p)):
             roommates = [
                 q["name"]
                 for q in self.alive()
@@ -730,10 +732,16 @@ class Orchestrator:
         pos_line = f"你现在的位置：{pos}"
         meeting_hall = pos == HALL and self.state["phase"]["stage"] in MEETING_STAGES
         if pos and not meeting_hall:
-            if is_dark(self.state, pos):
-                # 黑暗房间不报"同房者：无"（明明有人却报无，曾与谋杀菜单目标矛盾、误导 AI——game/42 复盘）
+            if dark:
                 partners = self._dark_partners(name, pos)
-                if partners:
+                if is_villain(p):
+                    present = "、".join(roommates) if roommates else "无"
+                    pos_line += f"（房间黑暗：你仍知道在场者：{present}；你只知道他们是谁，看不见具体行为"
+                    if partners:
+                        pos_line += "；受邀组合仍可摸黑低语，其余黑暗规则不变）"
+                    else:
+                        pos_line += "，也无法交谈；其余黑暗规则不变）"
+                elif partners:
                     # v3.17：同入邀请成立的伙伴互知在场，可摸黑低语（rules-6 §7.5.6）
                     pos_line += (f"（房间黑暗：你看不见这里有谁——但你知道 {'、'.join(partners)} 应邀同来、就在身边，"
                                  "可以摸黑低声交谈；当心被你们看不见的潜伏者旁听）")
@@ -770,21 +778,34 @@ class Orchestrator:
     def reject_note(self, p: dict, ev: dict) -> None:
         self.tell(p["name"], f"你的动作被驳回：{ev.get('error', '未知原因')}")
 
-    def apply_actions(self, p: dict, actions: list[dict], retry: dict | None = None) -> None:
+    def apply_actions(self, p: dict, actions: list[dict], retry: dict | None = None,
+                      max_actions: int | None = None) -> None:
         """逐条派发动作到引擎；非法动作驳回并私下告知本人，不影响其余动作。
 
         传 retry 上下文（label/title/menu/extra）时：驳回后立即私下重报一次（dev-plan「驳回并要求重报」，
         game/2 复盘：夜袭误报已消耗凶器被驳回且无重报机会，直接改写胜负）。重报以「label#驳回重报」
         独立存档（inbox/outbox/host_log/console 同口径）；二次驳回不再追问（reject_note 已留档）。
         选房/归宿等有兜底语义（滞留/默认回房）的环节不接重报。
+        max_actions 用于房间行动等单动作环节：超量声明整批驳回，不先执行其中任何动作。
         """
+        def batch_rejection(count: int) -> tuple[dict, dict]:
+            act = {"type": "action_batch", "count": count}
+            ev = reject("action_batch",
+                        f"本环节每人只能选择 {max_actions} 个动作；你一次声明了 {count} 个，已全部驳回，请只保留一个")
+            self.script_action(p["name"], act, ev)
+            self.reject_note(p, ev)
+            return act, ev
+
         rejected: list[tuple[dict, dict]] = []
-        for act in actions:
-            if not isinstance(act, dict):
-                continue
-            ev = self.dispatch(p, act)
-            if ev is not None and not ev.get("ok"):
-                rejected.append((act, ev))
+        if max_actions is not None and len(actions) > max_actions:
+            rejected.append(batch_rejection(len(actions)))
+        else:
+            for act in actions:
+                if not isinstance(act, dict):
+                    continue
+                ev = self.dispatch(p, act)
+                if ev is not None and not ev.get("ok"):
+                    rejected.append((act, ev))
         if not rejected or retry is None:
             return
         reasons = "；".join(f"{fmt_action(a)} → 驳回（{e.get('error', '未知原因')}）" for a, e in rejected)
@@ -792,7 +813,11 @@ class Orchestrator:
             f"\n【主持人】你刚才的动作声明被驳回：{reasons}。请重新声明本阶段动作（放弃则 actions 为 []；speech 可留空，不会重复公开）。"
         briefing = self.build_briefing(p, retry["title"], retry["menu"], extra)
         payload = self.call_ai(p, retry["label"] + "#驳回重报", briefing)
-        for act in payload["actions"]:
+        retry_actions = payload["actions"]
+        if max_actions is not None and len(retry_actions) > max_actions:
+            batch_rejection(len(retry_actions))
+            return
+        for act in retry_actions:
             if isinstance(act, dict):
                 self.dispatch(p, act)
 
@@ -1467,12 +1492,12 @@ class Orchestrator:
                     self.script_sub(f"{room} · 房间行动（{'、'.join(occ)}）")
                     w["rooms_sectioned"].append(room)  # 续跑不重复写子段头
                     room_opened = True
-                extra = f"现在可使用房间设施或道具/技能。无动作可做则 actions 为 []。\n{NO_SPEECH_NOTE}"
+                extra = f"现在可使用房间设施或道具/技能。每轮只能选择一个动作，多报会整体驳回；无动作可做则 actions 为 []。\n{NO_SPEECH_NOTE}"
                 briefing = self.build_briefing(p, f"第{day}天 · {stage}（房间行动）", menu, extra)
                 payload = self.call_ai(p, f"{stage}-房间行动", briefing)
                 self.apply_actions(p, payload["actions"], retry={
                     "label": f"{stage}-房间行动", "title": f"第{day}天 · {stage}（房间行动）",
-                    "menu": menu, "extra": extra})
+                    "menu": menu, "extra": extra}, max_actions=1)
                 w["done"].append(name)
                 self.save_state()
                 self.check_stop()
@@ -1498,7 +1523,7 @@ class Orchestrator:
             # 不列入——卧室内的夜间菜单因此可为空（跳过不调 AI）
             menu.append(f'- 打开当前房间的门锁：{{"type": "unlock", "room": "{room}"}}')
         if room == "地下室" and s["power_out"]:
-            menu.append('- 修复发电机（结束停电、恢复供电；修复前停电一直持续，可跨天）：{"type": "fix_generator"}')
+            menu.append('- 修复发电机（无需道具或技能；结束停电、恢复供电，但地下室仍永久黑暗；修复前停电一直持续，可跨天）：{"type": "fix_generator"}')
         if s["phase"]["stage"] == "自由活动" and p["profession"] == "建筑师" \
                 and skill_left(s, name, "封闭空间") > 0 and room != HALL:
             # 封闭空间仅自由活动时间可发动（引擎口径），夜间不列噪音项

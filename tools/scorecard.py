@@ -165,6 +165,11 @@ def analyze(g: dict) -> dict:
             detectives.append(m.group(1))
     accusations = [l for l in feed if "武装指认" in l and "为杀手" in l]
     blackout_days = st.get("blackout_days", [])
+    blackout_periods = st.get("blackout_periods")
+    if blackout_periods is None:
+        blackout_kill_count = sum(1 for c in cases if c["day"] in blackout_days)
+    else:
+        blackout_kill_count = sum(1 for c in cases if c.get("period") in blackout_periods)
     actions: Counter = Counter()
     action_rejects: Counter = Counter()
     for m in ACTION_RE.finditer(script):
@@ -240,7 +245,7 @@ def analyze(g: dict) -> dict:
         "accuse_win": any("指认正确" in l for l in accusations),
         "tie_votes": sum(1 for l in feed if "无人过半" in l or "无人得票" in l),
         "blackouts": len(blackout_days),
-        "blackout_kills": sum(1 for c in cases if c["day"] in blackout_days),
+        "blackout_kills": blackout_kill_count,
         "table_fallbacks": sum(1 for l in feed if "放回会客室桌上" in l),
         "table_thefts": sum(1 for l in feed if "会客室桌上的" in l and "不见了" in l),
         "gun_moves": gun_moves,
@@ -284,8 +289,8 @@ def drama(a: dict) -> tuple[float, list[str]]:
         add("战至第 5 天", 0.5)
     if a["winner"] == "主神":
         add("主神结局（全员失败）", 1.0)
-    if a["winner"] == "平民" and a["murders"] == 0:
-        add("零谋杀消极局", -2.0)
+    if a["winner"] == "平民" and a["murders"] == 0 and a["attempts"] == 0:
+        add("零出手消极局", -2.0)
     total = max(0.0, min(10.0, sum(p for _, p in parts)))
     return round(total, 1), [f"{label} {'+' if pts >= 0 else ''}{pts}" for label, pts in parts]
 
@@ -312,10 +317,11 @@ def protagonist_candidates(a: dict) -> list[str]:
 
 
 def flow_briefing(log: str) -> list[str]:
-    """从 public/log.md 提取按天事件流（跳过发言行与表格行；公告行有/无 "- " 前缀都收）。"""
+    """从 public/log.md 提取按天事件流；多行发言整体跳过，公告行有/无 "- " 前缀都收。"""
     lines: list[str] = []
     section: list[str] = []
     title = ""
+    in_speech = False
 
     def flush() -> None:
         if title and section:
@@ -326,7 +332,18 @@ def flow_briefing(log: str) -> list[str]:
         if raw.startswith("## "):
             flush()
             title, section = raw[3:].strip(), []
-        elif raw.strip() and not raw.startswith(("**", "|", ">", "#")):
+            in_speech = False
+            continue
+        if raw.startswith("**"):
+            in_speech = True
+            continue
+        if not raw.strip():
+            continue
+        marked_event = raw.startswith(("- ", "〔", "投票结果：", "游戏结束：", "侦探竞选：", "退选结果："))
+        if in_speech and not marked_event:
+            continue
+        in_speech = False
+        if not raw.startswith(("|", ">", "#")):
             section.append(raw.strip().removeprefix("- ")[:160])
     flush()
     return lines

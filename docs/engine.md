@@ -64,7 +64,7 @@
 
 引擎在 deal.py 产出的 state 上扩展（完整注释见 `state.py` 模块 docstring）：
 
-`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
+`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_days`（拉闸声明日，停电次数统计）/`blackout_periods`（实际监控缺失时段，含跨日延续与修复当日）/`power_restored`（最近修复时点）、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
 
 玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、遗嘱/桌上取用当天即可用（v3.5）、转手不改变次数；deal 可用 `extra_items` 额外配发（杀手的固定万能钥匙、帮凶的固定反派道具），ensure 时并入。
 
@@ -86,12 +86,13 @@
 12. v3.5 选房顺序结算：逐人即时结算，被锁房间在进入瞬间由该玩家付手段开门——被锁房间此刻必然为空（门开前无人能进），故不存在"同房者目击开门"的通知对象；靠后者从选房门前的实时简报得知门已开。延时装置触发仍在全员结算后统一判定（"结伴进入可防"的平衡不变）。
 13. v3.5 桌上物品：取用判定为"归宿结算后会客室仅此 1 名存活者"（含夜宿者——夜宿名单次日公开，独宿取物等于自首）；停电不放宽独处要求（会客室永不黑暗）；盗贼道具回桌后反派夜里仍可取回（自取无害）。
 14. 黑暗房间交谈（v3.17/v3.22 统一口径）：亮房正常交谈；黑暗房间仅"同入邀请成立的组合"（互知在场）可摸黑低语——全体在场者（含看不见的潜伏者）都能听到，低语者不知是否被旁听。守夜密谈（卧室受邀组合）与会客室围炉夜谈（亮房正常交谈）均由同一套 `room_talks` 分发，组合资格按阶段取 `free_invites`/`night_invites`。
-15. 黑暗房间中谋杀菜单的目标列表 = 杀手在黑暗中凭声音/感知获知"谁在场"（机制需要目标名，fiction 成立）；但**简报的"当前局面"在黑暗房间不报"同房者：无"**（明明有人却报无，与谋杀菜单目标矛盾——game/42 索尔案例）；**同入/守夜邀请成立时对邀请者私密可见**（黑暗中也知道应邀者到来；未成立则无通知），受邀者因主动选择同房故天然知晓。
+15. 黑暗房间中，**反派（杀手与帮凶）仍能知道在场者的具体身份**，谋杀/舞台魔术菜单据此提供目标名；这只是人员信息例外，黑暗的行为不可见、交谈限制、人数条件与空手豁免均不变，帮凶仍无普通主动谋杀权。平民仍不知道黑暗房间内有谁；**同入/守夜邀请成立时对邀请者私密可见**（黑暗中也知道应邀者到来；未成立则无通知），受邀者因主动选择同房故天然知晓。
+16. 房间行动每人每轮只能选择一个动作（v3.25）：一次申报多个动作整批驳回、私下重报一次，不先执行其中任何动作；修复发电机也只是普通单动作，不附带修后补问或额外谋杀机会。
 
 ## 6. 测试
 
 ```bash
-python -m unittest discover -s tests -v   # 155 用例（引擎 + 平衡回归 + 编排集成）
+python -m unittest discover -s tests -v   # 测试用例（引擎 + 平衡回归 + 编排集成）
 ```
 
 覆盖：第 1 天禁杀、明暗人数条件、空手三条件与黑暗豁免（v3.22 卧室夜间黑暗由 `is_dark` 统一裁定）、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改（含会客室监控覆盖）、锁规则、赠送次数保留、遗嘱当天可用与回桌、桌上凶器生命周期（侦探佩枪/夜间取用/停电无痕/临时指认消耗/缴获）、选房顺序结算、晚间统一进入结算（平民慎入/卧室黑暗/容量）、密道四房间、指认消耗武器、清晨死亡公告与全天监控宣读、驳回不改状态（deepcopy 对比）。

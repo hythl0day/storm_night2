@@ -700,6 +700,16 @@ class StageHintsTest(MockGameTestBase):
         hints = self.orch._stage_hints("第1天 · 侦探竞选投票")
         self.assertTrue(any("未参选者" in h for h in hints), hints)
 
+    def test_armed_accusation_hint_includes_succession(self):
+        hints = self.orch._stage_hints("第2天 · 武装指认")
+        self.assertTrue(any("帮凶存活会继任" in h and "反派全灭才平民获胜" in h for h in hints), hints)
+        self.assertFalse(any("平民立即获胜" in h for h in hints), hints)
+
+        self.orch.state["is_lite_rule"] = True
+        hints = self.orch._stage_hints("第2天 · 投票")
+        self.assertTrue(any("帮凶存活会继任" in h and "反派全灭才平民获胜" in h for h in hints), hints)
+        self.assertFalse(any("平民立即获胜" in h for h in hints), hints)
+
     def test_night_hint(self):
         hints = self.orch._stage_hints("第2天 · 晚间休息")
         self.assertTrue(any("互不可见" in h for h in hints), hints)
@@ -718,6 +728,54 @@ class StageHintsTest(MockGameTestBase):
         self.assertIn("## 本环节规则速查", text)  # 内交谈有速查
         text2 = self.orch.build_briefing(p, "第2天 · 自由活动（非标准环节）", [])
         self.assertNotIn("## 本环节规则速查", text2)
+
+    def test_villains_know_dark_roommates(self):
+        s = self.orch.state
+        s["phase"] = {"day": 2, "stage": "晚间休息"}
+        s["positions"] = {n: "会客室" for n in s["order"]}
+        s["positions"].update({"A": "地下室", "B": "地下室", "C": "地下室"})
+        for name, expected in (("A", "B、C"), ("B", "A、C")):
+            text = self.orch.build_briefing(self.orch.player(name), "第2天 · 晚间休息（房间行动）", [])
+            current = text.split("## 当前局面\n", 1)[1].splitlines()[0]
+            self.assertIn(f"你仍知道在场者：{expected}", current)
+            self.assertIn("也无法交谈", current)  # 只增加人员信息，不解除黑暗限制
+        text = self.orch.build_briefing(self.orch.player("C"), "第2天 · 晚间休息（房间行动）", [])
+        current = text.split("## 当前局面\n", 1)[1].splitlines()[0]
+        self.assertIn("你看不见这里有谁", current)
+        self.assertNotIn("你仍知道在场者", current)
+
+    def test_room_action_rejects_multiple_actions(self):
+        s = self.orch.state
+        s["phase"] = {"day": 2, "stage": "自由活动"}
+        s["power_out"] = True
+        s["positions"] = {n: "会客室" for n in s["order"]}
+        s["positions"].update({"A": "地下室", "C": "地下室"})
+        calls = []
+
+        def chat_multi(player, messages, *, on_token=None, reasoning_effort=None):
+            acts = []
+            if player.name == "A":
+                calls.append(player.name)
+                if len(calls) == 1:
+                    acts = [{"type": "fix_generator"}, {"type": "murder", "target": "C", "weapon": "刀"}]
+                else:
+                    acts = [{"type": "fix_generator"}]
+            return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
+                              latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+
+        orig = orchestrator.chat
+        orchestrator.chat = chat_multi
+        try:
+            self.orch.room_actions(2)
+        finally:
+            orchestrator.chat = orig
+        self.assertEqual(len(calls), 2)  # 初次多报 + 一次驳回重报，没有修后额外行动
+        self.assertFalse(s["power_out"])  # 重报只保留修电后正常执行
+        self.assertTrue(self.orch.player("C")["alive"])  # 首次多报中的谋杀没有部分执行
+        self.assertEqual(self.orch.player("A")["items"][0]["name"], "刀")
+        self.assertEqual(self.orch.player("A")["items"][0]["uses_left"], 1)
+        script = (self.orch.dir / "script.md").read_text(encoding="utf-8")
+        self.assertIn("一次声明 2 个房间动作 → 驳回", script)
 
     def test_host_log_full_usage(self):
         self.orch.host_log("A", "测试", True, 1.0, {"total_tokens": 100, "prompt_cache_hit_tokens": 80})
@@ -1321,8 +1379,47 @@ class TestBlackoutDiscovery(MockGameTestBase):
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作", log)
         self.assertIn("第2天晚间休息", s["monitoring_true"])  # 当夜归宿进入恢复记录（空白不回溯，修复后正常）
+        self.assertEqual(s["blackout_periods"], ["第2天自由活动"])
         night_brief = (d / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
         self.assertIn("供电：今日停电已被修复", night_brief)
+
+    def test_cross_day_power_restored_notifications(self):
+        """第 2 天拉闸、第 3 天修复：恢复公告和简报按实际修复日出现，缺失时段跨日连续记录。"""
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+
+        def chat_repair(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            name = player.name
+            if day == 2 and "停电声明" in title and name == "B":
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day in (2, 3) and "选房" in title:
+                acts = [{"type": "choose_room", "room": "地下室" if name == "C" else "会客室"}]
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 3 and "房间行动" in title and name == "C":
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=[{"type": "fix_generator"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_repair)
+        s = orch.state
+        self.assertFalse(s["power_out"])
+        self.assertEqual(s["power_restored"], "第3天自由活动")
+        self.assertEqual(s["blackout_days"], [2])
+        self.assertEqual(s["blackout_periods"],
+                         ["第2天自由活动", "第2天晚间休息", "第3天自由活动"])
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("供电已恢复（发电机已于今日修复）：今晚门锁与监控正常工作", log)
+        self.assertIn("地下室与夜间卧室仍黑暗", log)
+        night_brief = (d / "inbox" / "A" / "day3-晚间休息.md").read_text(encoding="utf-8")
+        self.assertIn("供电：今日停电已被修复", night_brief)
+        self.assertIn("停电造成的黑暗已解除", night_brief)
 
     def test_permanently_opened_doors_in_game_state(self):
         """E（万能钥匙）第 2 天首开监控室后，「游戏状态」段列出「已永久开启」——跨天锁台账
@@ -1433,7 +1530,8 @@ class TestLiteJustInTimeRules(MockGameTestBase):
         orch.state["is_lite_rule"] = True
         hints = "、".join(orch._stage_hints("第2天 · 投票"))
         self.assertNotIn("§", hints)
-        self.assertIn("指对平民立即获胜", hints)  # 武装指认内联口径
+        self.assertIn("帮凶存活会继任，反派全灭才平民获胜", hints)  # 武装指认内联口径
+        self.assertNotIn("指对平民立即获胜", hints)
         w = orch._weapon_hint(orch.player("C"), None)
         self.assertNotIn("§", w)
         self.assertIn("你体格不弱于目标", w)  # 空手条件内联

@@ -91,11 +91,33 @@ class TestScorecard(unittest.TestCase):
         # 胜负路径覆盖两种
         self.assertIn("投票淘汰", text)
         self.assertIn("无杀倒计时", text)
-        # 消极局戏剧性含"零谋杀消极局"扣分项
+        # 消极局戏剧性含"零出手消极局"扣分项；有未遂的活跃对局不扣这项
         from tools.scorecard import load_game
         a2 = analyze(load_game(self.sel / "1002"))
         _, parts2 = drama(a2)
-        self.assertTrue(any("零谋杀消极局" in p for p in parts2))
+        self.assertTrue(any("零出手消极局" in p for p in parts2))
+        a2["attempts"] = 1
+        _, active_parts = drama(a2)
+        self.assertFalse(any("零出手消极局" in p for p in active_parts))
+
+    def test_flow_briefing_skips_multiline_speech(self):
+        from tools.scorecard import flow_briefing
+        log = """## 第3天 · 公共发言
+**狄西**：第一段发言
+
+第二段不应进入简报
+第三段也不应进入简报
+〔第3天·公共发言〕奇米 把一件道具交给了 狄西
+
+## 第3天 · 投票
+- 〔第3天·投票〕投票结果：奇米 出局
+"""
+        text = "\n".join(flow_briefing(log))
+        self.assertIn("奇米 把一件道具交给了 狄西", text)
+        self.assertIn("投票结果：奇米 出局", text)
+        self.assertNotIn("第一段发言", text)
+        self.assertNotIn("第二段不应进入简报", text)
+        self.assertNotIn("第三段也不应进入简报", text)
 
     def test_empty_dir_and_non_archive(self):
         """空目录与非存档目录的友好提示。"""

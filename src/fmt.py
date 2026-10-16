@@ -111,4 +111,6 @@ def fmt_action(a: dict) -> str:
         return f"武装指认 → {a.get('target', '?')}"
     if t == "take_table":
         return f"取桌上物品：「{a.get('item', '?')}」"
+    if t == "action_batch":
+        return f"一次声明 {a.get('count', '?')} 个房间动作"
     return json.dumps(a, ensure_ascii=False)

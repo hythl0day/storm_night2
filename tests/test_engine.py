@@ -1161,6 +1161,49 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         text2 = "\n".join(ev2["public"]["announcements"])
         self.assertIn("第2天自由活动与第2天晚间休息时段监控记录缺失", text2)
 
+    def test_cross_day_blackout_repair_and_morning_gap(self):
+        """跨日停电在第 3 天修复：修复日也记入缺失时段，恢复公告按实际修复日出现，
+        次日清晨只报修复前的自由活动缺口，不误报已恢复的晚间。"""
+        eng = Engine(mk_state())
+        s = eng.state
+        s["phase"] = {"day": 3, "stage": "自由活动"}
+        s["power_out"] = True
+        s["blackout_days"] = [2]
+        s["blackout_periods"] = ["第2天自由活动", "第2天晚间休息"]
+        s["positions"] = {"C": "地下室"}
+        ev = eng.fix_generator("C")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(s["power_restored"], "第3天自由活动")
+        self.assertIn("第3天自由活动", s["blackout_periods"])
+        self.assertEqual(s["blackout_days"], [2])  # 一次跨日停电仍只计一个拉闸日
+
+        s["phase"] = {"day": 3, "stage": "晚间休息"}
+        public = {"announcements": []}
+        eng._enter_stage("晚间休息", public)
+        self.assertIn("供电已恢复", "\n".join(public["announcements"]))
+        self.assertIn("地下室与夜间卧室仍黑暗", "\n".join(public["announcements"]))
+
+        s["cases"].append({
+            "id": 1, "victim": "E", "room": "书房", "crime_room": "书房",
+            "day": 3, "stage": "自由活动", "period": "第3天自由活动",
+            "method": "刀", "wound": "利器", "culprit": "A", "body_moved": False,
+            "falsified": None, "looted": [], "evidence_vulnerable": True, "sealed": False,
+        })
+        player(eng, "E")["alive"] = False
+        s["last_murder_day"] = 3
+        ev = eng.advance()
+        text = "\n".join(ev["public"]["announcements"])
+        self.assertIn("第3天自由活动时段监控记录缺失", text)
+        self.assertNotIn("第3天晚间休息时段监控记录缺失", text)
+
+    def test_blackout_periods_legacy_migration(self):
+        st = mk_state()
+        st["blackout_days"] = [2]
+        st["power_restored"] = "第3天自由活动"
+        Engine(st)
+        self.assertEqual(st["blackout_periods"],
+                         ["第2天自由活动", "第2天晚间休息", "第3天自由活动"])
+
     def test_coverup_day_limit(self):
         """v3.19：毁证/移尸仅限案发当天——次日（清晨调查后）即使身处案发现场也无法再改动。"""
         players = default_players()
