@@ -1,0 +1,1 @@
+Need to respond: deny or deflect the U盘 accusation. Claude's will said I took the U盘 from the safe? Actually safe contains 病毒U盘, opened? I'm 化学家 with no 暴力破解... I didn't open safe. Claude accused me. I should deny, deflect to 格罗克, keep calm. Speak concisely.

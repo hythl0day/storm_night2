@@ -197,7 +197,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
     return {
         "seed": seed,
         "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
-        "rules_version": "v3.23",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
+        "rules_version": "v3.24",  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
         "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
         "mode": "6人局",

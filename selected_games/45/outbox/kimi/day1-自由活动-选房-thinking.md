@@ -1,0 +1,3 @@
+Blackout active (must be 狄西 used 万能钥匙). I should act as 帮凶: support blackout, move to a dark room. 狄西 could kill in dark room with ≤2 non-villains. I should go to 监控室 (locked but locks fail during blackout) or 书房. Going to 地下室 alone is risky. I'll invite 狄西? No—inviting a known partner publicly pairs us. But room choices are secret-ish; results visible to later players. Simpler: go to 监控室; dark, records stopped anyway. Actually during blackout monitoring stops. Best support: stay in a dark room where 狄西 might strike? Keep distance: go 书房.
+
+Also remember to record that blackout likely caused by 狄西 (only villains can pull it).

@@ -1046,6 +1046,114 @@ class TestGameStateSection(MockGameTestBase):
         self.assertNotIn("平民", seg_d)  # 被谋杀者身份不公开
 
 
+class TestAnnouncementScope(MockGameTestBase):
+    """game/45 复盘：简报「游戏状态」段按清晨公告口径——当天谋杀在当天简报里仍显示遇害者存活、
+    倒计时保持清晨公告值（§7.1 死亡次日清晨才公告，场外反派也无从得知）；房间行动在 winner
+    产生后整环节收束（终局后不再调用 AI）。"""
+
+    def _orch_at(self, name, day, positions, cases=None, dead=(), last_murder_day=None, out_day=None):
+        d = write_game_dir(self.root / name, default_players())
+        orch = Orchestrator(d)
+        s = orch.state
+        s["phase"] = {"day": day, "stage": "自由活动"}
+        s["rooms_entered"] = f"第{day}天自由活动"
+        s["positions"] = dict(positions)
+        s["cases"] = list(cases or [])
+        s["last_murder_day"] = last_murder_day
+        for n in dead:
+            next(q for q in s["players"] if q["name"] == n)["alive"] = False
+        if out_day:
+            orch.orch["out_day"] = dict(out_day)
+        return orch
+
+    def _drive_room_actions(self, orch, day, kill_target):
+        calls: dict[str, str] = {}
+
+        def cap(player, messages, *, on_token=None, reasoning_effort=None):
+            brief = messages[-1]["content"]
+            calls[player.name] = brief
+            acts = [{"type": "murder", "target": kill_target, "weapon": "刀"}] if player.name == "A" else []
+            return ChatResult(player.name, ok=True, content=payload(actions=acts),
+                              latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+
+        orig = orchestrator.chat
+        orchestrator.chat = cap
+        try:
+            orch.room_actions(day, "自由活动")
+        finally:
+            orchestrator.chat = orig
+        return calls
+
+    def test_same_day_death_hidden_in_briefing(self):
+        """A 第 2 天书房刀杀 E → 同阶段后排房间（监控室 B）的简报不得泄漏：E 仍列存活、存活数不变。"""
+        orch = self._orch_at("g45a", 2, {"A": "书房", "E": "书房", "B": "监控室",
+                                         "C": "会客室", "D": "会客室", "F": "会客室"})
+        calls = self._drive_room_actions(orch, 2, "E")
+        s = orch.state
+        self.assertTrue(any(c["victim"] == "E" and c["day"] == 2 for c in s["cases"]))
+        self.assertIsNone(s["winner"])  # 仍有其他平民，游戏继续
+        self.assertIn("B", calls)  # B 在监控室有菜单（查监控/延时装置），谋杀后被调用
+        b = calls["B"]
+        self.assertIn("E（男·普通·中国·存活）", b)      # 遇害者按公告口径仍显示存活
+        self.assertIn("存活 6 人", b)
+        self.assertNotIn("第2天死亡", b)
+
+    def test_countdown_keeps_morning_value_on_murder_day(self):
+        """第 2 天已有谋杀、第 3 天空白 → 第 4 天清晨公告 1/2；当天再次谋杀后，同天简报仍显示 1/2
+        （倒计时重置次日清晨才公告）。"""
+        case_d2 = {"id": 1, "victim": "E", "room": "书房", "crime_room": "书房", "day": 2,
+                   "stage": "自由活动", "period": "第2天自由活动", "method": "刀", "wound": "利器",
+                   "culprit": "A", "body_moved": False, "falsified": None, "looted": [],
+                   "evidence_vulnerable": True, "sealed": True}
+        orch = self._orch_at("g45b", 4, {"A": "书房", "F": "书房", "B": "监控室", "C": "会客室", "D": "会客室"},
+                             cases=[case_d2], dead=("E",), last_murder_day=2)
+        calls = self._drive_room_actions(orch, 4, "F")
+        self.assertTrue(any(c["victim"] == "F" and c["day"] == 4 for c in orch.state["cases"]))
+        b = calls["B"]
+        self.assertIn("已连续 1 个完整天无谋杀行为（1/2）", b)  # 保持清晨公告值
+        self.assertNotIn("当前进度 0/2", b)
+        self.assertIn("F（女·普通·中国·存活）", b)  # 当天遇害者同样按公告口径
+
+    def test_next_morning_roster_shows_death(self):
+        """公告口径不误伤次日：隔夜案件在角色表中正常显示死亡与案发房间（职业未公开则不显示）。"""
+        orch = self._orch_at("g45c", 3, {}, cases=[{"id": 1, "victim": "E", "room": "书房", "day": 2}],
+                             dead=("E",), last_murder_day=2)
+        text = "\n".join(orch._game_state_lines())
+        self.assertIn("存活 5 人", text)
+        seg_e = next(x for x in text.split("、") if x.startswith("E（"))
+        self.assertIn("第2天死亡（书房）", seg_e)
+        self.assertNotIn("黑客", seg_e)  # 身份不公开（§9.4）；职业未经清晨公开前也不显示
+
+    def test_room_actions_stop_after_winner(self):
+        """谋杀导致反派胜利（平民全灭）后，本环节剩余席位不再被调用（终局无合法行动 + 收窄泄漏窗口）。"""
+        orch = self._orch_at("g45d", 4, {"A": "会客室", "F": "会客室", "B": "监控室"},
+                             dead=("C", "D", "E"), out_day={"C": 2, "D": 3, "E": 3})
+        calls = self._drive_room_actions(orch, 4, "F")
+        self.assertEqual(orch.state["winner"], "反派")
+        self.assertIn("A", calls)      # 杀手本人被调用并完成谋杀
+        self.assertNotIn("B", calls)   # winner 产生后，后排房间的帮凶不再被调用
+
+    def test_talks_and_actions_skip_when_game_over(self):
+        """进入结算的装置击杀终局后，房间交谈/房间行动均整环节跳过（门卫检查）。"""
+        orch = self._orch_at("g45e", 2, {"C": "会客室", "D": "会客室"})
+        orch.state["winner"] = "反派"
+        calls = []
+
+        def cap(player, messages, *, on_token=None, reasoning_effort=None):
+            calls.append(player.name)
+            return ChatResult(player.name, ok=True, content=payload(),
+                              latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+
+        orig = orchestrator.chat
+        orchestrator.chat = cap
+        try:
+            orch.room_talks(2, "自由活动")
+            orch.room_actions(2, "自由活动")
+        finally:
+            orchestrator.chat = orig
+        self.assertEqual(calls, [])
+
+
 class TestCaseIdRobustness(MockGameTestBase):
     """案件指认主口径=受害者名字（"case" 字段）：容忍「」引号与"案"后缀、兼容旧式整数 case_id、
     单案件自动归一；未知名驳回并附案件名单，不得炸穿编排器（game/18 复盘）。无案件清晨调查整体跳过。"""

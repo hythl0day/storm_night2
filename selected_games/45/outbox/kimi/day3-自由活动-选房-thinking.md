@@ -1,0 +1,5 @@
+Situation: I'm in 会客室 with 豆包 and 杰米尼. 停电 continues. I can invite 狄西 to join. Should I invite 狄西? Three women together is awkward. Better: go to 地下室 to repair generator? Actually with 停电, darkness favors killing. 狄西 needs a chance to kill — with 豆包 and 杰米尼 together in 会客室, they stay in the light. If I invite 狄西, that puts three in one room.
+
+Actually 豆包 invited me to 会客室; I'm already here. Maybe better to go to 地下室 to fix generator — but fixing restores light, good for civilians, bad for us. Don't fix. Invite 狄西 to a dark room? I can invite 狄西 to same room — 地下室 dark, ≤2 non-villains needed for murder; if 豆包 comes, that's 3. Risky.
+
+Best: stay 会客室, invite 狄西 so he's not isolated, keep light conversation. Or go to 地下室 alone, do nothing. If I go to 地下室 and 狄西 follows... can't know. Simplest: stay 会客室, invite 狄西.

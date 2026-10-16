@@ -1,0 +1,5 @@
+We need answer in required JSON. 
+
+The current survival threshold is 3 votes. Jamieani is the prime suspect for the villain, and Dixie has clearly stated she will vote for her, while Chimi likely intends to vote for her for account needs. If we vote her out and she is a villain, the remaining villain will succeed as the killer privately without ending the game; if she is innocent, we will have an extra chance to find the real villain later. We have confirmed two cleared civilians so far, and we need to find two more villains, one of which is very likely Jamieani. If there is no murder today, civilians will win tomorrow.
+
+After evaluating the tradeoffs, I've decided to vote out Jamieani first. I'll also update the relevant notes as no speech was delivered during this phase. I will first verify the possible collusion between Chimi and Dixie, then generate the required concise JSON.

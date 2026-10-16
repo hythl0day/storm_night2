@@ -1,0 +1,1 @@
+Vote for 格罗克. Maybe others will too; likely not enough. Abstaining? Voting 格罗克 is consistent and costs nothing; if he survives, suspicion shifts. Fine.

@@ -1,0 +1,1 @@
+Power restored — tonight locked, lit. Detective none, revolver on table; someone might grab it tonight at lounge alone. Best stay in bedroom. I have no lock issues; bedroom is free. Just return to own bedroom.

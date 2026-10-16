@@ -17,7 +17,8 @@ v3.11：停电逐人发现——各选房者抵达所选房间时才各自得知
 平民慎入有人的功能房；进入结算后同样是房间交谈（黑暗低语）→ 房间行动（含谋杀/收听窃听器/
 取桌上物品）→ 阶段末毁证窗口）→ advance() 进入次日案件调查
 （清晨公告含状态行/昨日死亡与未遂（不公告死亡时段）/桌上物品变动/调查自荐/死者字条遗嘱）。
-终局（任一胜负条件满足）自动收束并落盘结局。
+终局（任一胜负条件满足）自动收束并落盘结局——阶段内循环（房间交谈/房间行动/手电筒判定）在
+winner 产生后即整环节停止调用（v3.24）；简报「游戏状态」段按清晨公告口径显示死亡与倒计时（v3.24）。
 
 消息结构：system = render(game_system.md)（人设+规则书+私密卡），user = 当次简报（增量公告 +
 增量私密事件 + 关键记录档案 + notes 回放 + 合法动作菜单）；对话不累积，每阶段独立调用。
@@ -575,12 +576,20 @@ class Orchestrator:
         """「游戏状态」段：公开事实速查——角色表（性别/体格/国籍，开局已全员公布）、存活状态、
         侦探、无杀倒计时。出局者身份职业已公开（§7.3）故列出；被谋杀者只列死亡信息与
         已公开职业，身份不公开（§9.4）。声称的职业/道具不在此列——那是发言内容，由角色自己记笔记。
-        每阶段重发是为了让 AI 不必从笔记里推算局面（game/8 复盘：角色反复搞错存活与道具台账）。"""
+        每阶段重发是为了让 AI 不必从笔记里推算局面（game/8 复盘：角色反复搞错存活与道具台账）。
+        死亡与倒计时一律按清晨公告口径（§7.1：死亡次日清晨才公告）——当天发生的谋杀在当天简报里
+        仍显示遇害者存活、倒计时保持清晨公告值（game/45 复盘：谋杀后同阶段简报把死亡、案发房间与
+        倒计时重置泄漏给未到场者，含本应无从得知的场外反派）。"""
         s = self.state
         day = s["phase"]["day"]
-        alive_n = sum(1 for q in s["players"] if q["alive"])
+        pending = {c["victim"] for c in s["cases"] if c["day"] >= day}  # 当天已发生、次日清晨才公告的死亡
+        announced = {c["victim"]: c for c in s["cases"] if c["day"] < day}
+        alive_n = sum(1 for q in s["players"] if q["alive"]) + len(pending)
+        # 谋杀行为（含未遂）当天不公告——倒计时显示以"昨天及以前"的末次行为为准，与清晨公告值一致
+        attack_days = [c["day"] for c in s["cases"]] + [a["day"] for a in s["attempts"]]
+        last_public = max([d for d in attack_days if d < day], default=None)
         lines = [f"- 进度：第 {day}/6 天 · {s['phase']['stage']}｜存活 {alive_n} 人｜侦探：{s.get('detective') or '无'}"
-                 f"｜{countdown_text(day, s['last_murder_day'])}"]
+                 f"｜{countdown_text(day, last_public)}"]
         # 供电状态（v3.20）：仅停电中或当日停电已修复时显示——白天修复后 AI 仍误以为停电的案例见 game/838823
         # v3.23：blackout_news 非空 = 当天刚秘密拉闸、尚未在选房收尾公布（rules-6 §7.5）——
         # 此时「游戏状态」段不得显示供电行，否则选房者在进入房间前就能提前得知停电
@@ -588,19 +597,18 @@ class Orchestrator:
             lines.append("- 供电：停电中（除会客室外全部黑暗、门锁失效、监控停止记录；修复发电机前不会恢复）")
         elif day in s.get("blackout_days", []) and s.get("power_restored"):
             lines.append("- 供电：今日停电已被修复（门锁与监控正常工作，不再有黑暗）")
-        deaths = {c["victim"]: c for c in s["cases"]}
         out_day = self.orch.get("out_day", {})
         prof_pub = set(s.get("profession_public", []))
         roster = []
         for q in s["players"]:
             n = q["name"]
             base = f"{n}（{q['gender']}·{physique_desc(q['physique'])}·{q['nationality']}"
-            if q["alive"]:
+            if q["alive"] or n in pending:
                 roster.append(base + "·存活）")
             elif n in out_day:
                 roster.append(base + f"·第{out_day[n]}天出局：{q['identity']}/{q['profession']}）")
-            elif n in deaths:
-                c = deaths[n]
+            elif n in announced:
+                c = announced[n]
                 prof = f"，职业已公开：{q['profession']}" if n in prof_pub else ""
                 roster.append(base + f"·第{c['day']}天死亡（{c['room']}）{prof}）")
             else:
@@ -735,7 +743,7 @@ class Orchestrator:
                 pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
         lines.append(f"## 当前局面\n{pos_line}")
         lines.append("")
-        lines.append("## 游戏状态\n" + "\n".join(self._game_state_lines()))
+        lines.append("## 游戏状态（公开事实速查——与你的笔记冲突时以此为准）\n" + "\n".join(self._game_state_lines()))
         lines.append("")
         lines.append("## 你的状态\n" + "\n".join(self._status_lines(p)))
         lines.append("")
@@ -1357,6 +1365,8 @@ class Orchestrator:
         free_invites = invites or {}
         w = self.wip(f"{day}:{stage}:交谈", done_rooms=[])
         for name in self.state["order"]:
+            if self.state["winner"]:
+                return  # 进入结算的延时装置击杀可能直接终局——终局后不再交谈
             room = positions.get(name)
             if not room or room in w["done_rooms"]:
                 continue
@@ -1433,14 +1443,20 @@ class Orchestrator:
     def room_actions(self, day: int, stage: str = "自由活动") -> None:
         """房间行动：按房间分组处理（全记录按房间分段，剪辑可读；各席行动在引擎层面相互独立，
         组间顺序不影响裁决），组内仍按行动顺序。wip 断点仍是席位粒度。
-        v3.22：自由活动/晚间休息共用——谋杀/舞台魔术/毁证机会在本环节发动（菜单按位置生成）。"""
+        v3.22：自由活动/晚间休息共用——谋杀/舞台魔术/毁证机会在本环节发动（菜单按位置生成）。
+        winner 产生（谋杀/装置击杀终局）即整环节收束：终局后不再有合法行动，继续调用只会空耗
+        token 并放大未公告信息的泄漏窗口（game/45 复盘）。"""
         w = self.wip(f"{day}:{stage}:房间行动", done=[])
         positions = self.state["positions"]
         for room in self.all_rooms(stage):
+            if self.state["winner"]:
+                return
             occ = [n for n in self.state["order"]
                    if positions.get(n) == room and (self.player(n) or {}).get("alive")]
             room_opened = room in w.setdefault("rooms_sectioned", [])
             for name in occ:
+                if self.state["winner"]:
+                    return
                 if name in w["done"]:
                     continue
                 p = self.player(name)

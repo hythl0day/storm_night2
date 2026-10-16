@@ -1,0 +1,3 @@
+Only 4 alive now, meeting room with everyone. I need to say something, shift suspicion, propose group staying? Actually I should quietly avoid killing countdown — wait, the assault on 豆包 was 未遂? The brief says 遇袭但幸存 — that counts as murder behavior, resetting countdown. Good, killer already acted.
+
+I should speak, maybe deflect the vote-tampering suspicion and subtly keep people together so killer can't strike... Actually as 帮凶 I want kills to happen. But no detective, armed civilians can 指认. Be careful. Speak dryly, logical.

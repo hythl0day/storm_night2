@@ -1,0 +1,1 @@
+4 players, line is 2.5+. My vote 1, Dixi 1 = 2, not enough. Beanbun voted Jemini? Her vote 1 → 3 votes if she votes Jemini too. Di Xi's speech pushed voting Jemini. If beanbun votes Jemini, 3 votes > 2.5. Vote Jemini.

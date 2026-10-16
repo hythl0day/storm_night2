@@ -44,7 +44,7 @@ python -m tools.scorecard                   # 多局报告：版本分组胜率/
 python -m tools.scorecard --game 42         # 单局报告：台账/流程简报/戏剧性评分/主角弧线候选
 python -m tools.scorecard --min-version v3.8  # 只统计指定版本及以后的存档
 
-# 测试（引擎 + 平衡回归 + 编排 mock 集成，222 用例）
+# 测试（引擎 + 平衡回归 + 编排 mock 集成，227 用例）
 python -m unittest discover -s tests
 ```
 

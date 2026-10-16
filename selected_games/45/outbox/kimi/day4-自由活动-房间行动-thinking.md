@@ -1,0 +1,1 @@
+Situation: dark study, I have no lockpicking means (no screwdriver — sent to 豆包 via 格罗克's will). 保险箱 needs open_safe requires unlock means; I don't have one. Virus U盘 is in the safe, irrelevant now. Actions available: open_safe (requires means) — I don't have any. So actions = [].

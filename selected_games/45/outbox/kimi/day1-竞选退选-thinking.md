@@ -1,0 +1,1 @@
+I'm the accomplice; should I stay? If I win detective, I get the gun and can mislead. But detective's identity reveal on death, and 1.5 vote. Risky but strong for villains: armed accusation monopoly means no civilian can accuse the killer. Gruluook claims criminal profiler. Me as detective gives villain control. Stay.

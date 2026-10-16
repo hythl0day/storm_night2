@@ -1,0 +1,1 @@
+I don't have lockpick means. Safe locked, no tools. So no action? I have no 暴力破解. Actions: none.
