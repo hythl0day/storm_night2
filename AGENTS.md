@@ -54,7 +54,7 @@ tests/        unittest（python -m unittest discover -s tests）
 ```bash
 python -m src.smoke --all              # 八席连通点名（需 RELAY_API_KEY_* 环境变量）
 python -m src.deal --seed 42           # 生成样例局 game/42/（目录名即 seed）
-python -m unittest discover -s tests   # 220 测试用例
+python -m unittest discover -s tests   # 221 测试用例
 ```
 
 ## 当前进度与待办

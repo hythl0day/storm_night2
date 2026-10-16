@@ -1447,13 +1447,16 @@ class Orchestrator:
                 menu.append('- 篡改一条监控记录：{"type": "tamper", "period": "第N天自由活动", "room": "场所", "op": "add|remove|replace", "name": "进入者", "new_name": "替换为"}')
         if room == "书房" and not s["safe_open"]:
             menu.append('- 打开保险箱：{"type": "open_safe"}（需要开锁手段）')
-        if s["locks"].get(room):
+        if s["locks"].get(room) and room != bedroom_of(name):
+            # 自己卧室的门锁项无意义（本人进入永远免费），不列入——独居房主的夜间菜单因此可为空（跳过不调 AI）
             menu.append(f'- 打开当前房间的门锁：{{"type": "unlock", "room": "{room}"}}')
         if is_dark(s, room) and held_item(p, "手电筒", day) is not None:
             menu.append('- 使用手电筒（本房间本次不视为黑暗）：{"type": "use_flashlight"}')
         if room == "地下室" and s["power_out"]:
             menu.append('- 修复发电机（结束停电、恢复供电；修复前停电一直持续，可跨天）：{"type": "fix_generator"}')
-        if p["profession"] == "建筑师" and skill_left(s, name, "封闭空间") > 0 and room != HALL:
+        if s["phase"]["stage"] == "自由活动" and p["profession"] == "建筑师" \
+                and skill_left(s, name, "封闭空间") > 0 and room != HALL:
+            # 封闭空间仅自由活动时间可发动（引擎口径），夜间不列噪音项
             menu.append('- 封闭空间（锁死当前房间至下一自由活动；不能对会客室使用）：{"type": "seal_room", "allowed": ["许可留下的人"]}')
         if s["phase"]["stage"] == "晚间休息":
             if room == bedroom_of(name) and s["bug_room"] and held_item(p, "窃听器", day) is not None:
@@ -1464,7 +1467,8 @@ class Orchestrator:
                 if not others:
                     items_desc = "、".join(f"「{e['name']}」（剩 {e['uses_left']} 次）" for e in s["table_items"])
                     menu.append(f'- 取走桌上一物品（当前桌上：{items_desc}；取用无人看见，明早会公告物品不见了）：{{"type": "take_table", "item": "物品名"}}')
-        if is_villain(p) and p["profession"] == "机械师" and day >= 2:
+        if s["phase"]["stage"] == "自由活动" and is_villain(p) and p["profession"] == "机械师" and day >= 2:
+            # 延时装置仅自由活动时间可设置（引擎口径），夜间不列噪音项
             menu.append('- 设置延时装置：{"type": "set_device", "room": "当前房间名"}')
         if day >= 2 and is_villain(p) and not s["stage_murder_used"]:
             targets = [q["name"] for q in self.alive()

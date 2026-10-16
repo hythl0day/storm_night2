@@ -272,6 +272,17 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", script)
         self.assertIn("游戏结束：平民获胜", script)
 
+    def test_lone_bedroom_skips_room_action(self):
+        """v3.22：夜间独居自己卧室且无可用行动者，房间行动环节整体跳过——不发简报、不调 AI。
+        （自己卧室的门锁项无意义不列入；封闭空间/延时装置仅自由活动可发动，夜间不列噪音项。）"""
+        d = write_game_dir(self.root, self.players())
+        self.run_game(d, killer_script=False)
+        # C（医师/急救箱）、E（建筑师）、B（机械师帮凶）夜间独居自己卧室：无任何合法行动 → 零调用
+        for name in ("C", "E", "B"):
+            self.assertFalse((d / "inbox" / name / "day1-晚间休息-房间行动.md").exists(), name)
+        # D（手电筒）在黑暗卧室有真实防御选择（照亮房间）、F（窃听器）可收听 → 仍会被询问
+        self.assertTrue((d / "inbox" / "D" / "day1-晚间休息-房间行动.md").exists())
+
     def test_coverup_only_for_scene_villain(self):
         """v3.18：毁证窗口只通知身处案发现场的反派——场外帮凶不再收到毁证机会
         （也不再被即时告知"谋杀成功/案发房间/现场干净"）。"""
