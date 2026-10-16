@@ -159,7 +159,11 @@ def transfer(state: dict, giver: str, receiver: str, item: str, accept: bool = T
 
 
 def use_flashlight(state: dict, user: str) -> dict:
-    """「手电筒」：进入地下室或遭遇停电时使用，本次所在房间不视为黑暗。"""
+    """「手电筒」：身处黑暗房间（地下室/停电房间/夜间卧室）时使用，本阶段该房间不视为黑暗。
+
+    v3.23：使用时机为进入结算后的独立"手电筒判定"环节（编排器在交谈与行动之前逐一询问）——
+    点亮后房间内所有人互相可见、可正常交谈、谋杀按亮房条件判定（非反派 ≤1、空手恢复附加条件）。
+    """
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:

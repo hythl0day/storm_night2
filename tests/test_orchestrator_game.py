@@ -280,8 +280,49 @@ class TestCivilianWinEnding(MockGameTestBase):
         # C（医师/急救箱）、E（建筑师）、B（机械师帮凶）夜间独居自己卧室：无任何合法行动 → 零调用
         for name in ("C", "E", "B"):
             self.assertFalse((d / "inbox" / name / "day1-晚间休息-房间行动.md").exists(), name)
-        # D（手电筒）在黑暗卧室有真实防御选择（照亮房间）、F（窃听器）可收听 → 仍会被询问
-        self.assertTrue((d / "inbox" / "D" / "day1-晚间休息-房间行动.md").exists())
+        # D（手电筒）在黑暗卧室改由"手电筒判定"环节询问（v3.23 前置），房间行动不再提供手电筒项
+        self.assertTrue((d / "inbox" / "D" / "day1-晚间休息-手电筒.md").exists())
+        self.assertFalse((d / "inbox" / "D" / "day1-晚间休息-房间行动.md").exists())
+
+    def test_flashlight_lights_bedroom_before_talk(self):
+        """v3.23：手电筒判定在进入结算后、交谈之前——点亮黑暗卧室后按亮房正常交谈（不再是摸黑低语），
+        同房者得知"有人打开了手电筒"；房间行动菜单不再提供手电筒项。"""
+        d = write_game_dir(self.root, self.players())
+        base = make_fake_chat(False)
+
+        def chat_fl(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "手电筒" in title and name == "D" and day == 1:
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=[{"type": "use_flashlight"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "内交谈" in title and "晚间休息" in title:
+                return ChatResult(name, ok=True,
+                                  content=payload(speech=f"{name} 的卧谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "晚间休息" in title and day == 1:
+                acts = []
+                if name == "C":
+                    acts = [{"type": "invite", "target": "D"}]
+                elif name == "D":
+                    acts = [{"type": "choose_room", "room": "C的卧室"}]
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fl)
+        s = orch.state
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("C的卧室内交谈（C、D）", script)      # 点亮后按亮房正常交谈
+        self.assertNotIn("C的卧室内低语", script)
+        self.assertIn("D 的卧谈内容", script)
+        self.assertTrue(any("你打开手电筒" in m for m in s["orch"]["hist"]["D"]))
+        self.assertTrue(any("房间被照亮" in m for m in s["orch"]["hist"]["C"]))  # 同房者得知
+        # 房间行动菜单不再提供手电筒（D 点亮后与 C 同处亮房卧室，无其他行动 → 零调用）
+        self.assertFalse((d / "inbox" / "D" / "day1-晚间休息-房间行动.md").exists())
 
     def test_coverup_only_for_scene_villain(self):
         """v3.18：毁证窗口只通知身处案发现场的反派——场外帮凶不再收到毁证机会

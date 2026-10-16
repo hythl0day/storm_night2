@@ -1161,15 +1161,43 @@ class Orchestrator:
             self.check_stop()
 
     def run_free_activity(self) -> None:
-        """自由活动：停电声明轮（选房前）→ 秘密选房+邀请 → 结算 → 房间交谈 → 房间行动。"""
+        """自由活动：停电声明轮（选房前）→ 秘密选房+邀请 → 结算 → 手电筒判定 → 房间交谈 → 房间行动。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         if self.state["rooms_entered"] != period:
             self.select_rooms(day, period)
         if self.state["rooms_entered"] != period:
             return
+        self.flashlight_phase(day, "自由活动")
         self.room_talks(day)
         self.room_actions(day)
+
+    def flashlight_phase(self, day: int, stage: str) -> None:
+        """手电筒判定（v3.23 独立结算，进入结算后、交谈与行动之前）：身处黑暗房间（地下室/停电
+        房间/夜间卧室）且持有手电筒者按行动顺序逐一决定是否使用——点亮后房间本阶段视为明亮：
+        全员互相可见、可正常交谈、谋杀按亮房条件判定（§7.5/§7.7）。已被点亮的房间不再重复询问。"""
+        w = self.wip(f"{day}:{stage}:手电筒", done=[])
+        for name in self.state["order"]:
+            if self.state["winner"]:
+                return
+            if name in w["done"]:
+                continue
+            p = self.player(name)
+            if not p or not p["alive"]:
+                continue
+            room = self.state["positions"].get(name)
+            if not room or not is_dark(self.state, room) or held_item(p, "手电筒", day) is None:
+                continue  # 无手电筒/房间不黑暗/已被他人点亮 → 不询问（不占 done，天亮前变化与本环节无关）
+            menu = ['- 使用手电筒（点亮本房间：本阶段视为明亮——所有人互相可见、可正常交谈、谋杀按亮房条件判定）：{"type": "use_flashlight"}',
+                    "- 不使用则 actions 为 []"]
+            extra = (f"你在{room}——这里一片漆黑，你看不见这里有谁。你可以现在点亮手电筒"
+                     f"（消耗 1 次，点亮后包括你在内的所有人都藏不住了）。\n{NO_SPEECH_NOTE}")
+            briefing = self.build_briefing(p, f"第{day}天 · {stage}（手电筒）", menu, extra)
+            payload = self.call_ai(p, f"{stage}-手电筒", briefing)
+            self.apply_actions(p, payload["actions"])
+            w["done"].append(name)
+            self.save_state()
+            self.check_stop()
 
     def blackout_declarations(self, day: int) -> None:
         """停电声明轮（rules-6 §7.5：本阶段开始前秘密声明，进入房间后才向众人公布）。
@@ -1447,11 +1475,10 @@ class Orchestrator:
                 menu.append('- 篡改一条监控记录：{"type": "tamper", "period": "第N天自由活动", "room": "场所", "op": "add|remove|replace", "name": "进入者", "new_name": "替换为"}')
         if room == "书房" and not s["safe_open"]:
             menu.append('- 打开保险箱：{"type": "open_safe"}（需要开锁手段）')
-        if s["locks"].get(room) and room != bedroom_of(name):
-            # 自己卧室的门锁项无意义（本人进入永远免费），不列入——独居房主的夜间菜单因此可为空（跳过不调 AI）
+        if s["locks"].get(room) and not is_bedroom(room):
+            # 卧室门锁项对房内人无意义（房主进入永远免费；客人开门只有放第三人进来的冷门用法），
+            # 不列入——卧室内的夜间菜单因此可为空（跳过不调 AI）
             menu.append(f'- 打开当前房间的门锁：{{"type": "unlock", "room": "{room}"}}')
-        if is_dark(s, room) and held_item(p, "手电筒", day) is not None:
-            menu.append('- 使用手电筒（本房间本次不视为黑暗）：{"type": "use_flashlight"}')
         if room == "地下室" and s["power_out"]:
             menu.append('- 修复发电机（结束停电、恢复供电；修复前停电一直持续，可跨天）：{"type": "fix_generator"}')
         if s["phase"]["stage"] == "自由活动" and p["profession"] == "建筑师" \
@@ -1482,7 +1509,7 @@ class Orchestrator:
         return menu
 
     def run_night(self) -> None:
-        """晚间休息（v3.22 与自由活动同构）：去向收集（互不可见）→ 进入结算 → 密道 → 房间交谈 → 房间行动。"""
+        """晚间休息（v3.22 与自由活动同构）：去向收集（互不可见）→ 进入结算 → 密道 → 手电筒判定 → 房间交谈 → 房间行动。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         if self.state["night_assigned"] != period:
@@ -1490,6 +1517,7 @@ class Orchestrator:
         if self.state["night_assigned"] != period:
             return
         self.night_passages(day)
+        self.flashlight_phase(day, "晚间休息")
         self.room_talks(day, "晚间休息")
         self.room_actions(day, "晚间休息")
 
