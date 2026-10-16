@@ -1,0 +1,1 @@
+Free action, can't talk. Monitor room full (2/2 with 豆包、格罗克). Basement has 杰普特、智谱 (2/3). Study empty, open (safe opened). I could invite 杰米尼 to study. Choose study, invite 杰米尼.

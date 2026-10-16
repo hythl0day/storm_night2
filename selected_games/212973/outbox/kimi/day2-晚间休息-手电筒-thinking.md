@@ -1,0 +1,3 @@
+My notes planned to sleep in the parlor, but I'm currently in my bedroom. Hmm, but location says I'm in my bedroom now. The legal actions only list use_flashlight or []. Wait — my plan was to go to parlor, but apparently the movement already happened? The state says "你现在的位置：奇米的卧室". So I'm locked in my bedroom tonight? Actually the earlier info said "无法进入（会客室夜间上锁）". So parlor was locked tonight. So I'm in my bedroom, dark. Use flashlight or not?
+
+If someone comes to murder me in dark room, flashlight would help make it "bright" conditions. But if I'm alone, using it just reveals me. Actually flashlight makes murder judged as bright-room conditions — meaning murder requires... unclear. Probably safer to not use it; I'm alone likely. Don't waste it. Actions [].

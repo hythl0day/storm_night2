@@ -1,0 +1,1 @@
+No props, nothing to gift. Speak briefly—press the women, note nobody refutes poison line. Keep it short.

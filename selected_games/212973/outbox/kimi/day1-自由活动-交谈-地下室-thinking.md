@@ -1,0 +1,1 @@
+Speak: I need to respond. Say truthfully? Lie about flashlight? Handful: I used flashlight. I can admit. Reply to 智谱's question about investigation means. I should be careful—reveal my 侧写 skill? Maybe partially: say my means depend on cases occurring, and question timing. Keep concise.

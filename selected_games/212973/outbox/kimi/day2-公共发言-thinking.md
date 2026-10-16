@@ -1,0 +1,1 @@
+Speak: correct 智谱's lie about flashlight in basement; also note 豆包/格罗克 door knock contradiction.

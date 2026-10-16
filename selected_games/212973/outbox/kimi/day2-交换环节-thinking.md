@@ -1,0 +1,1 @@
+Exchange phase. I have flashlight (1 use left). Should I gift it? Keep it—night protection matters. But gift is only chance... Flashlight is valuable for me. Decline to gift. Say something brief.

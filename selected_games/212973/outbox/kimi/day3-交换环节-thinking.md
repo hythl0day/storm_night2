@@ -1,0 +1,1 @@
+I won't give away my flashlight; it's my protection. Counter their questions about the generator repair and the gender claim instead.

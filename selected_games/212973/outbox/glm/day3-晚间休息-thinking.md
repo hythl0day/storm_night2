@@ -1,0 +1,1 @@
+I'm in the dark study. Action: return to my room (empty actions). Actually the schedule says tonight is dangerous; but locked rooms—study has no lock. Best to go back to my own bedroom and lock it. Actions empty = return to room.

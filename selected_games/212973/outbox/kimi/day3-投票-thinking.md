@@ -1,0 +1,1 @@
+Vote: my main suspect is 杰米尼 (female, no alibi) or 智谱 (chemist). Side profile says killer is female → 杰米尼 strongest. But 智谱 is male so can't be killer (unless side profile lied—no, host facts true). 智谱 could be accomplice. Vote 杰米尼.

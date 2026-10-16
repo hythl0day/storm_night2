@@ -1,0 +1,1 @@
+回卧室收听会客室。actions: [] 或 choose_room 卧室——默认回房即可。

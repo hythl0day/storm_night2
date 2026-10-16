@@ -1,0 +1,1 @@
+Investigate Grock's weapon wound—already know death time. Wound info could help identify killer type (strength). Grock killed day2 free activity; could compare to suspects' physique.

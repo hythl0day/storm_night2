@@ -1,0 +1,1 @@
+Reply briefly. Mention: basement incident—the person with the flashlight was me, Jieput and Qimi were present; book room narrative from Geluoke; no one in the reception room conversation (information I hold). Point out that Dabao said someone knocked on her door but I didn't hear anything.

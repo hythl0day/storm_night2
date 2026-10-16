@@ -1,0 +1,1 @@
+Stay in living room, discourage risks, watch Jimini. Brief speech.

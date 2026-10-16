@@ -1,0 +1,1 @@
+**Drafting concise acceptance statement**

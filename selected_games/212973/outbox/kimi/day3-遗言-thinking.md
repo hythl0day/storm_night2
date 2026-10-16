@@ -1,0 +1,1 @@
+I'm dead. Give final speech pointing to truth, bequeath flashlight. Speech should cite evidence, push suspicion on 杰米尼 (female killer) and 智谱 accomplice.

@@ -1,0 +1,1 @@
+**Choosing inner location action**

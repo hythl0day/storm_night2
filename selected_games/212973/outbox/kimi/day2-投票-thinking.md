@@ -1,0 +1,1 @@
+Day 2 vote. No murder happened yet. Little info. Abstain seems safe — voting someone out on day 2 with thin evidence risks killing a civilian. I'll abstain.

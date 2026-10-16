@@ -1,0 +1,3 @@
+Three already running (豆包、格罗克、杰普特). I should run? Being detective gives me info and protection via monopoly on armed accuse. But as civilian without weapon, taking the gun paints a target. Crime profiler—maybe better not; but 1.5 vote helps. Candidates: 智谱 endorsed 杰普特. I have profiler skill. Running risks my skill being exposed? If I run, I need to declare something. Safer: not run, vote later. Note: 智谱 declared chemist with forensic means—could be killer claiming investigator role? Keep quiet.
+
+Actually detective role could be valuable for an investigator. But 杰普特 already looks strong. I'll declare not run, endorse reasoning.

@@ -1,0 +1,1 @@
+Dead body moved? Not needed. Going where? Monitoring room was crime scene. I'll go to study room. Or invite Gemini to test her—she's suspect. Inviting Gemini to monitor room for private talk? Risky but informative. She could be the killer—free activity murder possible. Safer: study room, avoid being alone with suspects. Choose study room.

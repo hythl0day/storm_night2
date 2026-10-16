@@ -1,0 +1,1 @@
+Decide: run or not. As chemist, my skill useful for investigation; running as detective gets gun but makes me target. I'll not run, and vote later. Declare not running.

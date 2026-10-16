@@ -1,0 +1,1 @@
+Evening rest. Choose bedroom with flashlight? Handcuff... I have flashlight with 1 charge left (I used one). Actually state says 手电筒×1. Tonight bedroom is dark, but flashlight makes it not dark. Choose own bedroom, maybe use flashlight? Actions menu only lists choose_room/invite. Go to own bedroom.

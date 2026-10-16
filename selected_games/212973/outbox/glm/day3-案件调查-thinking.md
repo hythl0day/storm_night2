@@ -1,0 +1,1 @@
+Use one investigation on 格罗克, choose 死亡时间.

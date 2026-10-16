@@ -1,0 +1,1 @@
+First day, no murder allowed. Bedroom locked; safe. Use flashlight? Costs one. No need—no murder tonight. Save it.
