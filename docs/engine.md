@@ -65,7 +65,7 @@
 
 引擎在 deal.py 产出的 state 上扩展（完整注释见 `state.py` 模块 docstring）：
 
-`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_days`（拉闸声明日，停电次数统计）/`blackout_periods`（实际监控缺失时段，含跨日延续与修复当日）/`power_restored`（最近修复时点）、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`gifts_used`、`profession_public`、`last_vote`。
+`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_days`（拉闸声明日，停电次数统计）/`blackout_periods`（实际监控缺失时段，含跨日延续与修复当日）/`power_restored`（最近修复时点）、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`profession_public`、`last_vote`。
 
 玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、遗嘱/桌上取用当天即可用（v3.5）、转手不改变次数；deal 可用 `extra_items` 额外配发（杀手的固定万能钥匙、帮凶的固定反派道具），ensure 时并入。
 

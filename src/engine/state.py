@@ -29,7 +29,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - bug_room: 房间|None                   「窃听器」放置位置
 - devices: {房间: {setter, active}}     机械师【延时装置】
 - sealed_items: [{name,uses_left,from}] 尸体/出局者封存的未使用道具，待投票分配
-- gifts_used: [名字]                    当天交换环节已发起过赠送的人
+- gifts_used: [名字]                    当天已发起过道具赠送的人（v3.27：房间行动中当面赠送，每天限一次）
 - profession_public: [名字]             职业已公开的人
 - last_vote: {day, out}|None            最近一次投票结果（武装指认的前提判断）
 - rooms_entered: 时段|None              本时段自由活动是否已完成选房结算（断点续跑与停电窗口用）
@@ -161,7 +161,6 @@ def ensure(state: dict) -> dict:
     s.setdefault("bug_room", None)
     s.setdefault("devices", {})
     s.setdefault("sealed_items", [])
-    s.setdefault("gifts_used", [])
     s.setdefault("profession_public", [])
     s.setdefault("last_vote", None)
     s.setdefault("rooms_entered", None)

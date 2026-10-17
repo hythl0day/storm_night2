@@ -369,7 +369,7 @@ class TestSelfDefense(unittest.TestCase):
 
     def test_poison_only_defended_by_kit_or_dodge(self):
         eng = Engine(mk_state())
-        goto(eng, "公共发言", day=2)
+        goto(eng, "自由活动", day=2)  # v3.27：当面赠送限房间行动阶段（此时全员仍滞留会客室）
         ev = eng.transfer("B", "A", "不明药剂")
         self.assertTrue(ev["ok"], ev)
         players_rooms = {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"}
@@ -378,7 +378,7 @@ class TestSelfDefense(unittest.TestCase):
         self.assertEqual(ev["type"], "murder", ev)
 
         eng = Engine(mk_state())
-        goto(eng, "公共发言", day=2)
+        goto(eng, "自由活动", day=2)  # v3.27：当面赠送限房间行动阶段
         eng.transfer("B", "A", "不明药剂")
         free2(eng, {"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
         ev = eng.murder("A", "D", weapon="不明药剂")
@@ -1387,14 +1387,18 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(declined.state["skill_uses"]["E"]["暴力破解"], 1)
         self.assertNotIn("监控室", declined.state["monitoring"].get("第1天自由活动", {}))
 
-    def test_transfer_keeps_uses_and_limits(self):
+    def test_transfer_keeps_uses(self):
+        """当面赠送（v3.27）：转手保留剩余次数；限同房；不设每日次数上限。"""
         eng = Engine(mk_state())
-        goto(eng, "公共发言", day=2)
+        goto(eng, "自由活动", day=2)  # 此时全员仍滞留会客室
         ev = eng.transfer("D", "C", "手电筒")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(items_of(eng, "C")["手电筒"]["uses_left"], 2)
-        self.assertFalse(eng.transfer("D", "C", "手电筒")["ok"])
-        self.assertFalse(eng.transfer("D", "E", "手电筒")["ok"])
+        self.assertFalse(eng.transfer("D", "C", "手电筒")["ok"])  # 已送出，未持有
+        # 限同房：进入结算后 C 滞留会客室、E 在书房 → 无法当面交付
+        free2(eng, {"A": "会客室", "B": "会客室", "C": "会客室", "D": "会客室", "E": "书房", "F": "会客室"})
+        self.assertFalse(eng.transfer("C", "E", "手电筒")["ok"])
+        # 同日再次发起不受限（v3.27 取消每日一次限制）：C → F 拒收也正常结算
         ev = eng.transfer("C", "F", "手电筒", accept=False)
         self.assertTrue(ev["ok"])
         self.assertFalse(ev["accepted"])

@@ -88,7 +88,7 @@ class TestReplayBranch(ReplayTestBase):
         self.assertEqual((branch / "script.md").read_text(encoding="utf-8").count("### 书房 · 房间行动"), 1)
 
         resumed = Orchestrator(branch)
-        menu = resumed.action_menu(resumed.player("A"), 2)
+        menu = resumed.murder_menu(resumed.player("A"), 2)  # v3.27：谋杀拆为独立谋杀窗口菜单
         self.assertTrue(any('"type": "murder"' in item and 'E' in item for item in menu))
         run_with_chat(branch, make_fake_chat(False))
 

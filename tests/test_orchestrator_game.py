@@ -103,11 +103,11 @@ def make_fake_chat(killer_script: bool):
             acts = [{"type": "choose_room", "room": room}]
         elif "内交谈" in title:
             pass  # 只发言
-        elif "房间行动" in title or "夜袭" in title:
+        elif "房间行动" in title or "谋杀窗口" in title:
             if killer_script and '"type": "murder"' in briefing and name in ("A", "B"):
                 t = re.search(r'"target": "([^"|]+)"', briefing)
                 acts = [{"type": "murder", "target": t.group(1), "weapon": "刀" if name == "A" else "不明药剂"}]
-        elif "晚间休息" in title or "毁证机会" in title or "交换环节" in title:
+        elif "晚间休息" in title or "毁证机会" in title:
             pass
         return ChatResult(
             player.name,
@@ -190,7 +190,7 @@ class TestMainGodEnding(MockGameTestBase):
                 return ChatResult(player.name, ok=True,
                                   content=payload(actions=[{"type": "choose_room", "room": "书房"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if day in (2, 4) and "房间行动" in title and player.name == "A" and '"type": "murder"' in messages[-1]["content"]:
+            if day in (2, 4) and "谋杀窗口" in title and player.name == "A" and '"type": "murder"' in messages[-1]["content"]:
                 # 第 2 天用刀（被敏捷闪避防下，未遂）；第 4 天刀已耗，徒手杀 D（A 魁梧 ≥ D 健壮，既遂）
                 act = {"type": "murder", "target": "D"} | ({"weapon": "刀"} if day == 2 else {})
                 return ChatResult(player.name, ok=True,
@@ -324,8 +324,9 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("D 的卧谈内容", script)
         self.assertTrue(any("你打开手电筒" in m for m in s["orch"]["hist"]["D"]))
         self.assertTrue(any("房间被照亮" in m for m in s["orch"]["hist"]["C"]))  # 同房者得知
-        # 房间行动菜单不再提供手电筒（D 点亮后与 C 同处亮房卧室，无其他行动 → 零调用）
-        self.assertFalse((d / "inbox" / "D" / "day1-晚间休息-房间行动.md").exists())
+        # 房间行动菜单不再提供手电筒（v3.27：D 可能因"当面赠送"项收到简报，但菜单里不得出现手电筒）
+        brief = (d / "inbox" / "D" / "day1-晚间休息-房间行动.md").read_text(encoding="utf-8")
+        self.assertNotIn("use_flashlight", brief)
 
     def test_coverup_only_for_scene_villain(self):
         """v3.18：毁证窗口只通知身处案发现场的反派——场外帮凶不再收到毁证机会
@@ -377,7 +378,7 @@ class TestCivilianWinEnding(MockGameTestBase):
                                   content=payload(speech="你们要票我？那先回答我——你就是杀手！",
                                                   actions=[{"type": "armed_accuse", "target": "A"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "房间行动" in title and "晚间休息" in title and name == "B" and '"type": "murder"' in briefing:
+            if "谋杀窗口" in title and "晚间休息" in title and name == "B" and '"type": "murder"' in briefing:
                 return ChatResult(name, ok=True, content=payload(actions=[{"type": "murder", "target": "D", "weapon": "不明药剂"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "晚间休息" in title and name == "B" and day == 4:
@@ -540,7 +541,7 @@ class TestCivilianWinEnding(MockGameTestBase):
                                   content=payload(notes="x", actions=[{"type": "choose_room", "room": "会客室"},
                                                                       {"type": "invite", "target": "D"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "房间行动" in title and "晚间休息" in title and day == 2 and name == "A" and '"type": "murder"' in briefing:
+            if "谋杀窗口" in title and "晚间休息" in title and day == 2 and name == "A" and '"type": "murder"' in briefing:
                 return ChatResult(player.name, ok=True,
                                   content=payload(notes="x", actions=[{"type": "murder", "target": "C", "weapon": "刀"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
@@ -660,7 +661,7 @@ class TestInterruptAndResume(MockGameTestBase):
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
         # 第 1 天调用序：F 开局准备(1) → 竞选声明 A..F(2-7) → 退选 C,D(8-9) → 竞选投票 A,B,E,F(10-13)
-        # → 交换 A(14)：第 14 次后停 = 交换环节中途
+        # → 自由活动-选房 A(14)：第 14 次后停 = 选房中途（v3.27 起白天会议无交换环节）
         orch = Orchestrator(d, hooks={"should_stop": lambda: calls["n"] >= 14})
         orig = orchestrator.chat
         orchestrator.chat = counting
@@ -938,31 +939,33 @@ class TestSpeechRouting(MockGameTestBase):
         self.assertIn("（退选揭晓）", log)
         self.assertIn("（竞选投票）", log)
 
-    def test_exchange_speech_public(self):
-        """交换附言与受赠回应公开可见（此前 speech 被静默丢弃）。"""
+    def test_gift_in_room_actions(self):
+        """v3.27：赠送挪入房间行动——同房当面赠送、每天限一次；不再有全局公开公告，
+        明亮房间仅同房者可见（道具名不公开），黑暗房间无人知晓。"""
         d = write_game_dir(self.root / "g7", default_players())
         base = make_fake_chat(False)
 
         def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
             name = player.name
             title = messages[-1]["content"].splitlines()[0]
-            if "交换环节" in title and "赠送要约" not in title and "第1天" in title and name == "C":
+            if "房间行动" in title and "第1天" in title and name == "C":
                 return ChatResult(player.name, ok=True,
-                                  content=payload(speech="D，这个急救箱给你防身。", notes="x",
+                                  content=payload(speech="", notes="x",
                                                   actions=[{"type": "gift", "to": "D", "item": "急救箱"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "赠送要约" in title and name == "D":
+            if "赠送回应" in title and name == "D":
                 return ChatResult(player.name, ok=True,
-                                  content=payload(speech="谢了，我会记住的。", notes="x",
-                                                  actions=[{"type": "accept"}]),
+                                  content=payload(speech="", notes="x", actions=[{"type": "accept"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
         self.run_game_with(d, chat_fn)
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
-        self.assertIn("**C**（交换环节）：D，这个急救箱给你防身。", log)
-        self.assertIn("**D**（回应 C）：谢了，我会记住的。", log)
-        self.assertIn("把一件道具交给了 D", log)  # 公开口径仍不含道具名
+        self.assertNotIn("把一件道具交给了", log)  # v3.27：取消全局公开公告
+        self.assertNotIn("（交换环节）", log)  # 白天会议后的固定交换环节已移除
+        state = json.loads((d / "state.json").read_text(encoding="utf-8"))
+        dv = next(p for p in state["players"] if p["name"] == "D")
+        self.assertIn("急救箱", [e["name"] for e in dv["items"]])
 
     def test_armed_accusation_declaration_public(self):
         """武装指认宣言公开，且先于指认结果上屏。"""
@@ -1049,7 +1052,7 @@ class TestAccompliceStageMagic(MockGameTestBase):
                 return ChatResult(player.name, ok=True,
                                   content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if day == 2 and "房间行动" in title and name == "B" and '"type": "stage_magic"' in briefing:
+            if day == 2 and "谋杀窗口" in title and name == "B" and '"type": "stage_magic"' in briefing:
                 return ChatResult(player.name, ok=True,
                                   content=payload(notes="x", actions=[{"type": "stage_magic", "target": "E"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
@@ -1057,8 +1060,8 @@ class TestAccompliceStageMagic(MockGameTestBase):
 
         orch = self.run_game_with(d, chat_fn)
         s = orch.state
-        # 菜单证据：帮凶魔术师的房间行动简报含舞台魔术项，且不含杀手专属的谋杀项
-        inbox = (d / "inbox" / "B" / "day2-自由活动-房间行动.md").read_text(encoding="utf-8")
+        # 菜单证据：帮凶魔术师的谋杀窗口简报含舞台魔术项，且不含杀手专属的谋杀项（v3.27 拆为独立环节）
+        inbox = (d / "inbox" / "B" / "day2-自由活动-谋杀窗口.md").read_text(encoding="utf-8")
         self.assertIn('"type": "stage_magic"', inbox)
         self.assertNotIn('"type": "murder"', inbox)
         # 击杀落账：E 死亡，案件方法=舞台魔术，凶手=帮凶 B 本人（独处现场，E 的万能钥匙被 B 缴获）

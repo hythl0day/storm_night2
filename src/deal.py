@@ -56,7 +56,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_VERSION = "v3.26"
+RULES_VERSION = "v3.27"
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
 
@@ -88,9 +88,9 @@ def announcement(safe_item: str) -> str:
 
 具体的游戏规则就放在大厅的桌上，自己读。
 
-对了，书房保险箱里，我留了一件礼物：「{safe_item}」。谁先打开，就是谁的。
+书房保险箱里，我留了一件礼物：「{safe_item}」。谁先打开，就是谁的。
 
-大厅的桌上还有我年轻时的收藏：「{TABLE_WEAPON}」，你们中的佼佼者可以通过选举成为侦探，带领其他人破解杀手身份，至于你们谁能拿到它，就看你们的本事了。
+大厅的桌上还有我年轻时的收藏：「{TABLE_WEAPON}」.你们中的佼佼者可以通过选举成为侦探，便可获得这把武器，以及更多票权。至于谁能拿到它，就看你们的本事了。
 
 —— 主人
 """

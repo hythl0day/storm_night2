@@ -125,36 +125,48 @@ def open_safe(state: dict, user: str) -> dict:
 
 
 def transfer(state: dict, giver: str, receiver: str, item: str, accept: bool = True) -> dict:
-    """交换环节道具赠送：转手不改变剩余次数；每人每天最多发起一次（被拒也计入）。"""
+    """道具当面赠送（v3.27）：聚会后的固定交换环节取消——改在自由活动/晚间休息的房间行动中
+    向同房者赠送（对方单独回应接受/拒绝）；不限每日次数（每阶段房间行动限一个动作，天然有界），
+    转手不改变剩余次数。
+
+    可见性：明亮房间同房者看得见交易（道具名仍不公开）；黑暗房间中无人知晓（§7.5 房内行为不可见口径）。
+    """
     s = state
     day = s["phase"]["day"]
-    if s["phase"]["stage"] not in ("公共发言", "投票"):
-        return reject("transfer", "只能在交换环节（公共发言后）赠送")
+    if s["phase"]["stage"] not in ACTION_STAGES:
+        return reject("transfer", "只能在自由活动/晚间休息（每天早上的聚会结束后）当面赠送")
     gp = get_player(s, giver)
     rp = get_player(s, receiver)
     if gp is None or not gp["alive"] or rp is None or not rp["alive"]:
         return reject("transfer", "双方必须是存活玩家")
-    if giver in s["gifts_used"]:
-        return reject("transfer", "你今天的赠送机会已用完")
+    if giver == receiver:
+        return reject("transfer", "不能赠送给自己")
+    if s["positions"].get(giver) != s["positions"].get(receiver):
+        return reject("transfer", "对方不在你所在的房间，无法当面交付（每天聚会结束后去同一房间找 TA）")
     entry = held_item(gp, item, day)
     if entry is None:
         return reject("transfer", "你未持有可用的该道具")
-    s["gifts_used"].append(giver)
     if not accept:
         return {
             "ok": True,
             "type": "transfer",
-            "public": {"announcements": [f"{giver} 向 {receiver} 赠送道具被拒绝"]},
-            "private": {},
+            "public": None,
+            "private": {giver: f"{receiver} 拒绝了你的赠送", receiver: f"你拒绝了 {giver} 赠送的「{item}」"},
             "accepted": False,
         }
     gp["items"].remove(entry)
     grant_item(rp, entry["name"], entry["uses_left"], day)
+    private = {giver: f"你把{item}交给了{receiver}", receiver: f"你收到了{item}（剩余 {entry['uses_left']} 次）"}
+    room = s["positions"].get(giver)
+    if not is_dark(s, room):  # 明亮房间同房者可见（道具名仍不公开）；黑暗中无人知晓
+        for q in s["players"]:
+            if q["alive"] and q["name"] not in (giver, receiver) and s["positions"].get(q["name"]) == room:
+                private[q["name"]] = f"{giver} 把一件道具交给了 {receiver}"
     return {
         "ok": True,
         "type": "transfer",
-        "public": {"announcements": [f"{giver} 把一件道具交给了 {receiver}"]},
-        "private": {giver: f"你送出了{item}", receiver: f"你收到了{item}（剩余 {entry['uses_left']} 次）"},
+        "public": None,
+        "private": private,
         "accepted": True,
     }
 

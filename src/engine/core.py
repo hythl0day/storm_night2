@@ -182,7 +182,6 @@ class Engine:
             new_day, new_stage = day + 1, "案件调查"
             s["order"] = s["order"][1:] + s["order"][:1]
             alive_names = [p["name"] for p in s["players"] if p["alive"]]
-            s["gifts_used"] = []
             shown_order = " → ".join(n for n in s["order"] if n in alive_names)
             ann = f"第 {new_day}/6 天开始。今日行动顺序：{shown_order}"
             if s["detective"] and s["detective"] in alive_names:

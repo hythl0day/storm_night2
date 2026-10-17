@@ -6,16 +6,16 @@
 
 一天流程：开局准备（仅第 1 天：反派建筑师确认密道、窃听器持有者声明放置）→ 公共发言
 （第 1 天改为侦探竞选：声明轮短发言+参选宣告 → 密封退选 → 未参选者投票；v3.5 起当选者获桌上凶器作侦探佩枪；
-第 2 天起为常规发言，侦探末置发言、一票计 1.5）→ 交换环节 → 投票（第 2 天起：收票/记忆植入/
+第 2 天起为常规发言，侦探末置发言、一票计 1.5）→ 投票（第 2 天起：收票/记忆植入/
 遗言先于身份公布/封存道具与警徽遗嘱——v3.5 遗嘱道具当天可用、未指定或拒收放回会客室桌上/
 无人出局时武装指认——v3.5 有侦探时仅侦探可指认，无侦探时持械平民或临时取用桌上凶器）→
 自由活动（会客室/书房/监控室/地下室四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；
 v3.26：先收齐去向声明（靠后者可见先前声明），再经独立开锁行动轮统一进入；开锁者优先，其余进入规则不变；
 v3.11：停电逐人发现——各选房者抵达所选房间时才各自得知停电；房间交谈；
-房间行动；阶段末毁证窗口）→ 晚间休息（v3.22 与自由活动同构：去向=自己卧室/他人卧室/会客室/
+房间行动（含当面赠送道具）；谋杀窗口（v3.27：谋杀/舞台魔术拆为独立环节，不占房间行动）→ 阶段末毁证窗口）→ 晚间休息（v3.22 与自由活动同构：去向=自己卧室/他人卧室/会客室/
 书房/监控室/地下室，互不可见选择；同入邀请；密道（反派建筑师，出口四房间）；卧室夜间黑暗、
-平民慎入有人的功能房；进入结算后同样是房间交谈（黑暗低语）→ 房间行动（含谋杀/收听窃听器/
-取桌上物品）→ 阶段末毁证窗口）→ advance() 进入次日案件调查
+平民慎入有人的功能房；进入结算后同样是房间交谈（黑暗低语）→ 房间行动（含当面赠送道具/收听窃听器/
+取桌上物品）→ 谋杀窗口（同白天，v3.27 拆出）→ 阶段末毁证窗口）→ advance() 进入次日案件调查
 （清晨公告含状态行/昨日死亡与未遂（不公告死亡时段）/桌上物品变动/调查自荐/死者字条遗嘱）。
 终局（任一胜负条件满足）自动收束并落盘结局——阶段内循环（房间交谈/房间行动/手电筒判定）在
 winner 产生后即整环节停止调用（v3.24）；简报「游戏状态」段按清晨公告口径显示死亡与倒计时（v3.24）。
@@ -530,9 +530,7 @@ class Orchestrator:
         if "侦探竞选投票" in title:
             return ["只有自始未参选者（不含退选者）有投票权，每人 1 票。", "平票 → 本局不设侦探，不再补选。"]
         if "公共发言" in title:
-            return ["侦探末置发言（若侦探存活）。发言结束进入交换环节（每人一次赠送机会，对方可拒绝）。"]
-        if "交换环节" in title:
-            return ["每人仅一次发起赠送的机会；对方可以拒绝；道具转手不影响剩余次数。"]
+            return ["侦探末置发言（若侦探存活）。发言结束后（第 2 天起）进入投票。"]
         if "投票" in title:
             need = (n + 1) / 2  # 严格过半的最小票值（0.5 步进）：n=4→2.5，n=5→3，n=6→3.5
             accuse_ref = ("见规则书 §7.3" if not self.lite else
@@ -564,7 +562,11 @@ class Orchestrator:
             return ["按行动顺序各发言一次，后发言者能看到先发言者的话。",
                     "黑暗房间内无法交谈——除非同入邀请成立的伙伴互知在场，可摸黑低语：低语会被房间内所有在场者听到（包括你们看不见的潜伏者），而你们不会知道是否有人旁听。"]
         if "房间行动" in title:
-            return ["非黑暗时，房间行动（查监控/开箱/修发电机）会被同房者看见；黑暗中无人知晓是谁做的。"]
+            return ["非黑暗时，房间行动（查监控/开箱/修发电机/赠送道具）会被同房者看见；黑暗中无人知晓是谁做的。",
+                    "当面赠送：限同房者，对方可拒绝；赠送算你的本阶段房间行动（谋杀不在此环节，见谋杀窗口）。"]
+        if "谋杀窗口" in title:
+            return ["每阶段独立一次谋杀机会（自由活动与晚间休息各一次），放弃不消耗——没有目标也不消耗。",
+                    "谋杀不占房间行动，房间行动也不占谋杀机会（v3.27 拆为两个独立环节）；失败（被自卫/技能抵消）同样消耗机会并计入无杀倒计时。"]
         if "密谈" in title or "夜谈" in title or "低语" in title:
             return ["密谈/低语内容只有房间内的人能听到（含你们看不见的潜伏者）；按行动顺序各发言一次。"]
         if "晚间休息" in title:
@@ -885,6 +887,8 @@ class Orchestrator:
                 self.script_line(f"  窃听器录音下发给 {name}（{ev.get('room')}）：{content}")
         elif at == "take_table":
             ev = self.eng.take_table_item(name, str(act.get("item", "")))
+        elif at == "gift":
+            return self._gift(p, act)  # v3.27：当面赠送——含接收方同意流，自行记录与路由
         elif at == "seal_room":
             ev = self.eng.seal_room(name, act.get("allowed") or [])
         elif at == "use_passage":
@@ -1150,57 +1154,85 @@ class Orchestrator:
             self.save_state()
             self.check_stop()
 
-    def run_exchange(self) -> None:
-        """交换环节：按顺序每人可发起一次赠送；接受/拒绝由接收方决定。"""
-        day = self.state["phase"]["day"]
-        w = self.wip(f"{day}:公共发言:交换", done=[])
+    def _gift(self, p: dict, act: dict) -> dict:
+        """当面赠送（v3.27）：房间行动中的赠予动作——引擎校验（同房/每天限一次/持有道具），
+        接收方单独回应接受/拒绝（回应不消耗其房间行动）。明亮房间同房者可见，黑暗无人知晓。"""
+        name = p["name"]
+        to = str(act.get("to", ""))
+        item = str(act.get("item", ""))
+        if not item:
+            ev = reject("gift", "请指定要赠送的道具名")
+            self.script_action(name, act, ev)
+            self.reject_note(p, ev)
+            return ev
+        target = self.player(to)
+        if target is None or not target["alive"]:
+            ev = reject("gift", "接收方必须是存活玩家")
+            self.script_action(name, act, ev)
+            self.reject_note(p, ev)
+            return ev
+        ask = self.build_briefing(
+            target, f"第{self.state['phase']['day']}天 · 赠送回应",
+            ['- 接受：{"type": "accept"}', '- 拒绝：{"type": "decline"}'],
+            f"{name} 想把「{item}」当面送给你。是否接受？" + f"\n{NO_SPEECH_NOTE}")
+        reply = self.call_ai(target, f"赠送回应-{name}", ask)
+        accept = any(a.get("type") == "accept" for a in reply["actions"])
+        ev = self.eng.transfer(name, to, item, accept)
+        self.script_action(name, act, ev)
+        if ev["ok"]:
+            self.route(ev)
+        else:
+            self.reject_note(p, ev)
+        return ev
+
+    def murder_menu(self, p: dict, day: int) -> list[str]:
+        """谋杀窗口菜单（v3.27）：谋杀/舞台魔术从房间行动拆出后的独立小菜单。"""
+        s = self.state
+        name = p["name"]
+        if day < 2 or s["stage_murder_used"]:
+            return []
+        room = s["positions"].get(name)
+        targets = [q["name"] for q in self.alive()
+                   if q["name"] != name and s["positions"].get(q["name"]) == room and not is_villain(q)]
+        if not targets:
+            return []
+        menu = []
+        if p["identity"] == "杀手":
+            menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
+        if is_villain(p) and p["profession"] == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
+            menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御；占用当阶段谋杀机会）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
+        return menu
+
+    def murder_window(self, day: int, stage: str) -> None:
+        """谋杀窗口（v3.27）：房间行动结束后的独立环节——杀手/反派魔术师单独决定是否动用
+        本阶段谋杀机会。从房间行动拆出（试玩期实测杀手胜率偏低：拆出后"杀人"不再与"用设施"
+        互斥，杀手每阶段可多做一个非谋杀行动）。谋杀/舞台魔术仍是本阶段唯一一次谋杀机会。"""
+        w = self.wip(f"{day}:{stage}:谋杀", done=[])
         for name in self.state["order"]:
+            if self.state["winner"]:
+                return
             if name in w["done"]:
                 continue
             p = self.player(name)
             if not p or not p["alive"]:
                 continue
-            held = [e["name"] for e in p["items"] if e["uses_left"] > 0 and e["available_day"] <= day]
-            menu = ['- 赠送道具（每人限发起一次）：{"type": "gift", "to": "玩家名", "item": "道具名"}',
-                    "- 不赠送则 actions 为 []"]
-            briefing = self.build_briefing(
-                p, f"第{day}天 · 交换环节", menu,
-                f"你当前持有道具：{'、'.join(held) if held else '无'}。可向一名玩家发起赠送（对方可拒绝）。"
-                "赠送与否都可以在 speech 里附一句话——公开，全员可闻。")
-            payload = self.call_ai(p, "交换环节", briefing)
-            speech = str(payload.get("speech") or "").strip()
-            if speech:
-                self.log_line(f"**{name}**（交换环节）：{speech}")  # 交换附言公开（v3.8）
-            for act in payload["actions"]:
-                if act.get("type") != "gift":
-                    self.dispatch(p, act)
-                    continue
-                target = self.player(str(act.get("to", "")))
-                item = str(act.get("item", ""))
-                if target is None or not target["alive"] or not item:
-                    continue
-                ask = self.build_briefing(
-                    target, f"第{day}天 · 交换环节（赠送要约）",
-                    ['- 接受：{"type": "accept"}', '- 拒绝：{"type": "decline"}'],
-                    f"{name} 想把「{item}」赠送给你。是否接受？可在 speech 里附一句回应——公开，全员可闻。")
-                reply = self.call_ai(target, f"交换环节-回复{name}", ask)
-                r_speech = str(reply.get("speech") or "").strip()
-                if r_speech:
-                    self.log_line(f"**{target['name']}**（回应 {name}）：{r_speech}")  # 受赠回应公开（v3.8）
-                accept = any(a.get("type") == "accept" for a in reply["actions"])
-                ev = self.eng.transfer(name, target["name"], item, accept)
-                self.script_line(f"- {name} 向 {target['name']} 赠送「{item}」→ "
-                                 f"{'接受' if accept else '拒绝'}" + ("" if ev["ok"] else f"（失败：{ev.get('error')}）"))
-                if ev["ok"]:
-                    self.route(ev, script=False)  # 公开口径不含道具名；script 已由上行明细记录（去重）
-                else:
-                    self.reject_note(p, ev)
+            menu = self.murder_menu(p, day)
+            if not menu:
+                continue
+            extra = (f"这是本阶段（{stage}）的谋杀窗口——房间行动已结束，现在只需决定：动手，还是收手。"
+                     "声明发动即消耗机会——失败（被自卫/技能抵消）同样消耗；放弃或没有目标则不消耗。"
+                     f"\n{NO_SPEECH_NOTE}")
+            briefing = self.build_briefing(p, f"第{day}天 · {stage}（谋杀窗口）", menu, extra)
+            payload = self.call_ai(p, f"{stage}-谋杀窗口", briefing)
+            self.apply_actions(p, payload["actions"], retry={
+                "label": f"{stage}-谋杀窗口", "title": f"第{day}天 · {stage}（谋杀窗口）",
+                "menu": menu, "extra": extra}, max_actions=1)
             w["done"].append(name)
             self.save_state()
             self.check_stop()
 
     def run_free_activity(self) -> None:
-        """自由活动：停电声明轮（选房前）→ 秘密选房+邀请 → 结算 → 手电筒判定 → 房间交谈 → 房间行动。"""
+        """自由活动：停电声明轮（选房前）→ 秘密选房+邀请 → 结算 → 手电筒判定 → 房间交谈 → 房间行动 → 谋杀窗口。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         if self.state["rooms_entered"] != period:
@@ -1210,6 +1242,7 @@ class Orchestrator:
         self.flashlight_phase(day, "自由活动")
         self.room_talks(day)
         self.room_actions(day)
+        self.murder_window(day, "自由活动")
 
     def flashlight_phase(self, day: int, stage: str) -> None:
         """手电筒判定（v3.23 独立结算，进入结算后、交谈与行动之前）：身处黑暗房间（地下室/停电
@@ -1575,15 +1608,12 @@ class Orchestrator:
         if s["phase"]["stage"] == "自由活动" and is_villain(p) and p["profession"] == "机械师" and day >= 2:
             # 延时装置仅自由活动时间可设置（引擎口径），夜间不列噪音项
             menu.append('- 设置延时装置：{"type": "set_device", "room": "当前房间名"}')
-        if day >= 2 and is_villain(p) and not s["stage_murder_used"]:
-            targets = [q["name"] for q in self.alive()
-                       if q["name"] != name and s["positions"].get(q["name"]) == room and not is_villain(q)]
-            if targets:
-                if p["identity"] == "杀手":
-                    menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
-                # 舞台魔术是反派技能（rules-6 §3）：帮凶魔术师同样可用；占用反派当阶段谋杀机会（引擎裁决）
-                if p["profession"] == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
-                    menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御；占用反派当阶段谋杀机会）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
+        # 当面赠送（v3.27）：限同房者、每人每天限发起一次；谋杀/舞台魔术已拆至独立谋杀窗口，不在本环节
+        mates = [q["name"] for q in self.alive()
+                 if q["name"] != name and s["positions"].get(q["name"]) == room]
+        giftable = [e["name"] for e in p.get("items", []) if e["uses_left"] > 0 and e["available_day"] <= day]
+        if mates and giftable:
+            menu.append(f'- 赠送道具给同房者（限同房者；明亮房间同房者看得见（道具名不公开），黑暗中无人知晓）：{{"type": "gift", "to": "{"|".join(mates)}", "item": "道具名（你持有：{"、".join(giftable)}）"}}')
         return menu
 
     def run_night(self) -> None:
@@ -1598,6 +1628,7 @@ class Orchestrator:
         self.flashlight_phase(day, "晚间休息")
         self.room_talks(day, "晚间休息")
         self.room_actions(day, "晚间休息")
+        self.murder_window(day, "晚间休息")
 
     def night_select(self, day: int, period: str) -> None:
         """秘密收齐去向，随后统一执行开锁行动轮与进入轮。"""
@@ -2156,8 +2187,6 @@ class Orchestrator:
                         self.run_election()  # v3.3：第 1 天公共发言时段改为侦探竞选
                     else:
                         self.run_speeches()
-                    if not self.state["winner"]:
-                        self.run_exchange()
                     if not self.state["winner"]:
                         self.advance(f"第{day}天 · {'投票' if day >= 2 else '自由活动'}")
                 elif stage == "投票":
