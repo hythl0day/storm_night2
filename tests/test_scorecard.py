@@ -133,12 +133,13 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_version({}), "≤v3.4")
 
     def test_rules_group_pooling(self):
-        """平衡统计分组：v3.8 起合并为一组（v3.9/v3.10 未改规则），更早版本保持独立；
-        lite 规则集单独成组、不跨版本合并、永不并入高级规则池；旧档缺 is_lite_rule 字段视为高级规则。"""
+        """平衡统计分组：完全按版本分组、不做任何跨版本合并（迭代期每次更新几乎都改规则）；
+        lite 规则集单独成组（总体一池、不细分版本）、永不并入高级规则池；旧档缺 is_lite_rule 字段视为高级规则。"""
         from tools.scorecard import is_lite, rules_group
-        self.assertEqual(rules_group({"rules_version": "v3.8"}), "v3.8+")
-        self.assertEqual(rules_group({"rules_version": "v3.9"}), "v3.8+")
-        self.assertEqual(rules_group({"rules_version": "v3.10"}), "v3.8+")
+        self.assertEqual(rules_group({"rules_version": "v3.8"}), "v3.8")
+        self.assertEqual(rules_group({"rules_version": "v3.9"}), "v3.9")
+        self.assertEqual(rules_group({"rules_version": "v3.10"}), "v3.10")
+        self.assertEqual(rules_group({"rules_version": "v3.30"}), "v3.30")
         self.assertEqual(rules_group({"rules_version": "v3.5"}), "v3.5")
         self.assertEqual(rules_group({}), "≤v3.4")
         # lite 规则集：不与 full 同池；lite 总体一池、不按版本细分
