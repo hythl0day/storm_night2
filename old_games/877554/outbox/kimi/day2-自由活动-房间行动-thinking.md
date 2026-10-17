@@ -1,0 +1,1 @@
+I'm in dark study, can't act much. Try open safe? I have no lockpick skill listed. Likely rejected. Better no action? Maybe try open_safe? Only if 开锁手段. I don't have. So actions empty, stay.

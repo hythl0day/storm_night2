@@ -1,0 +1,1 @@
+Accept Di Xi's invitation to parlour? Parlour is bright, safe from murder? Murder possible in unlocked rooms? Di Xi invited me—suspicious. But bright parlour means witnesses; safer than dark bedroom alone. Accept.

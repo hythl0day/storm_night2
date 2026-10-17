@@ -1,0 +1,1 @@
+Three people already: Claude no, Jupter no, Dixie yes. I should run too — having the gun and 1.5 votes is powerful for a civilian. Say why.

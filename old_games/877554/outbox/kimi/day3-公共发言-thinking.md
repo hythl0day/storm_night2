@@ -1,0 +1,3 @@
+Need to speak as 奇米. I was attacked in 书房 during 第2天 自由活动 (dark). My dodge triggered. Speak: reveal the attack happened to me, name suspicion. I have 测谎仪 — could use on someone. Who to test? 克劳德 claims the powder unknown... I have only one use. Maybe test 杰普特's claim about 监控室? Hard to know exact claims. Could test 克劳德's "使用用途不明" — but that's vague. Safer: save it, or use see_through on 克劳德's occupation claim? I don't know his claim. Actually private card unknown. Risky. Save the 测谎仪, speak evidence-based.
+
+My attack: during 第2天自由活动 I went to 书房 in darkness and was attacked there. Who could be in 书房? Announce the attack location. 狄西 asked about 杰普特. I'll support testing 克劳德 and reveal my attack details.

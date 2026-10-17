@@ -1,0 +1,1 @@
+**Planning strategic JSON response**

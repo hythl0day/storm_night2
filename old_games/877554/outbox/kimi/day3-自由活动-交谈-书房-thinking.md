@@ -1,0 +1,1 @@
+Speeches: I'm 奇米, in dark study whispering with 狄西.

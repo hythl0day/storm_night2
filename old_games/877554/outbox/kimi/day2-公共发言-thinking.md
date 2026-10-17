@@ -1,0 +1,1 @@
+Speak. Maybe use see_through on Claude's powder claim? Claims: item "可疑的粉末" held, not unsealed. Hard. Just speak, no action? Could verify豆包's monitoring claim—but I haven't heard her statement yet. Just speak.

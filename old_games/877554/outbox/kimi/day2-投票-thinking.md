@@ -1,0 +1,1 @@
+Vote. Who to vote? Di Xi has highest suspicion, but 3 votes needed. Voting Di Xi sends signal. Could abstain to avoid backlash. Evidence thin. Vote Di Xi seems reasonable.

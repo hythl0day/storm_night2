@@ -1,0 +1,1 @@
+**Evaluating candidate狄西for safer vote**
