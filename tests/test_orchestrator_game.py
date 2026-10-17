@@ -91,6 +91,9 @@ def make_fake_chat(killer_script: bool):
                 acts = [{"type": "vote", "target": "A" if day == 3 else "B"}]
             else:
                 acts = [{"type": "abstain"}]
+        elif "开锁行动轮" in title:
+            unlock = re.search(r'\{"type": "unlock", "room": "([^"]+)"\}', briefing)
+            acts = [{"type": "unlock", "room": unlock.group(1)}] if unlock else []
         elif "选房" in title:
             room = "会客室"  # v3：白天卧室清场，默认苟大厅
             if killer_script and day == 2 and name in ("A", "E"):
@@ -1304,9 +1307,43 @@ class TestCaseIdRobustness(MockGameTestBase):
         self.assertEqual(calls, [])
 
 
+class TestEntryUnlockRound(MockGameTestBase):
+    def test_day_declarations_then_unlock_and_opener_priority(self):
+        d = write_game_dir(self.root, default_players())
+        base = make_fake_chat(False)
+
+        def chat_rooms(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "选房" in title and day == 2 and player.name in ("D", "E", "F"):
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "监控室"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_rooms)
+        records = orch.state["monitoring_true"]["第2天自由活动"]
+        self.assertEqual(records["监控室"], ["E", "D"])  # E 开锁优先；先前声明的 D 不再被提前劝退
+        self.assertIn("F", records["会客室"])          # 容量仍在进入轮判定
+        self.assertTrue((d / "outbox" / "E" / "day2-自由活动-开锁.md").exists())
+        self.assertFalse((d / "outbox" / "D" / "day2-自由活动-开锁.md").exists())
+        unlock_wip = orch.state["orch"]["wip"]["2:自由活动:选房"]
+        self.assertEqual(unlock_wip["unlockers"], {"监控室": "E"})
+        self.assertIn("E→监控室", unlock_wip["unlock_done"])
+        brief = (d / "inbox" / "F" / "day2-自由活动-选房.md").read_text(encoding="utf-8")
+        self.assertIn("截至目前去向声明", brief)
+        self.assertIn("D→监控室", brief)
+        self.assertIn("E→监控室", brief)
+        self.assertNotIn("各房间进入情况", brief)
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("◆ E｜开锁：监控室 → 成功", script)
+
+
 class TestBlackoutDiscovery(MockGameTestBase):
-    """v3.11：停电逐人发现——每位玩家在抵达所选房间时各自收到发现回执；选房进入情况
-    不再标注锁状态（正常天与停电天的选房简报逐字一致，后续选房者无法提前推断停电）。"""
+    """停电逐人发现：玩家在抵达所选房间时收到回执；选房简报只给去向声明，
+    不提前展示门锁或进入结果，后续声明者无法据此推断停电。"""
 
     def test_blackout_per_person_discovery(self):
         d = write_game_dir(self.root, default_players())
@@ -1344,8 +1381,8 @@ class TestBlackoutDiscovery(MockGameTestBase):
         # 每位存活玩家在第 2 天选房时收到逐人发现回执（含留在会客室者）
         for n in ("A", "B", "C", "D", "E", "F"):
             self.assertTrue(any("停电了" in msg and "门锁失效" in msg for msg in s["orch"]["hist"][n]), n)
-        # 选房简报不再出现锁状态标注（进入情况只报占用）
-        self.assertTrue(any("各房间进入情况" in b for _, b in briefings))
+        # 选房简报只展示去向声明，不提前展示门锁或进入结果
+        self.assertTrue(any("截至目前去向声明" in b for _, b in briefings))
         for name, b in briefings:
             self.assertNotIn("门仍上锁", b, name)
         # v3.23 修复：拉闸后、进入前，选房简报不得提前泄漏停电（游戏状态段供电行在公布前隐藏）

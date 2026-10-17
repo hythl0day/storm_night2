@@ -10,8 +10,8 @@
 遗言先于身份公布/封存道具与警徽遗嘱——v3.5 遗嘱道具当天可用、未指定或拒收放回会客室桌上/
 无人出局时武装指认——v3.5 有侦探时仅侦探可指认，无侦探时持械平民或临时取用桌上凶器）→
 自由活动（会客室/书房/监控室/地下室四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；
-v3.5 顺序结算：逐人选择即结算进入（进入即开锁、失败者滞留会客室、靠后者可见先前结果）；
-v3.11：停电逐人发现——各选房者抵达所选房间时才各自得知停电，进入情况不再标注锁状态（防提前泄漏）；房间交谈；
+v3.26：先收齐去向声明（靠后者可见先前声明），再经独立开锁行动轮统一进入；开锁者优先，其余进入规则不变；
+v3.11：停电逐人发现——各选房者抵达所选房间时才各自得知停电；房间交谈；
 房间行动；阶段末毁证窗口）→ 晚间休息（v3.22 与自由活动同构：去向=自己卧室/他人卧室/会客室/
 书房/监控室/地下室，互不可见选择；同入邀请；密道（反派建筑师，出口四房间）；卧室夜间黑暗、
 平民慎入有人的功能房；进入结算后同样是房间交谈（黑暗低语）→ 房间行动（含谋杀/收听窃听器/
@@ -68,6 +68,7 @@ from .engine.state import (
     bedroom_owner,
     countdown_text,
     current_period,
+    door_locked,
     held_item,
     held_item_names,
     is_bedroom,
@@ -554,9 +555,11 @@ class Orchestrator:
             return ["现场调查三项任选一项：武器伤痕 / 死亡时间 / 尸体转移；多起案件每起都可查，同一项可被多人重复验证。",
                     "结果仅你本人可见——公布、隐瞒或撒谎由你决定。"]
         if "选房" in title:
-            return ["顺序靠后者可见顺序靠前者的选择结果；房间满员/上锁而无开锁手段/被【封闭空间】挡住 → 滞留会客室。",
-                    "同一上锁房间由顺序最前的有手段者开门（自动消耗一次手段），之后的人直接随入。",
-                    "已有人进入的房间门必然已开；空房间的锁状态见「游戏状态」段的「已永久开启」（监控室开局上锁）。"]
+            return ["顺序靠后者可见顺序靠前者的去向声明；声明收齐后先统一开锁，再统一进入。",
+                    "房间满员/上锁而无人开门/被【封闭空间】挡住 → 滞留会客室。"]
+        if "开锁行动轮" in title:
+            return ["本轮只处理门锁与开锁次数，不移动任何人；开锁者在随后的进入轮优先。",
+                    "actions 为 [] 表示不愿意消耗手段；同批有人开门后，其他声明者仍可正常尝试进入。"]
         if "内交谈" in title:
             return ["按行动顺序各发言一次，后发言者能看到先发言者的话。",
                     "黑暗房间内无法交谈——除非同入邀请成立的伙伴互知在场，可摸黑低语：低语会被房间内所有在场者听到（包括你们看不见的潜伏者），而你们不会知道是否有人旁听。"]
@@ -1273,18 +1276,67 @@ class Orchestrator:
             self.save_state()
             self.check_stop()
 
+    def entry_unlock_round(self, day: int, stage: str, assignments: dict[str, str], w: dict) -> dict[str, str]:
+        """统一开锁行动轮：只处理门锁与次数，不移动玩家；结果供随后的统一进入结算使用。"""
+        s = self.state
+        unlockers: dict[str, str] = dict(w.get("unlockers", {}))
+        done: list[str] = w.setdefault("unlock_done", [])
+        for name in s["order"]:
+            p = self.player(name)
+            if not p or not p["alive"]:
+                continue
+            room = assignments.get(name, bedroom_of(name) if stage == "晚间休息" else HALL)
+            key = f"{name}→{room}"
+            if key in done or room in unlockers:
+                continue
+            if stage == "晚间休息" and room == bedroom_of(name):
+                continue
+            if not door_locked(s, room) or unlock_means(s, name) is None:
+                continue
+            sealed = s["sealed_room"]
+            if sealed and room == sealed["room"] and name != sealed["owner"] and name not in sealed["allowed"]:
+                continue
+            menu = [
+                f'- 愿意消耗一次【暴力破解】手段打开{room}（你在随后的进入轮优先）：'
+                f'{{"type": "unlock", "room": "{room}"}}',
+                "- 不愿意则 actions 为 []；若同批拟进入者中有人开门，你仍可在进入轮正常尝试进入",
+                f'- {NO_SPEECH_NOTE}',
+            ]
+            extra = (f"在{stage}，你已声明前往{room}，它当前上锁。现在是进入前的独立开锁行动轮；"
+                     "此决定只处理门锁，不代表你已经进入。若最终无人开门，所有需要开门的人都会进入失败；"
+                     "容量、邀请、封闭空间与平民慎入等规则仍在随后的进入轮照常判定。")
+            briefing = self.build_briefing(p, f"第{day}天 · 开锁行动轮", menu, extra)
+            payload = self.call_ai(p, f"{stage}-开锁", briefing)
+            accepted = next((act for act in payload["actions"] if isinstance(act, dict)
+                             and act.get("type") == "unlock"
+                             and str(act.get("room", room)) == room), None)
+            if accepted is not None:
+                ev = self.eng.unlock_for_entry(name, room, assignments)
+                self.script_action(name, accepted, ev)
+                if ev["ok"]:
+                    unlockers[room] = name
+                    self.route(ev)
+                else:
+                    self.reject_note(p, ev)
+            done.append(key)
+            w["unlockers"] = dict(unlockers)
+            self.save_state()
+            self.check_stop()
+        return unlockers
+
     def select_rooms(self, day: int, period: str) -> None:
-        w = self.wip(f"{day}:自由活动:选房", done=[], assignments={}, invites={})
+        w = self.wip(f"{day}:自由活动:选房", done=[], assignments={}, invites={},
+                     unlock_done=[], unlockers={})
         assignments: dict[str, str] = dict(w["assignments"])
         pending_invite: dict[str, str] = dict(w["invites"])
         alive_names = [p["name"] for p in self.alive()]
         if not w["done"]:
-            self.state["positions"] = {}  # v3.5 顺序结算：选房轮开始时重置位置账本（续跑保留已结算部分）
-            self.script_sub("选房（按行动顺序秘密选择、逐个即时结算）")  # 全记录分段：自由活动按环节/房间分节
-        self.blackout_declarations(day)  # 停电声明轮（rules-6 §7.5：阶段开始前秘密声明，先于任何进入）
+            self.state["positions"] = {}
+            self.script_sub("选房与去向声明（按行动顺序声明，随后统一开锁与进入）")
+        self.blackout_declarations(day)
         rooms_menu = (
-            [f'- 选择房间（必选一项）：{{"type": "choose_room", "room": "房间名"}}；合法去向只有四种：{"、".join(ROOM_CHOICES)}',
-             '- 注意：白天卧室一律清场不开放（含你自己的）。满员、上锁而无手段、被封闭空间挡住或选择无效者一律滞留会客室',
+            [f'- 声明去向（必选一项）：{{"type": "choose_room", "room": "房间名"}}；合法去向只有四种：{"、".join(ROOM_CHOICES)}',
+             '- 注意：白天卧室一律清场不开放（含你自己的）。声明收齐后先进行独立开锁行动轮，再统一进入；满员、上锁而无人开门、被封闭空间挡住或选择无效者一律滞留会客室',
              '- 邀请一名顺序在你之后的玩家同入（对方可改选）：{"type": "invite", "target": "玩家名"}',
              f'- {NO_SPEECH_NOTE}']
         )
@@ -1295,20 +1347,9 @@ class Orchestrator:
             menu = list(rooms_menu)
             later = [n for n in self.state["order"][i + 1:] if n in alive_names]
             extra = f"你可以邀请顺序在你之后的玩家同入：{'、'.join(later) if later else '无'}。"
-            settled = self.state["positions"]
-            if settled:
-                # v3.11：进入情况只报占用，不再标注锁状态——正常天与停电天逐字一致，
-                # 后续选房者无法从标注消失推断停电；锁状态改由「游戏状态」段的「已永久开启」承载
-                bits = []
-                for r in ROOM_CHOICES:
-                    occ = [n for n, rr in settled.items() if rr == r]
-                    occ_s = "、".join(occ) if occ else "（空）"
-                    if r == HALL:
-                        bits.append(f"{r}（不限人数）：{occ_s}")
-                    else:
-                        bits.append(f"{r}（{len(occ)}/{ROOM_CAPACITY[r]} 人）：{occ_s}")
-                extra += ("\n截至目前各房间进入情况（顺序结算"
-                          + ("" if self.lite else "，规则书 §6") + "）：" + "；".join(bits) + "。")
+            declared = [f"{n}→{assignments[n]}" for n in self.state["order"] if n in assignments]
+            if declared:
+                extra += "\n截至目前去向声明（尚未开锁或进入）：" + "；".join(declared) + "。"
             inviters = [v for t, v in pending_invite.items() if t == name]
             for v in inviters:
                 extra += f"\n{v} 邀请你同往 {assignments.get(v, '（未知）')}——接受就把 choose_room 选为同一房间，不接受就自选。"
@@ -1328,22 +1369,6 @@ class Orchestrator:
                     if tgt in later:
                         pending_invite[tgt] = name
             assignments[name] = room
-            ev = self.eng.choose_room_one(name, room)  # v3.5：选择即结算（进入即开锁；失败滞留会客室）
-            if ev["ok"]:
-                self.route(ev)
-                self.script_private(ev)
-                if self.state.get("blackout_news") == period:
-                    # v3.11：停电逐人发现——每位玩家在抵达自己所选房间时各自发现停电；
-                    # 在他之前进入者的结果不会提前暴露（规则书 §7.5）
-                    placed = self.state["positions"].get(name, HALL)
-                    if placed == HALL:
-                        self.tell(name, "你留在会客室——壁炉的火光还亮着，但你注意到走廊与其他房间的灯全部熄灭了："
-                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录；发电机被修复前停电不会结束）。")
-                    else:
-                        self.tell(name, f"你走向{placed}——灯骤然熄灭，四周一片漆黑，门上的锁全部失效："
-                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录；发电机被修复前停电不会结束）。")
-            else:
-                self.reject_note(p, ev)
             w["done"].append(name)
             w["assignments"] = dict(assignments)
             w["invites"] = dict(pending_invite)
@@ -1353,24 +1378,31 @@ class Orchestrator:
         for t, v in pending_invite.items():
             if t in assignments and v in assignments and assignments[t] == assignments[v]:
                 invited[t] = v
-        self.orch["free_invites"] = invited  # v3.17：黑暗房间"同入邀请成立的组合"可摸黑低语（room_talks 用）
-        for t, v in invited.items():
-            # 邀请成立对邀请者私密可见（黑暗房间中也知道应邀者到来——game/42 复盘：索尔不知桑娜已到而放弃谋杀）
-            self.tell(v, f"{t} 接受了你的同入邀请，进入了{self.state['positions'].get(t, '?')}——即使房间黑暗，你也知道 TA 来了。")
-        ev = self.eng.finish_room_entries()  # 延时装置在全员进入后统一判定
+        unlockers = self.entry_unlock_round(day, "自由活动", assignments, w)
+        ev = self.eng.enter_rooms(assignments, invited, unlockers=unlockers)
         if ev["ok"]:
             self.route(ev)
             self.script_private(ev)
             if self.state.get("blackout_news") == period:
-                # 停电在全员进入房间后才向众人公布（rules-6 §7.5）；三出口同写（feed/public/script + console）
+                for name in assignments:
+                    placed = self.state["positions"].get(name, HALL)
+                    if placed == HALL:
+                        self.tell(name, "你留在会客室——壁炉的火光还亮着，但你注意到走廊与其他房间的灯全部熄灭了："
+                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录；发电机被修复前停电不会结束）。")
+                    else:
+                        self.tell(name, f"你走向{placed}——灯骤然熄灭，四周一片漆黑，门上的锁全部失效："
+                                        "停电了（除会客室外一片黑暗，所有门锁失效，监控停止记录；发电机被修复前停电不会结束）。")
                 self.log_line("- 停电了——除会客室外所有房间一片黑暗，所有门锁失效（保险箱除外），监控停止记录；可前往地下室修复发电机恢复供电——未修复则停电一直持续（跨天延续）")
                 self.state["blackout_news"] = None
+            self.orch["free_invites"] = invited
+            for t, v in invited.items():
+                self.tell(v, f"{t} 接受了你的同入邀请，进入了{self.state['positions'].get(t, '?')}——即使房间黑暗，你也知道 TA 来了。")
             summary = ["选房结果：" + "、".join(f"{n}→{self.state['positions'].get(n, HALL)}" for n in assignments)]
             if invited:
                 summary.append("同入邀请成立：" + "、".join(f"{t} 随 {v}（{assignments[t]}）" for t, v in invited.items()))
             for ln in summary:
                 self.script_line("- " + ln if ln.startswith("选房结果") else "  " + ln)
-            self._fire("on_summary", "选房结果", summary)  # console：结算总结独立分隔段
+            self._fire("on_summary", "选房结果", summary)
             for v in ev.get("device_triggers", []):
                 self.script_line(f"  延时装置触发：{v}")
             self.save_state()
@@ -1568,9 +1600,9 @@ class Orchestrator:
         self.room_actions(day, "晚间休息")
 
     def night_select(self, day: int, period: str) -> None:
-        """去向收集：回卧室（默认）/ 前往任意房间 / 同入邀请 / 密道（互不可见），收齐后引擎按行动顺序结算进入。"""
+        """秘密收齐去向，随后统一执行开锁行动轮与进入轮。"""
         w = self.wip(f"{day}:晚间休息:归宿", done=[], assignments={}, invites={}, passages={},
-                     settled=False, passage_done=[])
+                     settled=False, passage_done=[], unlock_done=[], unlockers={})
         assignments: dict[str, str] = dict(w["assignments"])
         pending_invite: dict[str, str] = dict(w["invites"])
         passages: dict[str, dict] = {k: dict(v) for k, v in w.get("passages", {}).items()}
@@ -1588,7 +1620,8 @@ class Orchestrator:
                 '- 选择今晚去向：{"type": "choose_room", "room": "会客室|书房|监控室|地下室|某人的卧室"}',
                 '- 邀请一名顺序在你之后的玩家同去你的目的地（对方可改选；成立则互知在场，黑暗中也知道）：{"type": "invite", "target": "玩家名"}',
             ]
-            extra = ("夜间去向互相不可见。锁规则：他人卧室上锁（需【暴力破解】手段或受邀，对所有人一样）；"
+            extra = ("夜间去向互相不可见。去向收齐后先进行独立开锁行动轮（开锁者在进入轮优先），再统一进入。"
+                     "锁规则：他人卧室上锁（需【暴力破解】手段或受邀，对所有人一样）；"
                      "会客室夜间上锁（手段或停电/第 4 天起免费；人数不限、始终明亮，夜宿名单清晨公开）；"
                      "监控室上锁（首开需手段，开后永久开启）；书房/地下室无锁。\n"
                      "卧室夜间黑暗——你看不见房内有谁；地下室永久黑暗；会客室永不黑暗。\n"
@@ -1636,7 +1669,8 @@ class Orchestrator:
             w["passages"] = {k: dict(v) for k, v in passages.items()}
             self.save_state()
             self.check_stop()
-        ev = self.eng.night_assign(assignments, dict(pending_invite))
+        unlockers = self.entry_unlock_round(day, "晚间休息", assignments, w)
+        ev = self.eng.night_assign(assignments, dict(pending_invite), unlockers=unlockers)
         if not ev["ok"]:
             print(f"  晚间归宿结算失败：{ev.get('error')}")
             return

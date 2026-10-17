@@ -8,9 +8,8 @@
 - 第 6 天为终审日（只有白天会议），其投票结束仍无结果 → 主神获胜（全员失败）。
 - 自由活动合法去向 = 会客室/书房/监控室/地下室（白天卧室清场）；会客室不限人数、
   永不黑暗、夜间可夜宿（v3.4）；v3.5 起监控覆盖会客室门口。
-- v3.5 选房为顺序结算（rules-6 §7.5）：按行动顺序逐人即时结算进入——进入即开锁
-  （自动消耗手段），满员/无手段/被封闭空间挡住者滞留会客室；顺序靠后者可见先前结果。
-  延时装置仍在全员结算后统一判定（触发时机不变）。
+- v3.26 昼夜统一为去向声明 → 独立开锁 → 正常进入：每扇门由拟进入者私密决定是否开锁，
+  开锁者优先，其余按行动顺序；容量与其他进入规则不变。延时装置仍在全员进入后统一判定。
 - v3.22：晚间休息与自由活动同构（合法去向含卧室；卧室夜间黑暗；平民慎入功能房；
   每阶段独立一次谋杀机会）；死亡/未遂不再阶段末即时公告，统一由次日清晨发布。
 """
@@ -18,6 +17,7 @@ from __future__ import annotations
 
 from . import ledger, murder as murder_mod, vote as vote_mod
 from .state import (
+    ACTION_STAGES,
     BEDROOM_CAPACITY,
     FREE_ROOMS,
     HALL,
@@ -311,12 +311,98 @@ class Engine:
                 public["announcements"].append(
                     f"（昨日停电，{'与'.join(missing)}时段监控记录缺失——缺失不代表无人进入）")
 
-    def choose_room_one(self, name: str, room: str) -> dict:
-        """顺序结算的单人进入（v3.5）：进入即开锁（自动消耗手段）；无法进入者滞留会客室。
+    def unlock_for_entry(self, user: str, room: str, assignments: dict[str, str]) -> dict:
+        """进入前的独立开锁轮：只为本人已声明的目标房间开门，不移动任何玩家。"""
+        s = self.state
+        stage = s["phase"]["stage"]
+        if s["winner"]:
+            return reject("entry_unlock", "游戏已结束")
+        if stage not in ACTION_STAGES:
+            return reject("entry_unlock", "当前不是进入前的开锁阶段")
+        p = get_player(s, user)
+        if p is None or not p["alive"]:
+            return reject("entry_unlock", "玩家不存在或已死亡")
+        target = assignments.get(user, bedroom_of(user) if stage == "晚间休息" else None)
+        if target != room:
+            return reject("entry_unlock", "只能为本人本轮声明的目标房间开锁")
+        alive_names = [q["name"] for q in s["players"] if q["alive"]]
+        valid = room in FREE_ROOMS or (
+            stage == "晚间休息" and is_bedroom(room) and bedroom_owner(room) in alive_names
+        )
+        if not valid:
+            return reject("entry_unlock", "该房间不是本阶段合法去向")
+        if stage == "晚间休息" and room == bedroom_of(user):
+            return reject("entry_unlock", "自己的卧室无需开锁")
+        sealed = s["sealed_room"]
+        if sealed and room == sealed["room"] and user != sealed["owner"] and user not in sealed["allowed"]:
+            return reject("entry_unlock", "封闭空间无法用暴力破解打开")
+        if not door_locked(s, room):
+            return reject("entry_unlock", "房门当前无需开锁")
+        means = unlock_means(s, user)
+        if means is None:
+            return reject("entry_unlock", "没有可用开锁手段")
+        consume_unlock_means(s, user, means)
+        s["locks"][room] = False
+        if stage == "自由活动":
+            s["selection_begun"] = current_period(s)
+        if is_bedroom(room) and bedroom_owner(room) != user and room not in s["bedroom_relock"]:
+            s["bedroom_relock"].append(room)
+        return {
+            "ok": True,
+            "type": "entry_unlock",
+            "public": None,
+            "private": {user: f"你用{means}打开了{room}；本轮声明进入该房间的人将继续按进入规则结算"},
+            "room": room,
+            "unlocker": user,
+            "means": means,
+        }
 
-        供编排器交错模式使用：每位玩家选择后立即结算（顺序靠后者可见先前结果）。
-        positions 随逐人结算增量构建（编排器在选房轮开始时重置）。
-        """
+    def _auto_entry_unlocks(self, assignments: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+        """测试/批量入口的默认开锁轮：视同候选者均愿意，按行动顺序为每扇门选择开锁者。"""
+        s = self.state
+        stage = s["phase"]["stage"]
+        unlockers: dict[str, str] = {}
+        private: dict[str, str] = {}
+        for name in s["order"]:
+            p = get_player(s, name)
+            if not p or not p["alive"]:
+                continue
+            room = assignments.get(name, bedroom_of(name) if stage == "晚间休息" else None)
+            if room is None or room in unlockers or not door_locked(s, room):
+                continue
+            if stage == "晚间休息" and room == bedroom_of(name):
+                continue
+            if unlock_means(s, name) is None:
+                continue
+            ev = self.unlock_for_entry(name, room, assignments)
+            if not ev["ok"]:
+                continue
+            unlockers[room] = name
+            for target, msg in ev["private"].items():
+                private[target] = (private.get(target, "") + "；" if target in private else "") + msg
+        return unlockers, private
+
+    def _entry_sequence(self, assignments: dict[str, str], unlockers: dict[str, str],
+                        invited: dict[str, str]) -> list[str]:
+        """开锁者优先，其余玩家保持原行动顺序。"""
+        s = self.state
+        stage = s["phase"]["stage"]
+        base = [
+            n for n in s["order"]
+            if (get_player(s, n) or {}).get("alive") and (stage == "晚间休息" or n in assignments)
+        ]
+
+        def target(name: str) -> str:
+            return assignments.get(name, bedroom_of(name) if stage == "晚间休息" else HALL)
+
+        openers = {
+            name for room, name in unlockers.items()
+            if name in base and target(name) == room
+        }
+        return [n for n in base if n in openers] + [n for n in base if n not in openers]
+
+    def choose_room_one(self, name: str, room: str) -> dict:
+        """单人进入的低层入口；门锁须已在此前的开锁轮处理，本方法不再自动消耗手段。"""
         s = self.state
         if s["winner"]:
             return reject("choose_room", "游戏已结束")
@@ -326,7 +412,7 @@ class Engine:
         if p is None or not p["alive"]:
             return reject("choose_room", "玩家不存在或已死亡")
         private: dict = {}
-        s["selection_begun"] = current_period(s)  # 首个进入落定后，停电声明窗口关闭（rules-6 §7.5：阶段开始前声明）
+        s["selection_begun"] = current_period(s)
         placed, note = self._settle_entry(name, room)
         s["positions"][name] = placed
         record_entry(s, name, placed)
@@ -336,11 +422,7 @@ class Engine:
                 "room": placed, "stranded": placed != room}
 
     def _settle_entry(self, name: str, room: str) -> tuple[str, str | None]:
-        """按当前已结算位置判定单人进入结果。返回（实际房间, 私密提示|None）。
-
-        进入上锁房间即自动消耗手段开门（顺序结算下被锁房间此刻必然无人，无需通知同房者——
-        靠后进入者从实时简报得知门已开，见规则书 §7.5.3）。
-        """
+        """按当前已结算位置判定单人进入结果。返回（实际房间, 私密提示|None）。"""
         s = self.state
         if room not in FREE_ROOMS:
             hint = "（白天卧室清场，不开放）" if is_bedroom(room) else ""
@@ -354,12 +436,7 @@ class Engine:
         if sealed and room == sealed["room"] and name != sealed["owner"] and name not in sealed["allowed"]:
             return HALL, f"{room} 被【封闭空间】锁死，你无法进入，滞留在会客室"
         if door_locked(s, room):
-            means = unlock_means(s, name)
-            if means is None:
-                return HALL, f"{room} 上锁，你没有开锁手段，滞留在会客室"
-            consume_unlock_means(s, name, means)
-            s["locks"][room] = False
-            return room, f"你用{means}打开了{room}"
+            return HALL, f"{room} 上锁，本轮开锁行动轮无人开门，你滞留在会客室"
         return room, None
 
     def finish_room_entries(self) -> dict:
@@ -382,13 +459,12 @@ class Engine:
             ev["win_reason"] = s["win_reason"]
         return ev
 
-    def enter_rooms(self, assignments: dict[str, str], invited: dict[str, str] | None = None) -> dict:
-        """自由活动选房批量结算（测试/便捷入口）：内部按行动顺序逐人顺序结算（v3.5）。
+    def enter_rooms(self, assignments: dict[str, str], invited: dict[str, str] | None = None,
+                    unlockers: dict[str, str] | None = None) -> dict:
+        """自由活动统一进入结算：先独立开锁，再由开锁者优先、其余按行动顺序进入。
 
-        assignments 须覆盖全体存活玩家；合法去向 = 会客室/书房/监控室/地下室（白天卧室清场）。
-        逐人语义见 choose_room_one：进入即开锁（顺序最前的有手段者付费，之后随入）；
-        满员/无手段/被封闭空间挡住者滞留会客室（不再整体驳回）。invited 仅作存档兼容，无机制效果。
-        结算后统一检查延时装置触发。
+        assignments 须覆盖全体存活玩家。unlockers 为 {房间: 开锁者}；None 是测试/批量入口的
+        默认开锁轮（视同候选者均愿意），显式传空 dict 表示本轮无人开锁。
         """
         s = self.state
         if s["winner"]:
@@ -398,21 +474,28 @@ class Engine:
         alive = [p["name"] for p in s["players"] if p["alive"]]
         if set(assignments) != set(alive):
             return reject("enter_rooms", "必须覆盖全体存活玩家")
+        invited = invited or {}
+        if unlockers is None:
+            unlockers, private = self._auto_entry_unlocks(assignments)
+        else:
+            unlockers, private = dict(unlockers), {}
         s["positions"] = {}
-        private: dict = {}
+        s["selection_begun"] = current_period(s)
         stranded: dict[str, str] = {}
-        for name in s["order"]:
-            if name not in assignments:
-                continue
-            ev = self.choose_room_one(name, assignments[name])
-            private.update(ev["private"])
-            if ev["stranded"]:
-                stranded[name] = ev["room"]
+        for name in self._entry_sequence(assignments, unlockers, invited):
+            placed, note = self._settle_entry(name, assignments[name])
+            s["positions"][name] = placed
+            record_entry(s, name, placed)
+            if note:
+                private[name] = (private.get(name, "") + "；" if name in private else "") + note
+            if placed != assignments[name]:
+                stranded[name] = placed
         fin = self.finish_room_entries()
-        private.update(fin["private"])
+        for name, msg in fin["private"].items():
+            private[name] = (private.get(name, "") + "；" if name in private else "") + msg
         public: dict = {"announcements": []}
         ev = {"ok": True, "type": "enter_rooms", "public": public, "private": private,
-              "positions": dict(s["positions"])}
+              "positions": dict(s["positions"]), "unlockers": dict(unlockers)}
         if stranded:
             ev["stranded"] = stranded
         if fin.get("device_triggers"):
@@ -422,23 +505,12 @@ class Engine:
             ev["win_reason"] = fin["win_reason"]
         return ev
 
-    def night_assign(self, assignments: dict[str, str] | None = None, invited: dict[str, str] | None = None) -> dict:
-        """晚间休息进入结算（v3.22 与白天同一套结构：按行动顺序逐个安置，进入结果互不可见）。
+    def night_assign(self, assignments: dict[str, str] | None = None, invited: dict[str, str] | None = None,
+                     unlockers: dict[str, str] | None = None) -> dict:
+        """晚间统一进入结算：独立开锁后，开锁者优先，其余进入规则不变。
 
-        assignments 缺省回自己卧室；invited={应邀者: 邀请者}（同入/守夜邀请，成立条件 =
-        邀请者已安置在应邀者的目标房间）。规则要点（rules-6 §7.7 v3.22）：
-        - 合法去向：自己卧室（默认）/ 他人卧室 / 会客室 / 书房 / 监控室 / 地下室；
-        - 锁：他人卧室上锁——对所有人一视同仁（含反派）：需【暴力破解】手段或受邀
-          （被他人开锁后下一阶段复锁）；会客室夜锁（手段或停电/第 4 天起免费）；
-          监控室上锁（首开需手段，开后永久开启）；书房/地下室无锁；停电全部锁失效；
-        - 容量与白天一致：书房 3 / 监控室 2 / 地下室 3 / 卧室 2 / 会客室不限；
-        - 平民慎入：平民非受邀进入已有他人的功能房（书房/监控室/地下室）→ 失败回卧室
-          （"已经有人了，出于安全考虑，你没有进入"）；被邀请者与反派豁免
-          （豁免仅限本规则——反派进他人卧室仍须开锁或受邀）；
-        - 无法进入者一律默认回自己卧室：功能房/会客室失败告知简要原因，卧室失败仅告知"无法进入"；
-        - 卧室夜间黑暗（is_dark 统一裁定）：空手谋杀豁免附加条件、谋杀条件非反派 ≤2、
-          受邀组合可摸黑低语（编排层分发）。
-        结算后自动检查延时装置触发。
+        assignments 缺省回自己卧室；invited={应邀者: 邀请者}。unlockers 为 None 时视同
+        候选者均愿意并自动执行默认开锁轮；显式空 dict 表示本轮无人开锁。
         """
         s = self.state
         if s["winner"]:
@@ -447,13 +519,15 @@ class Engine:
             return reject("night_assign", "当前不是晚间休息阶段")
         assignments = assignments or {}
         invited = invited or {}
+        if unlockers is None:
+            unlockers, private = self._auto_entry_unlocks(assignments)
+        else:
+            unlockers, private = dict(unlockers), {}
         positions: dict[str, str] = {}
-        private: dict = {}
-        host: list[str] = []  # host 备注：裁定真实原因（进 script.md 行动回执，对玩家保密）
-        for name in s["order"]:
+        host: list[str] = []
+        notified_invites: set[str] = set()
+        for name in self._entry_sequence(assignments, unlockers, invited):
             p = get_player(s, name)
-            if not p or not p["alive"]:
-                continue
             want = assignments.get(name, bedroom_of(name))
             placed = None
             note = None
@@ -467,32 +541,17 @@ class Engine:
                     note = "无法进入"
                     host.append(f"{name} 未能进入{want}（真实原因：房内满员——{'、'.join(occupants)}）")
                 elif not is_invited and door_locked(s, want):
-                    means = unlock_means(s, name)
-                    if means is None:
-                        note = "无法进入"
-                        host.append(f"{name} 未能进入{want}（真实原因：房门上锁且 TA 无开锁手段）")
-                    else:
-                        consume_unlock_means(s, name, means)
-                        s["locks"][want] = False
-                        s["bedroom_relock"].append(want)
-                        placed = want
-                        private[name] = f"你用{means}进入了{want}"
+                    note = "无法进入"
+                    host.append(f"{name} 未能进入{want}（真实原因：本轮开锁行动轮无人开门）")
                 else:
                     placed = want
                 if placed == want and is_invited:
                     private[owner] = (private.get(owner, "") + "；" if private.get(owner) else "") + \
                         f"{name} 接受了你的邀请，进入了{want}——即使房间黑暗，你也知道 TA 来了。"
+                    notified_invites.add(name)
             elif want == HALL:
-                # 会客室夜宿：夜间上锁（停电时锁失效可直接进入；第 4 天起全开）；人数不限，亮房
                 if door_locked(s, HALL):
-                    means = unlock_means(s, name)
-                    if means is None:
-                        note = "无法进入（会客室夜间上锁）"
-                    else:
-                        consume_unlock_means(s, name, means)
-                        s["locks"][HALL] = False
-                        placed = want
-                        private[name] = f"你用{means}打开了会客室的夜锁，今晚在大厅过夜"
+                    note = "无法进入（会客室夜间上锁，本轮开锁行动轮无人开门）"
                 else:
                     placed = want
             elif want in PUBLIC_ROOMS:
@@ -510,32 +569,35 @@ class Engine:
                     note = "已经有人了，出于安全考虑，你没有进入"
                     host.append(f"{name} 未进入{want}（平民慎入：房内已有——{'、'.join(occupants)}）")
                 elif door_locked(s, want):
-                    means = unlock_means(s, name)
-                    if means is None:
-                        note = "无法进入（房间上锁）"
-                    else:
-                        consume_unlock_means(s, name, means)
-                        s["locks"][want] = False
-                        placed = want
-                        private[name] = f"你用{means}进入了{want}"
+                    note = "无法进入（房间上锁，本轮开锁行动轮无人开门）"
                 else:
                     placed = want
                 if placed == want and is_invited:
                     inviter = invited[name]
                     private[inviter] = (private.get(inviter, "") + "；" if private.get(inviter) else "") + \
                         f"{name} 接受了你的邀请，进入了{want}——即使房间黑暗，你也知道 TA 来了。"
+                    notified_invites.add(name)
             if placed is None:
                 placed = bedroom_of(name)
                 if note:
                     private.setdefault(name, note)
             positions[name] = placed
             record_entry(s, name, placed)
+        for invitee, inviter in invited.items():
+            if invitee in notified_invites:
+                continue
+            room = positions.get(invitee)
+            if room and room == positions.get(inviter):
+                private[inviter] = (private.get(inviter, "") + "；" if private.get(inviter) else "") + \
+                    f"{invitee} 接受了你的邀请，进入了{room}——即使房间黑暗，你也知道 TA 来了。"
         s["positions"] = positions
         s["night_assigned"] = current_period(s)
         device_events = murder_mod.trigger_devices(s)
         for dev_ev in device_events:
-            private.update(dev_ev["private"])
-        ev = {"ok": True, "type": "night_assign", "public": {"announcements": []}, "private": private, "positions": dict(positions)}
+            for name, msg in dev_ev["private"].items():
+                private[name] = (private.get(name, "") + "；" if name in private else "") + msg
+        ev = {"ok": True, "type": "night_assign", "public": {"announcements": []},
+              "private": private, "positions": dict(positions), "unlockers": dict(unlockers)}
         if host:
             ev["host"] = host
         if device_events:

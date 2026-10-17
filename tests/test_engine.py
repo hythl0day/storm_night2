@@ -722,6 +722,16 @@ class TestHallNightSleep(unittest.TestCase):
         self.assertEqual(ev["positions"]["F"], "会客室")   # 锁开后 F 随入
         self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
 
+    def test_hall_night_later_unlocker_admits_earlier_claimant(self):
+        eng = Engine(mk_state(order=["C", "E", "F", "A", "B", "D"]))
+        goto(eng, "晚间休息", day=1)
+        ev = eng.night_assign({"C": "会客室", "E": "会客室", "F": "会客室"}, {})
+        self.assertEqual(ev["unlockers"], {"会客室": "E"})
+        self.assertEqual(ev["positions"]["C"], "会客室")  # C 虽先声明且无手段，也会随 E 的开锁进入
+        self.assertEqual(ev["positions"]["E"], "会客室")
+        self.assertEqual(ev["positions"]["F"], "会客室")
+        self.assertEqual(eng.state["monitoring_true"]["第1天晚间休息"]["会客室"], ["E", "C", "F"])
+
     def test_hall_night_blackout_free_entry(self):
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
@@ -1036,6 +1046,16 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertIn("接受了你的邀请", ev["private"].get("A", ""))  # 邀请成立对主人可见
         self.assertFalse(ev.get("host"))  # 无拦截即无 host 备注
 
+    def test_invited_unlocker_keeps_inviter_notification(self):
+        """应邀者同时是开锁者时会优先进门，但邀请成立通知仍按最终同室结果送达。"""
+        eng = Engine(mk_state(order=["C", "E", "D", "A", "B", "F"]))
+        goto(eng, "晚间休息", day=1)
+        ev = eng.night_assign({"E": "C的卧室"}, invited={"E": "C"})
+        self.assertEqual(ev["unlockers"], {"C的卧室": "E"})
+        self.assertEqual(ev["positions"]["E"], "C的卧室")
+        self.assertEqual(ev["positions"]["C"], "C的卧室")
+        self.assertIn("E 接受了你的邀请", ev["private"].get("C", ""))
+
     def test_invitee_blocked_by_full_bedroom(self):
         """应邀者到达时卧室已满 2 人（杀手先开锁潜入 + 房主在内）→ 按容量拦截；
         玩家仅知"无法进入"，host 备注给出满员实情。"""
@@ -1331,16 +1351,41 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertIn("满员", ev["private"]["D"])
 
     def test_monitoring_room_capacity_two(self):
-        """v3.2 监控室人数上限 2 + v3.5 顺序结算：无手段者滞留，有手段者开锁，靠后者随入。"""
+        """统一开锁轮：后续 E 开门救回顺序靠前的 D；E 优先进入，容量再挡住 F。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"D": "监控室", "E": "监控室", "F": "监控室", "A": "书房", "B": "书房", "C": "会客室"})
         self.assertTrue(ev["ok"])
-        self.assertEqual(eng.state["positions"]["D"], "会客室")   # D（运动员）无开锁手段，滞留
-        self.assertEqual(eng.state["positions"]["E"], "监控室")   # E 以职业技能【暴力破解】开门（优先于道具）
-        self.assertEqual(eng.state["positions"]["F"], "监控室")   # 门已开，F 随入（第 2 个，满员）
+        self.assertEqual(ev["unlockers"], {"监控室": "E"})
+        self.assertEqual(eng.state["positions"]["E"], "监控室")   # 开锁者优先
+        self.assertEqual(eng.state["positions"]["D"], "监控室")   # 顺序靠前但无手段，不再被提前劝退
+        self.assertEqual(eng.state["positions"]["F"], "会客室")   # 其余仍按行动顺序，容量不变
+        self.assertEqual(eng.state["monitoring"]["第1天自由活动"]["监控室"], ["E", "D"])
         self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
-        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 2)  # 道具未被消耗
+        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 2)  # 职业技能优先，道具未消耗
+
+    def test_entry_unlock_is_separate_and_can_be_declined(self):
+        assignments = {"D": "监控室", "E": "监控室", "F": "监控室", "A": "书房", "B": "书房", "C": "会客室"}
+        eng = Engine(mk_state())
+        goto(eng, "自由活动", day=1)
+        before = copy.deepcopy(eng.state["positions"])
+        ev = eng.unlock_for_entry("E", "监控室", assignments)
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["positions"], before)  # 开锁轮不移动任何人
+        self.assertFalse(eng.state["locks"]["监控室"])
+        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
+        entered = eng.enter_rooms(assignments, unlockers={"监控室": "E"})
+        self.assertEqual(entered["positions"]["D"], "监控室")
+
+        declined = Engine(mk_state())
+        goto(declined, "自由活动", day=1)
+        ev = declined.enter_rooms(assignments, unlockers={})  # 显式空表 = 无人愿意，不再自动开锁
+        self.assertEqual(ev["positions"]["D"], "会客室")
+        self.assertEqual(ev["positions"]["E"], "会客室")
+        self.assertEqual(ev["positions"]["F"], "会客室")
+        self.assertTrue(declined.state["locks"]["监控室"])
+        self.assertEqual(declined.state["skill_uses"]["E"]["暴力破解"], 1)
+        self.assertNotIn("监控室", declined.state["monitoring"].get("第1天自由活动", {}))
 
     def test_transfer_keeps_uses_and_limits(self):
         eng = Engine(mk_state())

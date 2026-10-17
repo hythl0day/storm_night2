@@ -8,7 +8,7 @@
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
-                                                    # 裁决规则不变（仍 v3.25），state 记 is_lite_rule=True
+                                                    # 裁决规则不变（仍 v3.26），state 记 is_lite_rule=True
 
 随机调用顺序（影响复现，勿随意调整；v3.5 起保底凶器车道改为桌上凶器，不再选持有人）：
     席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
@@ -48,7 +48,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_VERSION = "v3.25"
+RULES_VERSION = "v3.26"
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
 
