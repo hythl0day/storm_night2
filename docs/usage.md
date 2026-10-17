@@ -77,6 +77,8 @@ python -m src.ping kimi                                # 指定配置文件用 -
 python -m src.deal                     # 随机种子，输出 game/<seed>/
 python -m src.deal --seed 42           # 指定种子（同 seed 两次生成逐字节一致）
 python -m src.deal --seed 42 --seats gpt,claude,gemini,deepseek,kimi,glm   # 手动指定 6 席（id 或名字）
+python -m src.deal --seed 42 --seats gpt,claude   # 部分名单：指名 2 席，其余随机补足（尽量维持中美 3+3）
+python -m src.deal --seed 42 --seats gpt:杀手,claude,glm:平民  # 席位后可锁身份（平民/帮凶/杀手，先落位，state 记 pinned_identities）
 python -m src.deal --seed 42 --exclude grok,doubao   # 随机抽席时屏蔽席位（id 或名字，逗号分隔；两侧各需剩 ≥3 席）
 python -m src.deal --seed 42 --lite    # 失忆版精简规则集（rules-6-lite.md），见下
 python -m src.deal --seed 42 --out games/test   # 自定义输出目录
@@ -101,7 +103,7 @@ inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
 
 内心独白等私密素材（M4 起）按席位归档到 `private/<id>/`（如 `inner.md` 内心独白、私聊记录、个人调查结果），与私密卡并列。
 
-分配约束（生成即校验，违反会报错退出）：**席位中美 3+3 对称**（随机模式自动满足，两侧 API 渠道均衡；手动 `--seats` 不对称时仅提示）；身份 4 平民/1 帮凶/1 杀手；职业 9 选 6 不重复；道具 14 选 6 不重复，杀手与帮凶各得一件互不相同的凶器；平民从剩余道具池抽取（可能拿到仅供自卫的武器或无权的反派道具）；保险箱固定 1 件凶器（开局全员公告"主人字条"，但不公布具体哪件）。
+分配约束（生成即校验，违反会报错退出）：**席位中美 3+3 对称**（纯随机模式自动满足，两侧 API 渠道均衡；手动 `--seats` 全员指定或部分名单导致不对称时仅提示）；`--seats` 可全可部分——指名不足 6 席时剩余随机补足，席位后附 `:身份` 可锁定该席身份（平民/帮凶/杀手，先落位、剩余身份随机补给其余席；指定超配额报错，留痕 state `pinned_identities`）；身份 4 平民/1 帮凶/1 杀手；职业 9 选 6 不重复；道具 14 选 6 不重复，杀手与帮凶各得一件互不相同的凶器；平民从剩余道具池抽取（可能拿到仅供自卫的武器或无权的反派道具）；保险箱固定 1 件凶器（开局全员公告"主人字条"，但不公布具体哪件）。
 
 控制台输出是**主持人视角**（含身份分配），不要外发。
 

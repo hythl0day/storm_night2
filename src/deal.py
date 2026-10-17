@@ -4,17 +4,25 @@
     python -m src.deal                       # 随机种子，输出 game/<seed>/
     python -m src.deal --seed 42             # 指定种子（同 seed 两次生成完全一致）
     python -m src.deal --seed 42 --seats gpt,claude,gemini,deepseek,kimi,glm   # 手动指定 6 席
+    python -m src.deal --seed 42 --seats gpt,claude    # 部分名单：指名 2 席，其余随机补足（尽量维持中美 3+3）
+    python -m src.deal --seed 42 --seats gpt:杀手,claude,glm:平民   # 席位后可附身份（平民/帮凶/杀手）
     python -m src.deal --seed 42 --exclude grok,doubao  # 随机抽席时屏蔽席位（id 或名字，逗号分隔）
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
                                                     # 裁决规则不变（仍 v3.26），state 记 is_lite_rule=True
 
+--seats 名单项语法：「id或名字」或「id或名字:身份」。名单可全可部分（1~6 项）：
+部分名单指名者保证入选，剩余席位随机补足——固定席位允许时维持中美 3+3 对称（两侧各抽差额），
+不允许（如固定席位已超一侧 3 席）则提示后从剩余阵容池合并抽取。身份指定先落位，
+剩余身份（多重集）洗牌后依次补给未指定的席位；指定人数超身份配额（杀手/帮凶各 1、平民 4）报错。
+
 随机调用顺序（影响复现，勿随意调整；v3.5 起保底凶器车道改为桌上凶器，不再选持有人）：
-    席位抽取（中美 3+3 对称抽取后洗牌）→ 身份洗牌 → 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
+    席位（纯随机=中美两侧 sample+总洗牌；部分名单=补足 sample（能对称则分侧、否则合并池）+总洗牌；
+          全员手动=无随机）→ 身份洗牌（有指定则洗的是剩余身份多重集）→ 职业抽取 → 反派凶器（3 选 2，左轮手枪固定上桌）
     → 帮凶反派道具 → 保险箱抽池 → 螺丝起子持有人 →（保险箱抽中反派道具时）第四平民凶器 → 平民道具池 → 行动顺序
     （反派功能覆盖保证为无随机的确定性后处理，插在职业抽取与反派凶器之间；万能钥匙预留无随机消耗）
-    --exclude 只在席位抽取前从阵容池剔除屏蔽席位，rng 调用次数与顺序不变——同 seed + 同屏蔽名单可复现。
+    --exclude 只在席位抽取/补足前从阵容池剔除屏蔽席位；同 seed + 同参数（含名单与身份指定）可复现。
 """
 from __future__ import annotations
 
@@ -93,30 +101,90 @@ def load_personas(path: Path) -> dict:
         return tomllib.load(f)
 
 
+def _seat_key(p) -> str:
+    """席位主键：id 优先，无 id 回退名字（与 find_player 口径一致）。"""
+    return p.id or p.name
+
+
+def _parse_seat_specs(specs: list[str], players: list) -> tuple[list, dict[str, str]]:
+    """解析 --seats 名单：每项「id或名字」或「id或名字:身份」。
+
+    返回 (席位列表, {席位key: 指定身份})。重复席位、未知席位、非法身份、身份超额均 SystemExit。
+    """
+    seats: list = []
+    pins: dict[str, str] = {}
+    for spec in specs:
+        key, _, ident = spec.partition(":")
+        key, ident = key.strip(), ident.strip()
+        p = find_player(players, key)
+        if p is None:
+            raise SystemExit(f"席位 {key!r} 不在配置中")
+        sk = _seat_key(p)
+        if sk in {_seat_key(q) for q in seats}:
+            raise SystemExit(f"席位重复指定：{p.name}")
+        if ident:
+            if ident not in set(IDENTITIES):
+                raise SystemExit(f"非法身份 {ident!r}（可选：{'/'.join(dict.fromkeys(IDENTITIES))}）")
+            pins[sk] = ident
+        seats.append(p)
+    for want, n in (("杀手", 1), ("帮凶", 1), ("平民", 4)):
+        c = sum(1 for v in pins.values() if v == want)
+        if c > n:
+            raise SystemExit(f"身份指定超限：{want} 全局仅 {n} 人，当前指定了 {c} 人")
+    return seats, pins
+
+
 def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
          lite: bool = False, exclude: set[str] | None = None):
     """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。
     lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致。
-    exclude 为屏蔽席位 id 集：随机抽席前从阵容池剔除（rng 调用序列不变，同 seed + 同名单可复现）；
-    与手动 seat_keys 重叠时报错。"""
+    exclude 为屏蔽席位 id 集：随机抽席/补足前从阵容池剔除（rng 调用序列不变，同 seed + 同名单可复现）；
+    与手动 seat_keys 重叠时报错。
+    seat_keys 每项可为「id或名字」（纯指名）或「id或名字:身份」（指名+锁定身份）；
+    名单可部分（1~6 项），不足 6 席时剩余随机补足（见模块 docstring）。"""
     rng = random.Random(seed)
     exclude = exclude or set()
+    pins: dict[str, str] = {}
 
-    # 1. 席位抽取（或手动指定）。随机模式为中美 3+3 对称抽取，两侧 API 渠道均衡
+    def nat(p) -> str | None:
+        return personas.get(p.name, {}).get("nationality")
+
+    # 1. 席位：手动名单（可部分、可带身份锁定）或随机抽取（中美 3+3 对称）
     if seat_keys:
-        seats = []
-        for k in seat_keys:
-            p = find_player(players, k)
-            if p is None:
-                raise SystemExit(f"席位 {k!r} 不在配置中")
-            seats.append(p)
-        clash = [p.id for p in seats if p.id in exclude]
+        fixed, pins = _parse_seat_specs(seat_keys, players)
+        clash = [_seat_key(p) for p in fixed if p.id in exclude]
         if clash:
             raise SystemExit(f"手动席位与屏蔽名单冲突：{', '.join(clash)}")
+        if len(fixed) > len(IDENTITIES):
+            raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前指定了 {len(fixed)} 席")
+        if len(fixed) == len(IDENTITIES):
+            seats = fixed
+            nats = [nat(p) for p in seats]
+            if nats.count("美国") != 3 or nats.count("中国") != 3:
+                print("提示：手动席位不是中美 3+3 对称结构")
+        else:
+            # 部分名单：剩余席位随机补足。固定席位允许对称时按两侧差额分抽，否则合并池抽并提示
+            fixed_keys = {_seat_key(p) for p in fixed}
+            pool = [p for p in players if _seat_key(p) not in fixed_keys and p.id not in exclude]
+            need_us, need_cn = 3 - sum(1 for p in fixed if nat(p) == "美国"), \
+                               3 - sum(1 for p in fixed if nat(p) == "中国")
+            need = len(IDENTITIES) - len(fixed)
+            us_pool = [p for p in pool if nat(p) == "美国"]
+            cn_pool = [p for p in pool if nat(p) == "中国"]
+            if need_us >= 0 and need_cn >= 0 and need_us + need_cn == need \
+                    and len(us_pool) >= need_us and len(cn_pool) >= need_cn:
+                seats = fixed + rng.sample(us_pool, need_us) + rng.sample(cn_pool, need_cn)
+            else:
+                print("提示：手动席位无法纳入中美 3+3 对称结构，剩余席位合并随机补足（不对称仅提示）")
+                if len(pool) < need:
+                    raise SystemExit(f"阵容池剩余席位不足：需补足 {need} 席，仅剩 {len(pool)} 席"
+                                     f"（已指定 {len(fixed)} 席，屏蔽 {len(exclude)} 席）")
+                seats = fixed + rng.sample(pool, need)
+            rng.shuffle(seats)
     else:
         pool = [p for p in players if p.id not in exclude]
-        us = [p for p in pool if personas.get(p.name, {}).get("nationality") == "美国"]
-        cn = [p for p in pool if personas.get(p.name, {}).get("nationality") == "中国"]
+        us = [p for p in pool if nat(p) == "美国"]
+        cn = [p for p in pool if nat(p) == "中国"]
         if len(us) < 3 or len(cn) < 3:
             suffix = f"（已屏蔽 {len(exclude)} 席）" if exclude else ""
             raise SystemExit(f"阵容池中美两侧不足 3 席（美国 {len(us)} / 中国 {len(cn)}）{suffix}")
@@ -124,10 +192,6 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
         rng.shuffle(seats)
     if len(seats) != len(IDENTITIES):
         raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前有 {len(seats)} 席")
-    if seat_keys:
-        nat = [personas.get(p.name, {}).get("nationality") for p in seats]
-        if nat.count("美国") != 3 or nat.count("中国") != 3:
-            print("提示：手动席位不是中美 3+3 对称结构")
 
     # 角色属性必须能在人设卡中找到
     roster = []
@@ -143,9 +207,14 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
             "nationality": persona.get("nationality", "?"),
         })
 
-    # 2. 身份
-    identities = IDENTITIES[:]
-    rng.shuffle(identities)
+    # 2. 身份：锁定身份先落位，剩余身份（多重集）洗牌后依次补给未指定的席位
+    remaining_idents = IDENTITIES[:]
+    for p in seats:
+        if pins.get(_seat_key(p)):
+            remaining_idents.remove(pins[_seat_key(p)])
+    rng.shuffle(remaining_idents)
+    rest = iter(remaining_idents)
+    identities = [pins.get(_seat_key(p)) or next(rest) for p in seats]
     # 3. 职业
     professions = rng.sample(PROFESSIONS, len(seats))
     # 4. 反派凶器（杀手先、帮凶后，互不重复；v3.5：左轮手枪固定在桌上，反派池为 刀/棒球棍/不明药剂 3 选 2）
@@ -203,6 +272,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
         "rules_version": RULES_VERSION,  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
         "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
+        "pinned_identities": dict(sorted(pins.items())),  # 手动锁定的席位身份（旧档缺此字段 = 无锁定）
         "mode": "6人局",
         "phase": {"day": 1, "stage": "开局准备"},
         "order": order,
@@ -341,7 +411,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=None, help="随机种子，缺省随机生成")
     ap.add_argument("--players", type=int, default=6, help="局人数（当前仅支持 6）")
-    ap.add_argument("--seats", default=None, help="手动指定席位：id 或名字，逗号分隔")
+    ap.add_argument("--seats", default=None,
+                    help="手动指定席位：id或名字[:身份]，逗号分隔。可全可部分——不足 6 席时剩余随机补足；"
+                         "身份可选 平民/帮凶/杀手（先落位，剩余身份随机补给其他席位）")
     ap.add_argument("--exclude", default=None,
                     help="随机抽席时屏蔽席位：id 或名字，逗号分隔（中美两侧各需剩余 ≥3 席；仅影响随机模式）")
     ap.add_argument("--config", default="players.toml")
@@ -406,6 +478,14 @@ def main() -> None:
     print(f"seed = {seed}  →  {out}/" + ("（lite 规则集）" if args.lite else ""))
     if exclude:
         print("屏蔽席位：" + "、".join(exclude_names))
+    if seat_keys:
+        n_fixed = len(seat_keys)
+        if n_fixed < len(IDENTITIES):
+            print(f"部分名单：指定 {n_fixed} 席，随机补足 {len(IDENTITIES) - n_fixed} 席")
+        if state["pinned_identities"]:
+            name_of = {_seat_key(p): p.name for p in players}
+            print("身份指定：" + "、".join(f"{name_of.get(k, k)}→{v}"
+                                           for k, v in state["pinned_identities"].items()))
     print("行动顺序：" + " → ".join(state["order"]))
     print(f"保险箱：{state['safe_item']}（开局公告已公开）｜桌上：{TABLE_WEAPON}（开局公告已公开）")
     print()

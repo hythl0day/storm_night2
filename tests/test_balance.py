@@ -270,5 +270,100 @@ class TestDealExclude(unittest.TestCase):
             deal(1, self.players, self.personas, seats, exclude={"gpt"})
 
 
+class TestDealSeatSpecs(unittest.TestCase):
+    """--seats 扩展：部分名单（不足 6 席随机补足，尽量维持中美 3+3）与身份锁定（「id或名字:身份」，先落位）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.players, _ = load_config(str(ROOT / "players.toml"))
+        cls.personas = load_personas(ROOT / "personas.toml")
+
+    def _nations(self, st) -> tuple[int, int]:
+        nats = [self.personas.get(p["name"], {}).get("nationality") for p in st["players"]]
+        return nats.count("美国"), nats.count("中国")
+
+    def test_partial_seats_filled_symmetric(self):
+        # gpt/claude 均美国：固定 2 美 + 随机补 1 美 3 中 → 仍 3+3
+        for seed in range(1, 21):
+            st = deal(seed, self.players, self.personas, ["gpt", "claude"])
+            ids = [p["id"] for p in st["players"]]
+            self.assertIn("gpt", ids, f"seed={seed} 指名席位未入选")
+            self.assertIn("claude", ids, f"seed={seed} 指名席位未入选")
+            self.assertEqual(len(ids), 6)
+            self.assertEqual(self._nations(st), (3, 3), f"seed={seed} 部分名单未维持中美 3+3")
+            self.assertEqual(validate(st), [], f"seed={seed} 分配校验失败")
+
+    def test_partial_seats_deterministic(self):
+        self.assertEqual(deal(7, self.players, self.personas, ["gpt", "claude"]),
+                         deal(7, self.players, self.personas, ["gpt", "claude"]))
+
+    def test_partial_seats_asymmetric_fills_with_warning(self):
+        # 固定 4 席全是美国 → 无法 3+3：合并池补足（仅剩中国池），不对称仅提示
+        st = deal(3, self.players, self.personas, ["gpt", "claude", "gemini", "grok"])
+        self.assertEqual(len(st["players"]), 6)
+        self.assertEqual(self._nations(st), (4, 2))
+        self.assertEqual(validate(st), [])
+
+    def test_partial_seats_pool_exhaustion(self):
+        # 固定 1 席 + 屏蔽 3 席 → 阵容池剩 4 席 < 需补足 5 席
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, ["gpt"], exclude={"grok", "gemini", "claude"})
+
+    def test_pin_identity_lands(self):
+        st = deal(42, self.players, self.personas, ["gpt:杀手", "claude", "glm:平民"])
+        by_id = {p["id"]: p for p in st["players"]}
+        self.assertEqual(by_id["gpt"]["identity"], "杀手")
+        self.assertEqual(by_id["glm"]["identity"], "平民")
+        self.assertEqual(st["pinned_identities"], {"glm": "平民", "gpt": "杀手"})
+        ids = [p["identity"] for p in st["players"]]
+        self.assertEqual(ids.count("杀手"), 1)
+        self.assertEqual(ids.count("帮凶"), 1)
+        self.assertEqual(ids.count("平民"), 4)
+        self.assertEqual(validate(st), [])
+        # 平衡保证不受身份锁定影响：杀手仍固定万能钥匙
+        self.assertIn("万能钥匙", by_id["gpt"].get("extra_items", []))
+
+    def test_pin_both_villains(self):
+        st = deal(42, self.players, self.personas, ["gpt:杀手", "deepseek:帮凶"])
+        ids = {p["id"]: p["identity"] for p in st["players"]}
+        self.assertEqual(ids["gpt"], "杀手")
+        self.assertEqual(ids["deepseek"], "帮凶")
+        self.assertEqual(validate(st), [])
+
+    def test_pin_deterministic(self):
+        self.assertEqual(deal(9, self.players, self.personas, ["gpt:杀手", "claude"]),
+                         deal(9, self.players, self.personas, ["gpt:杀手", "claude"]))
+
+    def test_full_manual_seats_still_work(self):
+        st = deal(42, self.players, self.personas,
+                  ["gpt", "claude", "gemini", "deepseek", "kimi", "glm"])
+        self.assertEqual(len(st["players"]), 6)
+        self.assertEqual(st["pinned_identities"], {})
+        self.assertEqual(validate(st), [])
+
+    def test_duplicate_seat_rejected(self):
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, ["gpt", "gpt:杀手"])
+
+    def test_unknown_seat_rejected(self):
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, ["gpt", "nonexistent"])
+
+    def test_invalid_identity_rejected(self):
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, ["gpt:主教"])
+
+    def test_pin_quota_rejected(self):
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, ["gpt:杀手", "claude:杀手"])
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas,
+                 ["gpt:平民", "claude:平民", "gemini:平民", "grok:平民", "deepseek:平民"])
+
+    def test_pin_clashes_with_exclude(self):
+        with self.assertRaises(SystemExit):
+            deal(1, self.players, self.personas, ["gpt:杀手", "claude"], exclude={"gpt"})
+
+
 if __name__ == "__main__":
     unittest.main()
