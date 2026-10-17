@@ -1987,6 +1987,35 @@ class TestTableWeapon(unittest.TestCase):
         self.assertEqual(eng3.state["winner"], "反派")
         self.assertFalse(eng3.execute_pending_out()["ok"])  # 无待执行结算 → 驳回
 
+    def test_accusation_last_civilian_alive_count(self):
+        """修正：背水一战窗口的"最后一名平民"按存活口径统计——原实现统计含死者的身份，
+        有平民遇害（身份保留）后，最后一名存活平民的结算前指认被误驳回。"""
+        # D/E/F（平民）已遇害，C 为最后一名存活平民
+        eng = Engine(mk_state())
+        for n in ("D", "E", "F"):
+            player(eng, n)["alive"] = False
+        goto(eng, "投票", day=2)
+        ev0 = eng.resolve_vote({"A": "C", "B": "C", "C": "A"}, defer_out=True)  # C 2 票过半 → 待执行
+        self.assertTrue(ev0["ok"], ev0)
+        self.assertEqual(eng.state["pending_out"], "C")
+        player(eng, "C")["items"].append({"name": "左轮手枪", "uses_left": 1, "available_day": 1})
+        ev = eng.armed_accusation("C", "A")
+        self.assertTrue(ev["ok"], ev)  # 原实现：含死者共 4 名"平民" → 误驳回
+        self.assertFalse(player(eng, "A")["alive"])   # 指认正确：杀手出局
+        self.assertTrue(player(eng, "C")["alive"])    # 最后平民获救
+        self.assertEqual(player(eng, "B")["identity"], "杀手")  # 帮凶继任
+
+        # 仍有三名存活平民时，结算前指认窗口保持关闭
+        eng2 = Engine(mk_state())
+        player(eng2, "D")["alive"] = False  # 仅一名平民遇害
+        goto(eng2, "投票", day=2)
+        eng2.resolve_vote({"A": "C", "B": "C", "E": "C", "C": "A", "F": "A"}, defer_out=True)
+        self.assertEqual(eng2.state["pending_out"], "C")
+        player(eng2, "C")["items"].append({"name": "左轮手枪", "uses_left": 1, "available_day": 1})
+        ev2 = eng2.armed_accusation("C", "A")
+        self.assertFalse(ev2["ok"])
+        self.assertIn("最后一名平民", ev2["error"])
+
     def test_take_table_item_night_alone(self):
         """夜间独处会客室可取走桌上物品：当夜即可用，变动次日清晨公告。"""
         eng = Engine(self.mk_table())

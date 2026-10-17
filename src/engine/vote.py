@@ -174,7 +174,8 @@ def armed_accusation(state: dict, accuser: str, suspect: str, weapon: str | None
     ap = get_player(s, accuser)
     if ap is None or not ap["alive"] or ap["identity"] != "平民":
         return reject("armed_accusation", "只有存活平民能武装指认")
-    if pending is not None and sum(1 for p in s["players"] if p["identity"] == "平民") != 1:
+    # "最后一名平民"按存活口径统计（rules-6 §7.3 背水一战；修正：原统计含死者，有平民遇害后会误驳回）
+    if pending is not None and sum(1 for p in s["players"] if p["alive"] and p["identity"] == "平民") != 1:
         return reject("armed_accusation", "结算前指认仅限最后一名平民")
     det = s.get("detective")
     temp_grab = False
