@@ -234,12 +234,17 @@ def mark_blackout_period(state: dict, period: str | None = None) -> None:
 def countdown_text(day: int, last_murder_day: int | None) -> str:
     """无杀倒计时公告口径（rules-6 §8）：直接给出进度与触发条件，避免玩家自行换算
     （旧版"已连续 X 个完整天"曾让部分 AI 理解困难，v3.20 改写）。
-    倒计时固定自第 2 天起算；首日是否出手不改变起始进度，尚无后续行为时以第 1 天为基准。"""
+    倒计时固定自第 2 天起算；首日是否出手不改变起始进度，尚无后续行为时以第 1 天为基准。
+    quiet ≥ 2 的清晨即倒计时完成、平民当场获胜（与 core.advance 的判定一致），
+    文本宣告完成而非"明早"（修复：完成当天清晨曾仍预告明天）。"""
     last = last_murder_day if last_murder_day is not None else 1
     quiet = max(0, day - 1 - last)
     if quiet == 0:
         return ("无杀倒计时：自第 2 天起，若连续 2 个完整天没有任何谋杀行为，"
                 "下一个清晨平民直接获胜（当前进度 0/2；首日是否出手不影响起始进度；此后的任何谋杀出手含未遂都会重置）")
+    if quiet >= 2:
+        return (f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（{quiet}/2）——"
+                "倒计时完成，平民直接获胜")
     return (f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（{quiet}/2）——"
             "今天若仍无谋杀行为，明早平民直接获胜（任何谋杀出手含未遂都会重置）")
 

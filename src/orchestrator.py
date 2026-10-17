@@ -171,6 +171,16 @@ class SoftStop(Exception):
     """收到退出指令：在当前席位行动完成后安全停止（内部控制流，由 run_game 捕获收束）。"""
 
 
+def _receipt_verdict(ev: dict) -> str:
+    """动作裁决的回执定性：ok 不等于达成——谋杀被防御是失败（仍消耗机会），
+    密道等 failed 事件是未发动（不消耗）。此前一律写"→ 成功"，谋杀未遂回执出现成功字样。"""
+    if ev.get("defended"):
+        return "→ 失败（袭击被防御，仍消耗本阶段谋杀机会）"
+    if ev.get("failed"):
+        return "→ 未发动（条件不满足，不消耗）"
+    return "→ 成功"
+
+
 class Orchestrator:
     """单局编排器：持引擎与席位配置，按阶段驱动六席 AI。"""
 
@@ -279,8 +289,9 @@ class Orchestrator:
             self._fire("on_result", name, ok, f"{act_txt} → 驳回（{ev.get('error')}）")
             return
         priv = (ev.get("private") or {}).get(name)
-        self._receipt_line(f"◆ {name}｜{act_txt} → 成功")
-        detail = f"{act_txt} → 成功"
+        verdict = _receipt_verdict(ev)
+        self._receipt_line(f"◆ {name}｜{act_txt} {verdict}")
+        detail = f"{act_txt} {verdict}"
         if priv:
             if not isinstance(priv, str):
                 priv = json.dumps(priv, ensure_ascii=False)

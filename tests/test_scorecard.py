@@ -141,8 +141,10 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_group({"rules_version": "v3.10"}), "v3.8+")
         self.assertEqual(rules_group({"rules_version": "v3.5"}), "v3.5")
         self.assertEqual(rules_group({}), "≤v3.4")
-        # lite 规则集：不与 full 同池，同版本也不同组
-        self.assertEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}), "lite·v3.12")
+        # lite 规则集：不与 full 同池；lite 总体一池、不按版本细分
+        self.assertEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}), "lite（失忆版）")
+        self.assertEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}),
+                         rules_group({"rules_version": "v3.13", "is_lite_rule": True}))
         self.assertNotEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}),
                             rules_group({"rules_version": "v3.12"}))
         # is_lite_rule 缺字段/None → False（旧档默认高级规则）

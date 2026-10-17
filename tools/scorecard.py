@@ -13,7 +13,7 @@
 多局报告：版本分组胜率平衡 + 机制利用率 + 反派主动性 + 多样性分布 + 成本汇总。
 注意：平衡数据按规则版本分组——v3.8 起合并为 "v3.8+" 一组（v3.9 文本澄清、v3.10 裁决补全，均未改规则）；
 winner 为空的中断局不计入胜负率。失忆版精简规则集（state 的 is_lite_rule）永不与高级规则同池——
-单独成组且不做跨版本合并；旧档缺该字段一律视为高级规则（None → False）。
+单独成组（lite 总体一池，不按版本细分）；旧档缺该字段一律视为高级规则（None → False）。
 """
 from __future__ import annotations
 
@@ -96,10 +96,10 @@ def roster_identities(script: str) -> dict[str, str]:
 
 def rules_group(st: dict) -> str:
     """平衡统计分组：v3.8 起规则书再无机制变更（v3.9 文本澄清、v3.10 裁决补全），合并为一组。
-    失忆版精简规则集（lite）的规则面不同，永不并入高级规则的池——单独成组且不跨版本合并。"""
-    v = rules_version(st)
+    失忆版精简规则集（lite）的规则面不同，永不并入高级规则的池——单独成组（lite 总体一池，不按版本细分）。"""
     if is_lite(st):
-        return f"lite·{v}"
+        return "lite（失忆版）"
+    v = rules_version(st)
     m = re.match(r"v(\d+)\.(\d+)$", v)
     if m and (int(m.group(1)), int(m.group(2))) >= (3, 8):
         return "v3.8+"

@@ -2448,5 +2448,42 @@ class TestV332PassageAccompliceMurder(unittest.TestCase):
         self.assertIn("只有杀手", ev["error"])
 
 
+class TestCountdownText(unittest.TestCase):
+    """无杀倒计时公告口径：完成的当天清晨宣告"倒计时完成"而非预告"明早"（修复文本问题）。"""
+
+    def test_countdown_completion_morning(self):
+        from src.engine.state import countdown_text
+        self.assertIn("0/2", countdown_text(2, 1))            # 刚起算
+        self.assertIn("明早", countdown_text(3, 1))           # 1/2：正常预告明天
+        self.assertIn("倒计时完成", countdown_text(4, 1))     # 2/2：当天清晨即完成
+        self.assertNotIn("明早", countdown_text(4, 1))
+        self.assertIn("倒计时完成", countdown_text(5, 1))     # 极端值同样宣告完成
+
+    def test_countdown_completion_end_to_end(self):
+        """全程无谋杀 → 第 4 天清晨倒计时完成：公告宣告完成且平民当场获胜。"""
+        eng = Engine(mk_state())
+        ev = None
+        for _ in range(20):
+            ev = eng.advance()
+            if ev["type"] == "game_over":
+                break
+        self.assertEqual(ev["type"], "game_over")
+        self.assertEqual(eng.state["winner"], "平民")
+        anns = "\n".join(ev["public"]["announcements"])
+        self.assertIn("倒计时完成，平民直接获胜", anns)
+        self.assertNotIn("明早平民直接获胜", anns)
+
+
+class TestReceiptVerdict(unittest.TestCase):
+    """动作回执定性：谋杀被防御应为"失败"而非"成功"（修复文本问题）。"""
+
+    def test_receipt_verdict(self):
+        from src.orchestrator import _receipt_verdict
+        self.assertIn("失败", _receipt_verdict({"ok": True, "type": "murder_attempt", "defended": True}))
+        self.assertIn("未发动", _receipt_verdict({"ok": True, "type": "use_passage", "failed": True}))
+        self.assertIn("成功", _receipt_verdict({"ok": True, "type": "murder"}))
+        self.assertIn("成功", _receipt_verdict({"ok": True, "type": "report"}))
+
+
 if __name__ == "__main__":
     unittest.main()
