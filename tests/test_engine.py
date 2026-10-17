@@ -2417,5 +2417,36 @@ class TestV331Buffs(unittest.TestCase):
         self.assertTrue(ev2["ok"], ev2)
 
 
+class TestV332PassageAccompliceMurder(unittest.TestCase):
+    """v3.32：经密道进场的帮凶可借道谋杀（同舞台魔术/延时装置口径）——击杀归属发动者本人。"""
+
+    def test_passage_accomplice_murder(self):
+        """帮凶建筑师经密道进场后可当场动手：击杀归属帮凶本人、占用当阶段谋杀机会。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        eng.set_passage("B")
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"E": "书房"})  # 书房夜间明亮，E 单独在场
+        ev = eng.use_passage("B", "书房")
+        self.assertTrue(ev["ok"], ev)
+        self.assertFalse(ev.get("failed", False))
+        ev2 = eng.murder("B", "E", weapon="不明药剂")
+        self.assertTrue(ev2["ok"], ev2)
+        self.assertEqual(ev2["case"]["culprit"], "B")   # 击杀归属发动者本人（犯罪侧写同样指向 B）
+        self.assertTrue(eng.state["stage_murder_used"])  # 占用当阶段谋杀机会
+        self.assertFalse(player(eng, "E")["alive"])
+
+    def test_accomplice_without_passage_cannot_murder(self):
+        """对照：未走密道的帮凶仍无主动谋杀权。"""
+        players = default_players()
+        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "地下室", "E": "地下室", "A": "会客室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("B", "E", weapon="不明药剂")
+        self.assertFalse(ev["ok"])
+        self.assertIn("只有杀手", ev["error"])
+
+
 if __name__ == "__main__":
     unittest.main()

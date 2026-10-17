@@ -8,6 +8,7 @@
   不知死亡发生；死亡随"再进现场发现"或"次日清晨公告"公开（发现/报案见 state.discover_bodies 与 ledger.report）。
 - 在场非反派角色数：亮房 ≤1；v3.31 起黑暗房间不设人数限制（容量仍是硬约束——密道进场不受容量限制，可破满员黑暗扎堆）。
 - v3.31：会客室桌上凶器视同环境凶器供反派临时取用（无需持有，用后消耗，桌上变动次日清晨公告）。
+- v3.32：经密道进场的帮凶可借道谋杀（同舞台魔术/延时装置口径；击杀归属发动者本人，占用当阶段谋杀机会）。
 - 空手附加条件（满足其一）：①帮凶在场 ②本人体格≥目标 ③本人男且目标女。
   黑暗房间中的空手谋杀无任何附加条件（v3.22：卧室夜间黑暗由 is_dark 统一裁定）。
 - 凶器谋杀无条件（用一次即消耗，无论成败）；环境凶器（雕像/电线）无条件且不限次数。
@@ -145,7 +146,9 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
     kp = get_player(s, killer)
     if kp is None or not kp["alive"]:
         return reject("murder", "杀手不在场或已死亡")
-    if kp["identity"] != "杀手":
+    if kp["identity"] != "杀手" and not (is_villain(kp) and killer in s["passage_stealth"]):
+        # v3.32：经密道进场的帮凶可借道动手——反派技能击杀不受"帮凶不能主动谋杀"限制
+        # （同舞台魔术/延时装置口径；击杀归属发动者本人，犯罪侧写同样指向发动者）
         return reject("murder", "只有杀手能发动谋杀")
     if stage not in ACTION_STAGES:
         return reject("murder", "当前阶段不可行凶")

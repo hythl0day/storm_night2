@@ -1205,7 +1205,8 @@ class Orchestrator:
         if not targets:
             return []
         menu = []
-        if p["identity"] == "杀手":
+        if p["identity"] == "杀手" or name in s["passage_stealth"]:
+            # v3.32：经密道进场的帮凶同获当阶段谋杀权（击杀归属发动者本人）
             menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
             if room == HALL:
                 # v3.31：会客室桌上凶器视同环境凶器临时取用（无需持有，用后消耗）
