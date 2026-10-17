@@ -1,0 +1,1 @@
+Day 5, no murder last night (no announcement). Tonight no murder means平民赢. Key: 帮凶继任杀手必须今天或今晚动手。发言：点出今晚是关键夜，杰普特仍未洗清，杰米尼也存疑。克劳德被票出后当晚无谋杀——说明新杀手在等？或怕被识破。呼吁今晚全留会客室。

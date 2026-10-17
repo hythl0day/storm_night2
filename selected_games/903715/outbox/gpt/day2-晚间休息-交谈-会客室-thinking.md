@@ -1,0 +1,1 @@
+**Planning single-room conversation response**

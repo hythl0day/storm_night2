@@ -1,0 +1,1 @@
+Vote for 杰米尼 again? Yesterday split 3 ways. My suspicion: 杰米尼 (中偏高), 克劳德 (中). Tonight everyone stays in会客室 so no murder tonight — need vote now. Vote 杰米尼.

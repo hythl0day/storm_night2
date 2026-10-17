@@ -1,0 +1,1 @@
+Decide: run or not. As profiler, running is plausible. 健壮体格能扛刀 argument. Run and declare truthfully? Declaring profession true is fine. Compete with 狄西 and 杰普特. Voters: 杰米尼、克劳德、豆包. Give a concise pitch: I'm profiler, strong, will keep cold analysis.

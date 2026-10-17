@@ -1,0 +1,1 @@
+**Choosing to monitor room solo**

@@ -1,0 +1,1 @@
+**Deciding night destination action**

@@ -1,0 +1,1 @@
+**Choosing invitation acceptance format**

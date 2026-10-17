@@ -1,0 +1,1 @@
+**Deciding against gifting and focusing speech on evidence**

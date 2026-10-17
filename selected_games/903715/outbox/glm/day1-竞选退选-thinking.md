@@ -1,0 +1,1 @@
+Three candidates. Staying gives a chance at the gun. Stay.
