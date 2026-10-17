@@ -11,9 +11,9 @@
 
 单局报告：基本台账 + 流程简报（按天事件）+ 未遂明细 + 戏剧性评分（分项透明）+ 主角弧线候选 + 成本（含缓存命中率）。
 多局报告：版本分组胜率平衡 + 机制利用率 + 反派主动性 + 多样性分布 + 成本汇总。
-注意：平衡数据完全按规则版本分组、不做跨版本合并（快速迭代期每次更新几乎都改规则，合并即混池）；
-winner 为空的中断局不计入胜负率。失忆版精简规则集（state 的 is_lite_rule）永不与高级规则同池——
-单独成组（lite 总体一池，不按版本细分）；旧档缺该字段一律视为高级规则（None → False）。
+注意：平衡数据完全按（版本 × 规则集）分组、不做任何合并——快速迭代期每次更新几乎都改规则，合并即混池。
+winner 为空的中断局不计入胜负率。失忆版精简规则集（state 的 is_lite_rule）永不与高级规则同池：
+lite 按版本单列（lite·vX.Y），与同名版本的全规则组分池；旧档缺该字段一律视为高级规则（None → False）。
 """
 from __future__ import annotations
 
@@ -95,12 +95,10 @@ def roster_identities(script: str) -> dict[str, str]:
 
 
 def rules_group(st: dict) -> str:
-    """平衡统计分组：完全按规则版本分组，不做任何跨版本合并——快速迭代期几乎每次更新都改规则，
-    合并必然混池（旧版"v3.8+"合并线即因此作废）。失忆版精简规则集（lite）规则面不同，
-    永不并入高级规则的池：lite 总体一池，不按版本细分。"""
-    if is_lite(st):
-        return "lite（失忆版）"
-    return rules_version(st)
+    """平衡统计分组：完全按（版本 × 规则集）分组，不做任何合并——快速迭代期每次更新几乎都改规则，
+    合并必然混池。lite 规则面不同，永不与高级规则同池：同版本的两池以 lite· 前缀区分。"""
+    v = rules_version(st)
+    return f"lite·{v}" if is_lite(st) else v
 
 
 def roster_professions(script: str) -> dict[str, str]:
@@ -421,7 +419,7 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
                  f"{a['path'] or '-':<10}{a['days']:<5}{a['murders']:<5}{sc:<6}")
 
     L.append("")
-    L.append("—— 胜率平衡（按规则版本分组，lite 规则集单独成组不混池；中断局不计入） ——")
+    L.append("—— 胜率平衡（按 版本×规则集 分组、不合并；中断局不计入） ——")
     versions = sorted({a["group"] for a in done})
     for v in versions:
         grp = [a for a in done if a["group"] == v]
