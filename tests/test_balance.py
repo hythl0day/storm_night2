@@ -211,13 +211,14 @@ class TestDealVillainGuarantees(unittest.TestCase):
         self.assertEqual(full["ruleset"], "rules-6.md")
         self.assertTrue(lite["is_lite_rule"])
         self.assertEqual(lite["ruleset"], "rules-6-lite.md")
+        self.assertEqual(lite["rules_version"], "v3.29")
         self.assertEqual(full["players"], lite["players"])
         self.assertEqual(full["order"], lite["order"])
         self.assertFalse(validate(lite))  # lite 局同样过分配校验
 
     def test_lite_card_self_contained(self):
         """lite 私密卡自包含：技能/道具带内联定义、不引用规则书章节（lite 规则书无 §3/§4 词条）；
-        full 卡保持缩写 + 章节引用。"""
+        full 卡保持缩写 + 章节引用；仅 lite 杀手额外获得完整行凶须知。"""
         st = deal(42, self.players, self.personas, None, lite=True)
         for p in st["players"]:
             card = write_card(p, st["players"], lite=True)
@@ -226,6 +227,13 @@ class TestDealVillainGuarantees(unittest.TestCase):
             self.assertIn(ITEM_DESC[p["item"]], card, p["name"])
             full_card = write_card(p, st["players"], lite=False)
             self.assertIn("规则书 §", full_card)
+            self.assertNotIn("## 行凶须知", full_card)
+            if p["identity"] == "杀手":
+                self.assertIn("## 行凶须知", card)
+                self.assertIn("从第 1 天起", card)
+                self.assertIn("进入空房没有目标", card)
+            else:
+                self.assertNotIn("## 行凶须知", card)
 
     def test_deal_still_deterministic(self):
         self.assertEqual(deal(42, self.players, self.personas, None),

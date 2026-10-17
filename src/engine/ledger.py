@@ -655,25 +655,29 @@ def use_passage(state: dict, user: str, room: str) -> dict:
 
 
 def place_bug(state: dict, user: str, room: str) -> dict:
-    """「窃听器」：开局前秘密放置于一个非卧室房间（含会客室——唯一能听到会客室交谈的手段；监控只记进入）。"""
+    """「窃听器」：房间行动中在本人所在非卧室房间秘密放置，只记录放置后的交谈。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
         return reject("place_bug", "玩家不存在或已死亡")
-    if s["phase"]["stage"] != "开局准备":
-        return reject("place_bug", "只能在开局准备阶段放置窃听器")
+    if s["phase"]["stage"] not in ACTION_STAGES:
+        return reject("place_bug", "只能在自由活动或晚间休息的房间行动中放置窃听器")
     if s["bug_room"] is not None:
         return reject("place_bug", "窃听器已放置")
-    if held_item(p, "窃听器", 1) is None:
+    if held_item(p, "窃听器", s["phase"]["day"]) is None:
         return reject("place_bug", "你未持有窃听器")
     if room not in FREE_ROOMS:
         return reject("place_bug", "窃听器必须放置在非卧室房间")
+    if s["positions"].get(user) != room:
+        return reject("place_bug", "必须身处目标房间才能放置窃听器")
     s["bug_room"] = room
-    return {"ok": True, "type": "place_bug", "public": None, "private": {user: f"窃听器已放置于{room}"}}
+    s["bug_placed"] = {"day": s["phase"]["day"], "stage": s["phase"]["stage"]}
+    return {"ok": True, "type": "place_bug", "public": None,
+            "private": {user: f"窃听器已放置于{room}；只记录放置后发生的交谈"}}
 
 
 def bug_listen(state: dict, user: str) -> dict:
-    """收听窃听器（v3）：晚间休息时间身处自己卧室时使用（交谈内容由编排器下发）。"""
+    """收听窃听器：晚间休息身处自己卧室时使用；放置前的交谈不追溯。"""
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
@@ -692,7 +696,7 @@ def bug_listen(state: dict, user: str) -> dict:
         "ok": True,
         "type": "bug_listen",
         "public": None,
-        "private": {user: f"你收听了{s['bug_room']}当天自由活动时段的全部交谈（内容由编排器下发）"},
+        "private": {user: f"你收听了{s['bug_room']}当天自由活动时段、放置后发生的交谈（内容由编排器下发）"},
         "room": s["bug_room"],
     }
 

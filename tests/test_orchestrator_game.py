@@ -104,9 +104,10 @@ def make_fake_chat(killer_script: bool):
         elif "内交谈" in title:
             pass  # 只发言
         elif "房间行动" in title or "谋杀窗口" in title:
-            if killer_script and '"type": "murder"' in briefing and name in ("A", "B"):
+            if killer_script and day >= 2 and '"type": "murder"' in briefing and name in ("A", "B"):
                 t = re.search(r'"target": "([^"|]+)"', briefing)
-                acts = [{"type": "murder", "target": t.group(1), "weapon": "刀" if name == "A" else "不明药剂"}]
+                if t:
+                    acts = [{"type": "murder", "target": t.group(1), "weapon": "刀" if name == "A" else "不明药剂"}]
         elif "晚间休息" in title or "毁证机会" in title:
             pass
         return ChatResult(
@@ -158,7 +159,7 @@ class TestMainGodEnding(MockGameTestBase):
         # 归档：内心独白 / 简报与回执 / host_log
         self.assertTrue((d / "private" / "A" / "inner.md").exists())
         self.assertTrue((d / "outbox" / "A" / "day1-竞选声明.md").exists())  # v3.3：第 1 天公共发言改为侦探竞选
-        self.assertTrue((d / "inbox" / "F" / "day1-开局准备.md").exists())
+        self.assertFalse((d / "inbox" / "F" / "day1-开局准备.md").exists())  # 窃听器改为后续到场放置
         self.assertTrue((d / "host_log.jsonl").read_text(encoding="utf-8").strip())
         # state.json 落盘即终局
         saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
@@ -277,7 +278,7 @@ class TestCivilianWinEnding(MockGameTestBase):
 
     def test_lone_bedroom_skips_room_action(self):
         """v3.22：夜间独居自己卧室且无可用行动者，房间行动环节整体跳过——不发简报、不调 AI。
-        （自己卧室的门锁项无意义不列入；封闭空间/延时装置仅自由活动可发动，夜间不列噪音项。）"""
+        （自己卧室的门锁项无意义不列入；封闭空间仅自由活动，装置与窃听器限非卧室，夜间卧室不列这些噪音项。）"""
         d = write_game_dir(self.root, self.players())
         self.run_game(d, killer_script=False)
         # C（医师/急救箱）、E（建筑师）、B（机械师帮凶）夜间独居自己卧室：无任何合法行动 → 零调用
@@ -423,7 +424,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertNotIn("……", section)   # mock 的 inner 固定为 "……"：内心独白不进简报
 
     def test_night_features_v3(self):
-        """夜间特性端到端（v3.22）：密道（建筑师帮凶夜用）、窃听器内容真实下发、受邀组合黑暗低语、清晨状态行/状态表。"""
+        """夜间特性端到端：密道、窃听器到场放置与防追溯、受邀组合低语、清晨状态表。"""
         players = self.players()
         players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)  # 密道持有者
         d = write_game_dir(self.root, players)
@@ -436,14 +437,16 @@ class TestCivilianWinEnding(MockGameTestBase):
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
             if "开局准备" in title:
-                acts = []
-                if name == "B" and '"type": "set_passage"' in briefing:
-                    acts = [{"type": "set_passage"}]
-                if name == "F" and '"type": "place_bug"' in briefing:
-                    acts = [{"type": "place_bug", "room": "书房"}]
+                acts = [{"type": "set_passage"}] if name == "B" and '"type": "set_passage"' in briefing else []
                 return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "房间行动" in title and "晚间休息" in title and name == "F" and day == 1 and "bug_listen" in briefing:
+            if "房间行动" in title and "自由活动" in title and name == "F" and day == 1 \
+                    and '"type": "place_bug"' in briefing:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "place_bug", "room": "会客室"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "房间行动" in title and "晚间休息" in title and name == "F" and day in (1, 2) \
+                    and "bug_listen" in briefing:
                 return ChatResult(player.name, ok=True, content=payload(notes="x", actions=[{"type": "bug_listen"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "内交谈" in title and "晚间休息" in title:
@@ -470,13 +473,15 @@ class TestCivilianWinEnding(MockGameTestBase):
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn("内低语（黑暗）", script)            # 受邀组合在黑暗卧室摸黑低语
         self.assertIn("C 的密谈内容", script)
-        self.assertIn("窃听器录音下发给 F（书房）", script)  # 内容真实下发（不再是空头支票）
-        self.assertIn("状态一览（全剧透）", script)          # 每日清晨状态表
+        self.assertIn("窃听器录音下发给 F（会客室）", script)
+        self.assertIn("状态一览（全剧透）", script)
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
-        self.assertIn("目前存活", log)                       # 清晨状态行
+        self.assertIn("目前存活", log)
         self.assertIn("无杀倒计时：", log)
-        self.assertIn("侦探：C", log)                        # v3.3：竞选产生的侦探列入清晨公告
-        self.assertTrue(any("窃听器录音" in m for m in s["orch"]["hist"]["F"]))  # 私密历史留痕
+        self.assertIn("侦探：C", log)
+        recordings = [m for m in s["orch"]["hist"]["F"] if "窃听器录音" in m]
+        self.assertTrue(any("此前交谈不追溯" in m for m in recordings), recordings)  # 首日放置前的谈话不可听
+        self.assertTrue(any("第2天发言" in m for m in recordings), recordings)       # 后续一天的谈话正常记录
 
     def test_hall_night_talk(self):
         """v3.22：夜宿会客室者（≥2 人）睡前围炉夜谈=亮房正常房间交谈——内容仅当夜夜宿者知晓。"""
@@ -660,9 +665,9 @@ class TestInterruptAndResume(MockGameTestBase):
             calls["n"] += 1
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
-        # 第 1 天调用序：F 开局准备(1) → 竞选声明 A..F(2-7) → 退选 C,D(8-9) → 竞选投票 A,B,E,F(10-13)
-        # → 自由活动-选房 A(14)：第 14 次后停 = 选房中途（v3.27 起白天会议无交换环节）
-        orch = Orchestrator(d, hooks={"should_stop": lambda: calls["n"] >= 14})
+        # 第 1 天调用序：竞选声明 A..F(1-6) → 退选 C,D(7-8) → 竞选投票 A,B,E,F(9-12)
+        # → 自由活动-选房 A(13)：第 13 次后停 = 选房中途；窃听器不再占用开局准备调用
+        orch = Orchestrator(d, hooks={"should_stop": lambda: calls["n"] >= 13})
         orig = orchestrator.chat
         orchestrator.chat = counting
         try:
@@ -1570,6 +1575,169 @@ class TestDarkWhisper(MockGameTestBase):
         self.assertIn("摸黑低声交谈", c_brief)
         # 黑暗中的低语同样进入窃听器录音源（麦克风不受黑暗影响）
         self.assertTrue(s["orch"]["talks"].get("2:自由活动:书房"))
+
+
+class TestFirstDayMurderAndFeedback(MockGameTestBase):
+    def test_day1_murder_menu_in_both_action_stages(self):
+        orch = Orchestrator(write_game_dir(self.root / "day1-menu", default_players()))
+        for stage in ("自由活动", "晚间休息"):
+            orch.state["phase"] = {"day": 1, "stage": stage}
+            orch.state["stage_murder_used"] = False
+            orch.state["positions"] = {"A": "书房", "E": "书房", "B": "监控室",
+                                       "C": "会客室", "D": "会客室", "F": "会客室"}
+            menu = orch.murder_menu(orch.player("A"), 1)
+            self.assertTrue(any('"type": "murder"' in item and "E" in item for item in menu), stage)
+
+    def test_empty_murder_window_feedback_once_without_api(self):
+        orch = Orchestrator(write_game_dir(self.root / "empty-feedback", default_players()))
+        orch.state["phase"] = {"day": 1, "stage": "晚间休息"}
+        orch.state["positions"] = {p["name"]: f"{p['name']}的卧室" for p in orch.state["players"]}
+        orig = orchestrator.chat
+
+        def unexpected(*args, **kwargs):
+            raise AssertionError("空目标不应调用 API")
+
+        orchestrator.chat = unexpected
+        try:
+            orch.murder_window(1, "晚间休息")
+            orch.murder_window(1, "晚间休息")  # WIP 已完成，不得重复发回执
+        finally:
+            orchestrator.chat = orig
+        messages = [m for m in orch.state["orch"]["hist"]["A"] if "没有可攻击目标" in m]
+        self.assertEqual(len(messages), 1)
+        self.assertIn("未发生袭击", messages[0])
+        self.assertIn("不消耗本阶段谋杀机会", messages[0])
+        self.assertIn("A", orch.state["orch"]["wip"]["1:晚间休息:谋杀"]["done"])
+        saved = json.loads((orch.dir / "state.json").read_text(encoding="utf-8"))
+        self.assertEqual(len([m for m in saved["orch"]["hist"]["A"] if "没有可攻击目标" in m]), 1)
+
+    def test_lite_night_selection_requires_direct_destination(self):
+        orch = Orchestrator(write_game_dir(self.root / "lite-night", default_players()))
+        orch.state["phase"] = {"day": 1, "stage": "晚间休息"}
+        orch.state["is_lite_rule"] = True
+        briefings = []
+        orig = orchestrator.chat
+
+        def fake_chat(player, messages, *, on_token=None, reasoning_effort=None):
+            briefings.append(messages[-1]["content"])
+            return ChatResult(player.name, ok=True, content=payload(notes="x"), latency=0.01,
+                              usage={"total_tokens": 5}, finish_reason="stop")
+
+        orchestrator.chat = fake_chat
+        try:
+            orch.night_select(1, "第1天晚间休息")
+        finally:
+            orchestrator.chat = orig
+        self.assertEqual(len(briefings), 6)
+        for briefing in briefings:
+            self.assertIn("不能先回房待命", briefing)
+            self.assertIn("想去某人的卧室就现在直接选择该卧室", briefing)
+
+    def test_murder_rejection_and_failure_wording(self):
+        orch = Orchestrator(write_game_dir(self.root / "reject-feedback", default_players()))
+        p = orch.player("A")
+        orch.reject_note(p, {"type": "murder", "error": "未持有可用凶器"})
+        msg = orch.state["orch"]["hist"]["A"][-1]
+        self.assertIn("未发生袭击", msg)
+        self.assertIn("不消耗本阶段谋杀机会", msg)
+        hints = orch._stage_hints("第1天 · 自由活动（谋杀窗口）")
+        self.assertTrue(any("动作被驳回" in h and "谋杀失败" in h for h in hints), hints)
+
+    def test_placement_menu_any_action_stage_but_not_bedroom(self):
+        orch = Orchestrator(write_game_dir(self.root / "placement-menu", default_players()))
+        for stage in ("自由活动", "晚间休息"):
+            orch.state["phase"] = {"day": 1, "stage": stage}
+            orch.state["positions"] = {"B": "监控室", "F": "会客室"}
+            self.assertTrue(any('"type": "set_device"' in item for item in orch.action_menu(orch.player("B"), 1)), stage)
+            self.assertTrue(any('"type": "place_bug"' in item for item in orch.action_menu(orch.player("F"), 1)), stage)
+            orch.state["positions"] = {"B": "B的卧室", "F": "F的卧室"}
+            self.assertFalse(any('"type": "set_device"' in item for item in orch.action_menu(orch.player("B"), 1)), stage)
+            self.assertFalse(any('"type": "place_bug"' in item for item in orch.action_menu(orch.player("F"), 1)), stage)
+
+    def test_bug_recording_not_retroactive(self):
+        orch = Orchestrator(write_game_dir(self.root / "bug-no-history", default_players()))
+        orch.state["phase"] = {"day": 1, "stage": "自由活动"}
+        orch.state["positions"] = {"F": "会客室"}
+        orch.orch["talks"]["1:自由活动:会客室"] = ["放置前的旧谈话"]
+        ev = orch.dispatch(orch.player("F"), {"type": "place_bug", "room": "会客室"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(orch.state["bug_placed"], {"day": 1, "stage": "自由活动"})
+
+        orch.state["phase"] = {"day": 1, "stage": "晚间休息"}
+        orch.state["positions"] = {"F": "F的卧室"}
+        ev = orch.dispatch(orch.player("F"), {"type": "bug_listen"})
+        self.assertTrue(ev["ok"], ev)
+        orch.orch["talks"]["2:自由活动:会客室"] = ["放置后的新谈话"]
+        orch.state["phase"] = {"day": 2, "stage": "晚间休息"}
+        ev = orch.dispatch(orch.player("F"), {"type": "bug_listen"})
+        self.assertTrue(ev["ok"], ev)
+        recordings = [m for m in orch.state["orch"]["hist"]["F"] if "窃听器录音" in m]
+        self.assertEqual(len(recordings), 2)
+        self.assertIn("此前交谈不追溯", recordings[0])
+        self.assertNotIn("放置前的旧谈话", recordings[0])
+        self.assertIn("放置后的新谈话", recordings[1])
+        self.assertNotIn("放置前的旧谈话", recordings[1])
+
+    def test_day1_two_cases_flow_to_vote(self):
+        d = write_game_dir(self.root / "day1-two-cases", default_players())
+        base = make_fake_chat(False)
+
+        def chat_first_day(player, messages, *, on_token=None, reasoning_effort=None):
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            name = player.name
+
+            def respond(actions):
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=actions), latency=0.01,
+                                  usage={"total_tokens": 5}, finish_reason="stop")
+
+            if "第1天" in title and "选房" in title:
+                room = {"A": "书房", "E": "书房", "B": "监控室"}.get(name, "会客室")
+                return respond([{"type": "choose_room", "room": room}])
+            if title == "# 第1天 · 晚间休息":
+                actions = []
+                if name == "A":
+                    actions = [{"type": "choose_room", "room": "C的卧室"}]
+                elif name == "F":
+                    actions = [{"type": "choose_room", "room": "监控室"}]
+                return respond(actions)
+            if "第1天" in title and "自由活动" in title and "房间行动" in title and name == "B":
+                return respond([{"type": "set_device", "room": "监控室"}])
+            if "第1天" in title and "谋杀窗口" in title and name == "A":
+                if "自由活动" in title:
+                    return respond([{"type": "murder", "target": "E", "weapon": "刀"}])
+                return respond([{"type": "murder", "target": "C"}])
+            if "第2天" in title and "案件调查" in title and name == "C":
+                return respond([
+                    {"type": "investigate", "case": "E", "choice": "死亡时间"},
+                    {"type": "investigate", "case": "F", "choice": "死亡时间"},
+                ])
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = Orchestrator(d)
+        orch.hooks = {"should_stop": lambda: orch.state["phase"] == {"day": 2, "stage": "投票"}}
+        orig = orchestrator.chat
+        orchestrator.chat = chat_first_day
+        try:
+            orch.run_game()
+        finally:
+            orchestrator.chat = orig
+
+        self.assertEqual(orch.state["phase"], {"day": 2, "stage": "投票"})
+        self.assertEqual([(c["victim"], c["period"]) for c in orch.state["cases"]],
+                         [("E", "第1天自由活动"), ("F", "第1天晚间休息")])
+        self.assertEqual([a["target"] for a in orch.state["attempts"]], ["C"])
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("E 死亡", log)
+        self.assertIn("F 死亡", log)
+        self.assertIn("C 遇袭但幸存", log)
+        self.assertIn("监控公开宣读", log)
+        investigation = (d / "inbox" / "C" / "day2-案件调查.md").read_text(encoding="utf-8")
+        self.assertIn("E（第1天", investigation)
+        self.assertIn("F（第1天", investigation)
+        hist = orch.state["orch"]["hist"]["C"]
+        self.assertTrue(any('"case": "E"' in m and '"result": "第1天自由活动"' in m for m in hist), hist)
+        self.assertTrue(any('"case": "F"' in m and '"result": "第1天晚间休息"' in m for m in hist), hist)
 
 
 class TestLiteJustInTimeRules(MockGameTestBase):

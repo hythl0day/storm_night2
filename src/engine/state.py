@@ -27,6 +27,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - passage: dict|None                    反派建筑师密道 {used}（夜间使用，出口三功能房任选）
 - passage_stealth: [名字]               本阶段经密道行动者（监控不留记录）
 - bug_room: 房间|None                   「窃听器」放置位置
+- bug_placed: {day,stage}|None          「窃听器」放置时点（此前交谈不追溯；旧档 None 兼容原口径）
 - devices: {房间: {setter, active}}     机械师【延时装置】
 - sealed_items: [{name,uses_left,from}] 尸体/出局者封存的未使用道具，待投票分配
 - gifts_used: [名字]                    当天已发起过道具赠送的人（v3.27：房间行动中当面赠送，每天限一次）
@@ -159,6 +160,7 @@ def ensure(state: dict) -> dict:
     s.setdefault("passage", None)
     s.setdefault("passage_stealth", [])
     s.setdefault("bug_room", None)
+    s.setdefault("bug_placed", None)
     s.setdefault("devices", {})
     s.setdefault("sealed_items", [])
     s.setdefault("profession_public", [])
@@ -228,12 +230,12 @@ def mark_blackout_period(state: dict, period: str | None = None) -> None:
 def countdown_text(day: int, last_murder_day: int | None) -> str:
     """无杀倒计时公告口径（rules-6 §8）：直接给出进度与触发条件，避免玩家自行换算
     （旧版"已连续 X 个完整天"曾让部分 AI 理解困难，v3.20 改写）。
-    尚无谋杀行为时视同末次行为为第 1 天（自第 2 天起算）。"""
+    倒计时固定自第 2 天起算；首日是否出手不改变起始进度，尚无后续行为时以第 1 天为基准。"""
     last = last_murder_day if last_murder_day is not None else 1
     quiet = max(0, day - 1 - last)
     if quiet == 0:
-        return ("无杀倒计时：自首个可谋杀日（第 2 天）起，若连续 2 个完整天没有任何谋杀行为，"
-                "下一个清晨平民直接获胜（当前进度 0/2；任何谋杀出手含未遂都会重置）")
+        return ("无杀倒计时：自第 2 天起，若连续 2 个完整天没有任何谋杀行为，"
+                "下一个清晨平民直接获胜（当前进度 0/2；首日是否出手不影响起始进度；此后的任何谋杀出手含未遂都会重置）")
     return (f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（{quiet}/2）——"
             "今天若仍无谋杀行为，明早平民直接获胜（任何谋杀出手含未遂都会重置）")
 

@@ -182,6 +182,23 @@ class TestScorecard(unittest.TestCase):
         self.assertIn("零谋杀局：1/2", text)  # 1002 全程消极
         self.assertIn("反派功能技能", text)
 
+    def test_aggression_windows_include_first_day_from_v328(self):
+        def aggression(version):
+            state = {
+                "seed": 1,
+                "rules_version": version,
+                "phase": {"day": 3, "stage": "投票"},
+                "players": [],
+                "cases": [{"victim": "E", "day": 1, "period": "第1天自由活动"}],
+                "attempts": [],
+                "orch": {},
+            }
+            game = {"dir": Path("mock"), "state": state, "feed": [], "script": "", "host": []}
+            return analyze(game)["aggression"]
+
+        self.assertEqual(aggression("v3.27"), 0.5)   # 旧版：第 2 天两个阶段
+        self.assertEqual(aggression("v3.28"), 0.25)  # 新版：首日两个阶段也计入
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@
 """
 from __future__ import annotations
 
-from ..gamedata import ARMED_WEAPONS
+from ..gamedata import ARMED_WEAPONS, KILLER_GUIDE_LITE
 from .state import (
     check_winner,
     consume_item_entry,
@@ -56,6 +56,8 @@ def _execute_out(s: dict, out: str, public: dict, private: dict) -> None:
         if heir is not None:
             heir["identity"] = "杀手"
             private[heir["name"]] = "杀手已出局，你立即继任为杀手（此消息不公开）"
+            if s.get("is_lite_rule"):
+                private[heir["name"]] += f"\n\n行凶须知：\n{KILLER_GUIDE_LITE}"
 
 
 def execute_pending_out(state: dict) -> dict:

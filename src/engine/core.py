@@ -1,7 +1,7 @@
 """引擎主体：阶段流转、房间分配结算与行动入口（M3）。
 
 阶段流：开局准备 → 公共发言 →（第 2 天起）投票 → 自由活动 → 晚间休息 → 次日清晨案件调查 → …
-- 第 1 天没有投票，全天禁止谋杀；第 1 天公共发言时段改为侦探竞选（rules-6 §7.4，v3.3）。
+- 第 1 天没有投票，公共发言时段改为侦探竞选（rules-6 §7.4，v3.3）；v3.28 起首日自由活动与晚间均可谋杀。
 - 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
 - 无杀倒计时：自第 2 天起算，连续两个完整天无谋杀行为（含未遂）则下一清晨平民胜。
@@ -291,9 +291,12 @@ class Engine:
                 c["sealed"] = True
             rooms = {c["room"], bedroom_of(c["victim"])}
             # v3.22：宣读覆盖案发当日全天两个时段（不暴露死亡时段——死亡时间只能靠调查获知）
+            # v3.28：同日多案按时段合并房间集合，后一案不得覆盖前一案的案发房间与死者卧室
             for period in (f"第{yday}天自由活动", f"第{yday}天晚间休息"):
                 records = s["monitoring"].get(period, {})
-                monitoring_public[period] = {r: records.get(r, []) for r in sorted(rooms)}
+                period_rooms = monitoring_public.setdefault(period, {})
+                for room in sorted(rooms):
+                    period_rooms[room] = records.get(room, [])
         if monitoring_public:
             public["monitoring"] = monitoring_public
             public["announcements"].append("监控公开宣读：案发当日全天（自由活动 + 晚间休息）（案发房间 + 死者卧室）的进入者名单如下")

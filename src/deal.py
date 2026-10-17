@@ -10,7 +10,7 @@
     python -m src.deal --seed 42 --out games/test   # 自定义输出目录
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
-                                                    # 裁决规则不变（仍 v3.26），state 记 is_lite_rule=True
+                                                    # 裁决规则不变（仍 v3.29），state 记 is_lite_rule=True
 
 --seats 名单项语法：「id或名字」或「id或名字:身份」。名单可全可部分（1~6 项）：
 部分名单指名者保证入选，剩余席位随机补足——固定席位允许时维持中美 3+3 对称（两侧各抽差额），
@@ -39,6 +39,7 @@ from .gamedata import (
     ITEMS,
     ITEM_USES,
     ITEMS_GENERAL,
+    KILLER_GUIDE_LITE,
     PROFESSION_SKILLS_GENERAL,
     PROFESSION_SKILLS_VILLAIN,
     PROFESSIONS,
@@ -56,7 +57,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_VERSION = "v3.27"
+RULES_VERSION = "v3.29"
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
 
@@ -361,6 +362,8 @@ def write_card(player: dict, players: list, lite: bool = False) -> str:
         lines.append(
             f"你的同伙：{partner['name']}（{partner_role}，职业 {partner['profession']}，道具 {partner['item']}）。"
         )
+    if lite and p["identity"] == "杀手":
+        lines += ["", "## 行凶须知", KILLER_GUIDE_LITE]
     lines += [
         "",
         f"## 职业：{p['profession']}",
@@ -391,7 +394,7 @@ def write_card(player: dict, players: list, lite: bool = False) -> str:
     if p["profession"] == "建筑师" and p["identity"] in ("杀手", "帮凶"):
         lines += ["", "## 开局准备", "你是反派建筑师：开局准备阶段确认密道网即可（无需选定出口）；晚间休息时可经密道前往书房/监控室/地下室之一。"]
     if p["item"] == "窃听器":
-        lines += ["", "## 开局准备", "你持有窃听器：需在开局准备阶段秘密选定一个非卧室房间放置（含会客室——它是唯一能听到会客室交谈的手段）。"]
+        lines += ["", "## 窃听器放置", "你持有窃听器：在自由活动或晚间休息进入目标非卧室房间后，可作为房间行动秘密放置（含会客室——它是唯一能听到会客室交谈的手段）；只记录放置后发生的交谈。"]
     return "\n".join(lines) + "\n"
 
 

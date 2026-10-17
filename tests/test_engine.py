@@ -124,16 +124,17 @@ class TestStageFlow(unittest.TestCase):
         self.assertEqual(seq, ["开局准备", "公共发言", "自由活动", "晚间休息", "案件调查", "公共发言"])
         self.assertEqual(eng.state["phase"], {"day": 2, "stage": "投票"})
 
-    def test_day1_murder_forbidden_and_state_untouched(self):
+    def test_day1_free_murder_allowed(self):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         rooms = {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"}
         self.assertTrue(eng.enter_rooms(rooms)["ok"])
-        snap = copy.deepcopy(eng.state)
-        ev = eng.murder("A", "E")
-        self.assertFalse(ev["ok"])
-        self.assertIn("第 1 天", ev["error"])
-        self.assertEqual(eng.state, snap)
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder")
+        self.assertEqual(ev["case"]["day"], 1)
+        self.assertEqual(ev["case"]["period"], "第1天自由活动")
+        self.assertTrue(eng.state["stage_murder_used"])
 
     def test_day4_locks_auto_open(self):
         eng = Engine(mk_state())
@@ -441,7 +442,9 @@ class TestDeviceAndMagic(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
-        self.assertFalse(eng.set_device("B", "监控室")["ok"])
+        ev = eng.set_device("B", "监控室")
+        self.assertTrue(ev["ok"], ev)  # 首日自由活动也可设置
+        self.assertEqual(eng.state["skill_uses"]["B"]["延时装置"], 0)
 
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=2)
@@ -462,6 +465,29 @@ class TestDeviceAndMagic(unittest.TestCase):
         self.assertEqual(eng.state["last_murder_day"], 3)
         self.assertFalse(eng.state["devices"]["监控室"]["active"])
 
+    def test_device_set_at_night_triggers_next_stage_only(self):
+        eng = Engine(mk_state())
+        goto(eng, "晚间休息", day=1)
+        eng.night_assign({"B": "监控室"})
+        ev = eng.set_device("B", "监控室")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["cases"], [])  # 放置当阶段不触发
+        goto(eng, "自由活动", day=2)
+        ev = eng.enter_rooms({"A": "会客室", "B": "书房", "C": "会客室",
+                              "D": "监控室", "E": "会客室", "F": "会客室"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev.get("device_triggers"), ["D"])
+        self.assertEqual(eng.state["cases"][0]["period"], "第2天自由活动")
+        self.assertFalse(player(eng, "D")["alive"])  # 敏捷闪避也不能防御
+
+        eng2 = Engine(mk_state())
+        goto(eng2, "晚间休息", day=1)
+        eng2.night_assign({})
+        ev = eng2.set_device("B", "B的卧室")
+        self.assertFalse(ev["ok"])
+        self.assertIn("非卧室", ev["error"])
+        self.assertEqual(eng2.state["skill_uses"]["B"]["延时装置"], 1)
+
     def test_device_not_triggered_with_company(self):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=2)
@@ -473,6 +499,16 @@ class TestDeviceAndMagic(unittest.TestCase):
         self.assertNotIn("device_triggers", ev)
         self.assertTrue(player(eng, "C")["alive"])
         self.assertTrue(eng.state["devices"]["监控室"]["active"])
+
+    def test_day1_stage_magic_allowed(self):
+        eng = Engine(mk_state())
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({"A": "书房", "C": "书房", "D": "书房", "B": "监控室", "E": "会客室", "F": "会客室"})
+        ev = eng.stage_magic("A", "D")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["case"]["day"], 1)
+        self.assertEqual(ev["case"]["period"], "第1天自由活动")
+        self.assertFalse(player(eng, "D")["alive"])
 
     def test_stage_magic_with_witnesses_undefendable(self):
         eng = Engine(mk_state())
@@ -537,6 +573,16 @@ class TestVote(unittest.TestCase):
         ev = eng.resolve_vote({"C": "B", "D": "B", "E": "B", "F": "B"})
         self.assertEqual(ev["public"]["out"], "B")
         self.assertEqual(ev.get("winner"), "平民")
+
+    def test_lite_succession_includes_killer_guide(self):
+        eng = Engine(mk_state())
+        eng.state["is_lite_rule"] = True
+        goto(eng, "投票", day=2)
+        ev = eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
+        self.assertEqual(player(eng, "B")["identity"], "杀手")
+        self.assertIn("行凶须知", ev["private"]["B"])
+        self.assertIn("从第 1 天起", ev["private"]["B"])
+        self.assertIn("进入空房没有目标", ev["private"]["B"])
 
     def test_one_civilian_left_game_continues(self):
         """v3.14：删去"只剩 1 平民反派直接胜"（v3.13 短命补丁回滚）——2v1 票仓锁死的残局
@@ -1095,6 +1141,43 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         self.assertIn("第2天自由活动", monitoring)
         self.assertIn("A", monitoring["第2天自由活动"]["书房"])
         self.assertEqual(eng.state["sealed_items"], [])
+
+    def test_day1_two_cases_attempt_monitoring_and_investigation(self):
+        """首日双案：自由活动和晚间各一起；同日另有未遂，清晨公告、监控与调查均不得串案。"""
+        eng = Engine(mk_state())
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({"A": "书房", "E": "书房", "B": "监控室",
+                         "C": "会客室", "D": "会客室", "F": "会客室"})
+        self.assertTrue(eng.set_device("B", "监控室")["ok"])
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("万能钥匙", items_of(eng, "A"))  # 缴获供当晚进他人卧室
+
+        goto(eng, "晚间休息", day=1)
+        ev = eng.night_assign({"A": "C的卧室", "F": "监控室"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev.get("device_triggers"), ["F"])
+        ev = eng.murder("A", "C")  # 黑暗卧室可空手；急救箱自动防御，形成同日未遂
+        self.assertEqual(ev["type"], "murder_attempt")
+
+        ev = eng.advance()
+        self.assertEqual(eng.state["phase"], {"day": 2, "stage": "案件调查"})
+        text = "；".join(ev["public"]["announcements"])
+        self.assertIn("E 死亡", text)
+        self.assertIn("F 死亡", text)
+        self.assertIn("C 遇袭但幸存", text)
+        monitoring = ev["public"]["monitoring"]
+        for period in ("第1天自由活动", "第1天晚间休息"):
+            for room in ("书房", "监控室", "E的卧室", "F的卧室"):
+                self.assertIn(room, monitoring[period], (period, room))
+        self.assertIn("A", monitoring["第1天自由活动"]["书房"])
+        self.assertIn("F", monitoring["第1天晚间休息"]["监控室"])
+
+        ev = eng.investigate("C", 1, "死亡时间")
+        self.assertEqual(ev["private"]["C"]["result"], "第1天自由活动")
+        ev = eng.investigate("C", 2, "死亡时间")
+        self.assertEqual(ev["private"]["C"]["result"], "第1天晚间休息")
+        self.assertEqual(eng.state["skill_uses"]["C"]["现场调查"], 0)
 
     def test_morning_seals_corpse_items_when_witnessed(self):
         eng = Engine(mk_state())
@@ -1716,25 +1799,30 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(mon["第2天自由活动"]["书房"], ["E", "A"])  # 按行动顺序进入（第 2 天 E 先于 A）
 
     def test_bug(self):
-        """v3 窃听器：可放会客室（唯一能听到大厅交谈的手段）；收听改晚间卧室；收听 ×2。"""
+        """窃听器须在房间行动中到场放置；可放会客室，晚间卧室收听 ×2。"""
         eng = Engine(mk_state())
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({"A": "书房", "F": "书房", "B": "监控室",
+                         "C": "会客室", "D": "会客室", "E": "会客室"})
         ev = eng.place_bug("F", "书房")
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(eng.place_bug("F", "监控室")["ok"])
-        goto(eng, "自由活动", day=1)
-        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
-        self.assertFalse(eng.bug_listen("F")["ok"])  # 白天不能收听
+        self.assertEqual(eng.state["bug_placed"], {"day": 1, "stage": "自由活动"})
+        self.assertFalse(eng.place_bug("F", "监控室")["ok"])  # 已放置，且本人也不在该房间
+        self.assertFalse(eng.bug_listen("F")["ok"])  # 自由活动不能收听
         goto(eng, "晚间休息", day=1)
         eng.night_assign({})
         ev = eng.bug_listen("F")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["room"], "书房")
         ev = eng.bug_listen("F")
-        self.assertTrue(ev["ok"], ev)  # 第二次收听（v3 收听 ×2）
+        self.assertTrue(ev["ok"], ev)
         self.assertFalse(eng.bug_listen("F")["ok"])  # 第三次：次数用尽
 
         eng2 = Engine(mk_state())
-        self.assertTrue(eng2.place_bug("F", "会客室")["ok"])  # 会客室可放置
+        player(eng2, "F")["items"].append({"name": "万能钥匙", "uses_left": 2, "available_day": 1})
+        goto(eng2, "晚间休息", day=1)
+        eng2.night_assign({"F": "会客室"})
+        self.assertTrue(eng2.place_bug("F", "会客室")["ok"])  # 晚间也可放置
 
 
 class TestTableWeapon(unittest.TestCase):
@@ -2012,8 +2100,8 @@ class TestGame2ReviewFixes(unittest.TestCase):
         self.assertNotIn("第2天自由活动", eng.state["monitoring"])
         self.assertNotIn("第2天自由活动", eng.state["monitoring_true"])
 
-    def test_day1_no_night_raid_semantics(self):
-        """第 1 天全天禁杀：杀手不享受夜袭语义——满员卧室按普通拦截处理，不消耗当夜机会。"""
+    def test_day1_full_bedroom_blocks_entry(self):
+        """首日开放谋杀不改变卧室容量：满员仍拦截进入，且不消耗当夜谋杀机会。"""
         players = default_players()
         players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players, order=["C", "D", "A", "B", "E", "F"]))
@@ -2023,7 +2111,7 @@ class TestGame2ReviewFixes(unittest.TestCase):
         ev = eng.night_assign({"D": "C的卧室", "A": "C的卧室"}, invited={"D": "C"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["D"], "C的卧室")
-        self.assertEqual(ev["positions"]["A"], "A的卧室")  # 无夜袭语义：满员即拦截（非"机会消耗"口径）
+        self.assertEqual(ev["positions"]["A"], "A的卧室")  # 满员即拦截，不消耗机会
         self.assertFalse(eng.state["stage_murder_used"])
 
     def test_night_raid_empty_bedroom(self):

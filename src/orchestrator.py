@@ -4,7 +4,7 @@
     python -m src.orchestrator --game game/012345            # 跑完整局（直至产生胜者或主神结局）
     python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（席位行动粒度）
 
-一天流程：开局准备（仅第 1 天：反派建筑师确认密道、窃听器持有者声明放置）→ 公共发言
+一天流程：开局准备（仅第 1 天：反派建筑师确认密道）→ 公共发言
 （第 1 天改为侦探竞选：声明轮短发言+参选宣告 → 密封退选 → 未参选者投票；v3.5 起当选者获桌上凶器作侦探佩枪；
 第 2 天起为常规发言，侦探末置发言、一票计 1.5）→ 投票（第 2 天起：收票/记忆植入/
 遗言先于身份公布/封存道具与警徽遗嘱——v3.5 遗嘱道具当天可用、未指定或拒收放回会客室桌上/
@@ -566,7 +566,8 @@ class Orchestrator:
                     "当面赠送：限同房者，对方可拒绝；赠送算你的本阶段房间行动（谋杀不在此环节，见谋杀窗口）。"]
         if "谋杀窗口" in title:
             return ["每阶段独立一次谋杀机会（自由活动与晚间休息各一次），放弃不消耗——没有目标也不消耗。",
-                    "谋杀不占房间行动，房间行动也不占谋杀机会（v3.27 拆为两个独立环节）；失败（被自卫/技能抵消）同样消耗机会并计入无杀倒计时。"]
+                    "谋杀不占房间行动，房间行动也不占谋杀机会（v3.27 拆为两个独立环节）。",
+                    "动作被驳回 = 未发生袭击，不消耗机会；谋杀失败 = 已进入攻击判定但被防御，消耗机会，且自第 2 天起重置无杀倒计时。"]
         if "密谈" in title or "夜谈" in title or "低语" in title:
             return ["密谈/低语内容只有房间内的人能听到（含你们看不见的潜伏者）；按行动顺序各发言一次。"]
         if "晚间休息" in title:
@@ -574,7 +575,7 @@ class Orchestrator:
                     "平民不敢非受邀进入已有他人的书房/监控室/地下室（被邀请者与反派不受此限）。",
                     "夜宿会客室：始终明亮、人数不限，但夜宿者名单次日清晨公开。"]
         if "秘密布置" in title:
-            return ["窃听器是唯一能听到其他人交谈的手段（监控只记录谁进入，听不到谈话）。"]
+            return ["反派建筑师只需确认密道网存在，无需选定出口；之后可在晚间休息时使用。"]
         if "毁证机会" in title:
             return ["仅当现场没有其他非反派角色时：杀手可缴获尸体上的未使用道具、可发动毁证类技能/道具。"]
         return []
@@ -782,7 +783,10 @@ class Orchestrator:
         return "\n".join(lines) + "\n"
 
     def reject_note(self, p: dict, ev: dict) -> None:
-        self.tell(p["name"], f"你的动作被驳回：{ev.get('error', '未知原因')}")
+        msg = f"你的动作被驳回：{ev.get('error', '未知原因')}"
+        if ev.get("type") in ("murder", "stage_magic"):
+            msg += "（本次未发生袭击，不消耗本阶段谋杀机会，也不重置无杀倒计时）"
+        self.tell(p["name"], msg)
 
     def apply_actions(self, p: dict, actions: list[dict], retry: dict | None = None,
                       max_actions: int | None = None) -> None:
@@ -878,11 +882,17 @@ class Orchestrator:
             ev = self.eng.use_flashlight(name)
         elif at == "fix_generator":
             ev = self.eng.fix_generator(name)
+        elif at == "place_bug":
+            ev = self.eng.place_bug(name, str(act.get("room", "")))
         elif at == "bug_listen":
             ev = self.eng.bug_listen(name)
             if ev.get("ok"):
-                lines = self.orch["talks"].get(f"{day}:自由活动:{ev.get('room')}", [])
-                content = "；".join(lines) if lines else "（当天该房间无人交谈）"
+                placed = self.state.get("bug_placed") or {}
+                if placed.get("day") == day:
+                    content = "（窃听器放置后，当天自由活动尚无新的交谈记录；此前交谈不追溯）"
+                else:
+                    lines = self.orch["talks"].get(f"{day}:自由活动:{ev.get('room')}", [])
+                    content = "；".join(lines) if lines else "（当天该房间无人交谈）"
                 self.tell(name, f"窃听器录音（{ev.get('room')} · 今天自由活动）：{content}")
                 self.script_line(f"  窃听器录音下发给 {name}（{ev.get('room')}）：{content}")
         elif at == "take_table":
@@ -965,7 +975,7 @@ class Orchestrator:
             raise SoftStop
 
     def run_prep(self) -> None:
-        """开局准备：仅反派建筑师（密道）与窃听器持有者（放置）需要声明。"""
+        """开局准备：仅反派建筑师需要确认密道；窃听器改为后续到场放置。"""
         if not self.orch["feed"]:
             # 开局公告（保险箱内容/桌上凶器，§2 公开信息）此前只进 script.md/console，从未送达玩家
             # （game/5 复盘：全员引用"开局公告"但内容靠编）。新局首发进 feed。
@@ -985,8 +995,6 @@ class Orchestrator:
             menu = []
             if is_villain(p) and p["profession"] == "建筑师" and skill_left(self.state, p["name"], "建造密道") > 0:
                 menu.append('- 确认密道（无需指定出口；晚间休息时可经密道前往书房/监控室/地下室）：{"type": "set_passage"}')
-            if held_item(p, "窃听器", 1) is not None and self.state["bug_room"] is None:
-                menu.append('- 放置窃听器（含会客室——它无监控，窃听器是唯一能监视它的手段）：{"type": "place_bug", "room": "会客室|书房|监控室|地下室"}')
             if not menu:
                 continue
             briefing = self.build_briefing(p, "开局准备 · 秘密布置", menu,
@@ -995,10 +1003,6 @@ class Orchestrator:
             for act in payload["actions"]:
                 if act.get("type") == "set_passage":
                     ev = self.eng.set_passage(p["name"])
-                    self.script_action(p["name"], act, ev)
-                    self.route(ev) if ev["ok"] else self.reject_note(p, ev)
-                elif act.get("type") == "place_bug":
-                    ev = self.eng.place_bug(p["name"], str(act.get("room", "")))
                     self.script_action(p["name"], act, ev)
                     self.route(ev) if ev["ok"] else self.reject_note(p, ev)
             w["done"].append(p["name"])
@@ -1189,7 +1193,7 @@ class Orchestrator:
         """谋杀窗口菜单（v3.27）：谋杀/舞台魔术从房间行动拆出后的独立小菜单。"""
         s = self.state
         name = p["name"]
-        if day < 2 or s["stage_murder_used"]:
+        if s["stage_murder_used"]:
             return []
         room = s["positions"].get(name)
         targets = [q["name"] for q in self.alive()
@@ -1218,6 +1222,12 @@ class Orchestrator:
                 continue
             menu = self.murder_menu(p, day)
             if not menu:
+                if p["identity"] == "杀手" and not self.state["stage_murder_used"]:
+                    room = self.state["positions"].get(name) or "当前位置"
+                    self.tell(name, f"本阶段（{stage}）你在{room}没有可攻击目标；未发生袭击，"
+                                    "不消耗本阶段谋杀机会，也不重置无杀倒计时")
+                    w["done"].append(name)
+                    self.save_state()
                 continue
             extra = (f"这是本阶段（{stage}）的谋杀窗口——房间行动已结束，现在只需决定：动手，还是收手。"
                      "声明发动即消耗机会——失败（被自卫/技能抵消）同样消耗；放弃或没有目标则不消耗。"
@@ -1598,17 +1608,19 @@ class Orchestrator:
             menu.append('- 封闭空间（锁死当前房间至下一自由活动；不能对会客室使用）：{"type": "seal_room", "allowed": ["许可留下的人"]}')
         if s["phase"]["stage"] == "晚间休息":
             if room == bedroom_of(name) and s["bug_room"] and held_item(p, "窃听器", day) is not None:
-                menu.append('- 收听窃听器（获得今天自由活动时段该房间的全部交谈记录）：{"type": "bug_listen"}')
+                menu.append('- 收听窃听器（获得今天自由活动时段该房间内、放置后发生的交谈记录）：{"type": "bug_listen"}')
             if room == HALL and s["table_items"]:
                 others = [q["name"] for q in self.alive()
                           if q["name"] != name and s["positions"].get(q["name"]) == HALL]
                 if not others:
                     items_desc = "、".join(f"「{e['name']}」（剩 {e['uses_left']} 次）" for e in s["table_items"])
                     menu.append(f'- 取走桌上一物品（当前桌上：{items_desc}；取用无人看见，明早会公告物品不见了）：{{"type": "take_table", "item": "物品名"}}')
-        if s["phase"]["stage"] == "自由活动" and is_villain(p) and p["profession"] == "机械师" and day >= 2:
-            # 延时装置仅自由活动时间可设置（引擎口径），夜间不列噪音项
-            menu.append('- 设置延时装置：{"type": "set_device", "room": "当前房间名"}')
-        # 当面赠送（v3.27）：限同房者、每人每天限发起一次；谋杀/舞台魔术已拆至独立谋杀窗口，不在本环节
+        if room in FREE_ROOMS and is_villain(p) and p["profession"] == "机械师":
+            # v3.29：任何房间行动阶段均可设置；本阶段不触发，后续进入结算才检查
+            menu.append('- 设置延时装置（本阶段不触发，后续进入结算时检查）：{"type": "set_device", "room": "当前房间名"}')
+        if room in FREE_ROOMS and s["bug_room"] is None and held_item(p, "窃听器", day) is not None:
+            menu.append('- 在当前房间放置窃听器（只记录放置后发生的交谈）：{"type": "place_bug", "room": "当前房间名"}')
+        # 当面赠送（v3.27）：限同房者、不限每日次数；谋杀/舞台魔术已拆至独立谋杀窗口，不在本环节
         mates = [q["name"] for q in self.alive()
                  if q["name"] != name and s["positions"].get(q["name"]) == room]
         giftable = [e["name"] for e in p.get("items", []) if e["uses_left"] > 0 and e["available_day"] <= day]
@@ -1659,6 +1671,9 @@ class Orchestrator:
                      "平民不敢非受邀进入已有他人的书房/监控室/地下室（被邀请者与反派不受此限）。\n"
                      "人数上限：书房 3 / 监控室 2 / 地下室 3 / 卧室 2 / 会客室不限；满员或无法进入者默认回自己卧室。\n"
                      + NO_SPEECH_NOTE)
+            if self.lite:
+                extra += ("\n你必须现在直接声明今晚的唯一去向，不能先回房待命、看到他人归宿后再移动；"
+                          "想去某人的卧室就现在直接选择该卧室。若对方不在那里，你会独自进入，不会发生袭击。")
             if later:
                 extra += f"\n顺序在你之后的玩家：{'、'.join(later)}。"
             if name in pending_invite:

@@ -197,9 +197,11 @@ def analyze(g: dict) -> dict:
         hist = st.get("orch", {}).get("hist", {})
         succession = any("继任为杀手" in m for msgs in hist.values() for m in msgs)
     host_ok = [h for h in g["host"] if h.get("ok")]
-    # 反派主动性（game/8、game/18 连续零击杀局复盘）：出手窗口估算 = 第 2 天起每天 2 个可谋杀阶段
+    # 反派主动性：旧版窗口从第 2 天起；v3.28 起首日自由活动/晚间也有两个独立窗口
     days = st.get("phase", {}).get("day", 1)
-    windows = max(1, 2 * (days - 2))
+    version = _ver_tuple(rules_version(st))
+    first_day_windows = 2 if version and version >= (3, 28) else 0
+    windows = max(1, 2 * (days - 2) + first_day_windows)
     behavior = len(cases) + len(attempts)
     retry_after_fail = any(
         any(c["day"] > a2["day"] for c in cases) or any(b["day"] > a2["day"] for b in attempts)
@@ -472,7 +474,7 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
         att = sum(a["attempts"] for a in done)
         mur = sum(a["murders"] for a in done)
         L.append(f"  平均出手率：{sum(a['aggression'] for a in done) / n:.0%}"
-                 f"（谋杀 {mur} + 未遂 {att}，窗口按第 2 天起每天 2 阶段估算）")
+                 f"（谋杀 {mur} + 未遂 {att}，窗口按规则版本估算；v3.28 起含首日 2 阶段）")
         defenses = Counter(t["defense"] for a in done for t in a["attempt_list"] if t.get("defense"))
         L.append(f"  未遂防御分布：{'、'.join(f'{k}×{v}' for k, v in defenses.most_common()) or '无记录（v3.10 前存档未留防御途径）'}")
         with_att = [a for a in done if a["attempts"]]

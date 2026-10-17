@@ -17,6 +17,7 @@ from __future__ import annotations
 from .state import (
     ACTION_STAGES,
     ENV_WEAPON,
+    FREE_ROOMS,
     WOUND_LABEL,
     check_winner,
     consume_item_entry,
@@ -138,8 +139,6 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
         return reject("murder", "只有杀手能发动谋杀")
     if stage not in ACTION_STAGES:
         return reject("murder", "当前阶段不可行凶")
-    if day < 2:
-        return reject("murder", "第 1 天全天禁止谋杀")
     if s["stage_murder_used"]:
         return reject("murder", "本阶段谋杀机会已用完")
     tp = get_player(s, target)
@@ -201,30 +200,27 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
 
 
 def set_device(state: dict, user: str, room: str) -> dict:
-    """机械师反派【延时装置】：自由活动时间在任意房间秘密设置，整局限一次。
-
-    第 1 天全天禁杀，装置当天设置即可当天触发，故第 1 天禁止设置（裁定解释）。
-    """
+    """机械师反派【延时装置】：房间行动中在本人所在非卧室房间设置，整局限一次。"""
     s = state
     if s["winner"]:
         return reject("set_device", "游戏已结束")
     p = get_player(s, user)
-    day = s["phase"]["day"]
     if p is None or not p["alive"]:
         return reject("set_device", "玩家不存在或已死亡")
     if not is_villain(p) or p["profession"] != "机械师":
         return reject("set_device", "只有反派机械师能设置延时装置")
     if skill_left(s, user, "延时装置") <= 0:
         return reject("set_device", "延时装置次数已用完")
-    if s["phase"]["stage"] != "自由活动":
-        return reject("set_device", "只能在自由活动时间设置")
-    if day < 2:
-        return reject("set_device", "第 1 天全天禁止谋杀（含可当天触发的装置）")
+    if s["phase"]["stage"] not in ACTION_STAGES:
+        return reject("set_device", "只能在自由活动或晚间休息的房间行动中设置")
+    if room not in FREE_ROOMS:
+        return reject("set_device", "延时装置只能设置在非卧室房间")
     if s["positions"].get(user) != room:
         return reject("set_device", "只能在所在房间设置")
     consume_skill(s, user, "延时装置")
     s["devices"][room] = {"setter": user, "active": True}
-    return {"ok": True, "type": "set_device", "public": None, "private": {user: f"延时装置已设置于{room}"}}
+    return {"ok": True, "type": "set_device", "public": None,
+            "private": {user: f"延时装置已设置于{room}；本阶段不触发，后续进入结算时开始检查"}}
 
 
 def trigger_devices(state: dict) -> list[dict]:
@@ -272,8 +268,6 @@ def stage_magic(state: dict, user: str, target: str) -> dict:
         return reject("stage_magic", "舞台魔术次数已用完")
     if ph["stage"] not in ACTION_STAGES:
         return reject("stage_magic", "当前阶段不可行凶")
-    if ph["day"] < 2:
-        return reject("stage_magic", "第 1 天全天禁止谋杀")
     if s["stage_murder_used"]:
         return reject("stage_magic", "本阶段谋杀机会已用完")
     tp = get_player(s, target)
