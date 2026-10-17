@@ -39,7 +39,7 @@ def P(name, identity, profession, item, gender="男", physique=2, nationality="�
 def default_players():
     return [
         P("A", "杀手", "魔术师", "刀", gender="男", physique=4),
-        P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2),
+        P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2),  # v4.0 双杀手制（原帮凶位）
         P("C", "平民", "医师", "急救箱", gender="女", physique=3),
         P("D", "平民", "运动员", "手电筒", gender="男", physique=3),
         P("E", "平民", "黑客", "万能钥匙", gender="男", physique=2),
@@ -97,13 +97,15 @@ class TestSampleState(unittest.TestCase):
         self.assertTrue(st["locks"]["监控室"])   # v3.2：监控室上锁（首开需开锁手段）
         self.assertFalse(st["locks"]["地下室"])  # v3.2：地下室取消门锁
         self.assertFalse(st["locks"]["书房"])
-        self.assertTrue(st["locks"]["桑娜·克劳德的卧室"])
+        self.assertTrue(st["locks"][f"{st['players'][0]['name']}的卧室"])
         for p in st["players"]:
             skills = st["skill_uses"][p["name"]]
             self.assertTrue(skills, f"{p['name']} 缺少技能台账")
             self.assertTrue(all(n > 0 for n in skills.values()))
-        killer = next(p for p in st["players"] if p["identity"] == "杀手")
-        self.assertIn(killer["items"][0]["name"], {"左轮手枪", "刀", "棒球棍", "不明药剂"})
+        killers = [p for p in st["players"] if p["identity"] == "杀手"]  # v4.0 双杀手
+        self.assertEqual(len(killers), 2)
+        for k in killers:
+            self.assertIn(k["items"][0]["name"], {"左轮手枪", "刀", "棒球棍", "不明药剂"})
 
     def test_sample_day1_flow_and_rotation(self):
         eng = Engine(load_state(FIXTURE))
@@ -138,6 +140,7 @@ class TestStageFlow(unittest.TestCase):
 
     def test_day4_locks_auto_open(self):
         eng = Engine(mk_state())
+        eng.state["last_murder_day"] = 2  # 垫底：避免第 3 天清晨触发无杀倒计时（v4.0 从第 1 天起算）
         goto(eng, "案件调查", day=4)
         self.assertFalse(eng.state["locks"]["地下室"])
         self.assertFalse(eng.state["locks"]["书房"])
@@ -193,13 +196,22 @@ class TestStageFlow(unittest.TestCase):
 
 class TestMurderConditions(unittest.TestCase):
     def test_only_killer_and_once_per_stage(self):
+        """v4.0 双杀手：平民无谋杀权；两名杀手均可动手；每窗口全队一次尝试——
+        A 发动后同窗口 B 不可再动（顺延仅"放弃/无目标"）。"""
         eng = Engine(mk_state())
         free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
-        self.assertFalse(eng.murder("B", "E")["ok"])
-        self.assertFalse(eng.murder("C", "E")["ok"])
+        self.assertFalse(eng.murder("C", "E")["ok"])   # 平民无谋杀权
         ev = eng.murder("A", "E")
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(eng.murder("A", "E")["ok"])
+        self.assertFalse(eng.murder("A", "E")["ok"])   # 本窗口尝试已用
+        self.assertFalse(eng.murder("B", "E")["ok"])   # 同窗口全队一次：同伙也不可再动
+
+        # 第二名杀手同样有完整谋杀权（另一窗口）
+        eng = Engine(mk_state())
+        free2(eng, {"B": "书房", "E": "书房", "A": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("B", "E", weapon="不明药剂")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["case"]["culprit"], "B")
 
     def test_presence_limit_light_room(self):
         eng = Engine(mk_state())
@@ -208,7 +220,8 @@ class TestMurderConditions(unittest.TestCase):
         self.assertFalse(ev["ok"])
         self.assertIn("非反派", ev["error"])
 
-    def test_unarmed_physique_fail_then_accomplice_present(self):
+    def test_unarmed_physique_fail_then_partner_present(self):
+        """空手附加条件（v4.0）：体格不足且无性别优势 → 驳回；另一名杀手在场 → 条件①满足。"""
         players = default_players()
         players[0] = P("A", "杀手", "魔术师", "刀", gender="女", physique=1)
         eng = Engine(mk_state(players=players))
@@ -220,7 +233,7 @@ class TestMurderConditions(unittest.TestCase):
         eng = Engine(mk_state(players=[P("A", "杀手", "魔术师", "刀", gender="女", physique=1)] + default_players()[1:]))
         free2(eng, {"A": "书房", "E": "书房", "B": "书房", "C": "会客室", "D": "会客室", "F": "会客室"})
         ev = eng.murder("A", "E")
-        self.assertTrue(ev["ok"], ev)
+        self.assertTrue(ev["ok"], ev)  # 另一名杀手（B）在场
         self.assertEqual(ev["type"], "murder")
 
     def test_unarmed_gender_condition(self):
@@ -248,7 +261,7 @@ class TestMurderConditions(unittest.TestCase):
 
     def test_dark_presence_two_civilians_allowed_via_blackout(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)  # 机械师暴力破解可拉电闸
         eng = Engine(mk_state(players=players))
         goto(eng, "投票", day=2)
         self.assertTrue(eng.declare_blackout("B")["ok"])
@@ -439,6 +452,8 @@ class TestSelfDefense(unittest.TestCase):
 
 class TestDeviceAndMagic(unittest.TestCase):
     def test_device_set_trigger_and_no_stage_chance(self):
+        """v4.0 延时装置手动化：预设不触发；次阶段起猎物独处时收到推送（pending_devices），
+        由机械师在谋杀窗口 device_fire 远程启动——占用本窗口尝试、触发即封顶当天。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
@@ -447,23 +462,32 @@ class TestDeviceAndMagic(unittest.TestCase):
         self.assertEqual(eng.state["skill_uses"]["B"]["延时装置"], 0)
 
         eng = Engine(mk_state())
+        eng.state["last_murder_day"] = 1  # 垫底：装置预设不算谋杀行为，避免第 3 天清晨倒计时获胜
         goto(eng, "自由活动", day=2)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
         ev = eng.set_device("B", "监控室")
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(eng.set_device("B", "书房")["ok"])
+        self.assertFalse(eng.set_device("B", "书房")["ok"])  # 整局限设置一次
+        self.assertEqual(eng.pending_devices(), [])          # 设置当阶段不推送（B 自己在场，非独处）
         goto(eng, "自由活动", day=3)
         ev = eng.enter_rooms({"A": "书房", "B": "书房", "C": "监控室", "D": "会客室", "E": "会客室", "F": "会客室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev.get("device_triggers"), ["C"])
+        self.assertNotIn("device_triggers", ev)              # v4.0：进入结算不再自动触发
+        self.assertTrue(player(eng, "C")["alive"])           # C 照常完成本阶段
+        pending = eng.pending_devices()
+        self.assertEqual(pending, [{"room": "监控室", "setter": "B", "victim": "C"}])  # 机关推送
+        ev = eng.device_fire("B")                            # 谋杀窗口手动启动
+        self.assertTrue(ev["ok"], ev)
         case = eng.state["cases"][0]
         self.assertEqual(case["wound"], "机关")
         self.assertEqual(case["culprit"], "B")
         self.assertEqual(case["victim"], "C")
-        self.assertIn("急救箱", items_of(eng, "C"))
-        self.assertFalse(eng.state["stage_murder_used"])
+        self.assertIn("急救箱", items_of(eng, "C"))          # 不可防御：急救箱来不及用
+        self.assertTrue(eng.state["stage_murder_used"])      # 占用本窗口尝试
+        self.assertTrue(eng.state["day_kill_capped"])        # 触发即封顶当天
         self.assertEqual(eng.state["last_murder_day"], 3)
         self.assertFalse(eng.state["devices"]["监控室"]["active"])
+        self.assertFalse(eng.device_fire("B")["ok"])         # 本窗口尝试已用完
 
     def test_device_set_at_night_triggers_next_stage_only(self):
         eng = Engine(mk_state())
@@ -476,7 +500,11 @@ class TestDeviceAndMagic(unittest.TestCase):
         ev = eng.enter_rooms({"A": "会客室", "B": "书房", "C": "会客室",
                               "D": "监控室", "E": "会客室", "F": "会客室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev.get("device_triggers"), ["D"])
+        self.assertNotIn("device_triggers", ev)             # 不再自动触发
+        self.assertTrue(player(eng, "D")["alive"])
+        self.assertEqual([d["victim"] for d in eng.pending_devices()], ["D"])
+        ev = eng.device_fire("B")
+        self.assertTrue(ev["ok"], ev)
         self.assertEqual(eng.state["cases"][0]["period"], "第2天自由活动")
         self.assertFalse(player(eng, "D")["alive"])  # 敏捷闪避也不能防御
 
@@ -490,48 +518,75 @@ class TestDeviceAndMagic(unittest.TestCase):
 
     def test_device_not_triggered_with_company(self):
         eng = Engine(mk_state())
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时获胜
         goto(eng, "自由活动", day=2)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
         eng.set_device("B", "监控室")
         goto(eng, "自由活动", day=3)
         ev = eng.enter_rooms({"A": "书房", "B": "书房", "C": "监控室", "D": "监控室", "E": "会客室", "F": "会客室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertNotIn("device_triggers", ev)
+        self.assertEqual(eng.pending_devices(), [])          # 两人同行，无独处猎物
+        self.assertFalse(eng.device_fire("B")["ok"])
         self.assertTrue(player(eng, "C")["alive"])
         self.assertTrue(eng.state["devices"]["监控室"]["active"])
+
+    def test_device_setter_dead_never_fires(self):
+        """v4.0：设置者须存活才能启动——机械师死亡后装置失效（猎物独处也无推送）。"""
+        eng = Engine(mk_state())
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时获胜
+        goto(eng, "自由活动", day=2)
+        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        eng.set_device("B", "监控室")
+        player(eng, "B")["alive"] = False
+        goto(eng, "自由活动", day=3)
+        eng.enter_rooms({"A": "书房", "C": "监控室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        self.assertEqual(eng.pending_devices(), [])
+        self.assertFalse(eng.device_fire("B")["ok"])
+        self.assertTrue(player(eng, "C")["alive"])
 
     def test_day1_stage_magic_allowed(self):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
-        eng.enter_rooms({"A": "书房", "C": "书房", "D": "书房", "B": "监控室", "E": "会客室", "F": "会客室"})
-        ev = eng.stage_magic("A", "D")
+        eng.enter_rooms({"A": "书房", "C": "书房", "E": "书房", "B": "监控室", "D": "会客室", "F": "会客室"})
+        ev = eng.stage_magic("A", "E")  # E 无救援手段
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["case"]["day"], 1)
         self.assertEqual(ev["case"]["period"], "第1天自由活动")
-        self.assertFalse(player(eng, "D")["alive"])
+        self.assertFalse(player(eng, "E")["alive"])
 
-    def test_stage_magic_with_witnesses_undefendable(self):
+    def test_stage_magic_defendable_v4(self):
+        """v4.0 削弱：舞台魔术可被救援系防御——敏捷闪避/急救箱触发则未遂（消耗本窗口尝试）。"""
         eng = Engine(mk_state())
         free2(eng, {"A": "书房", "C": "书房", "D": "书房", "B": "监控室", "E": "会客室", "F": "会客室"})
-        ev = eng.stage_magic("A", "D")
+        ev = eng.stage_magic("A", "D")  # D 的【敏捷闪避】自动抵消
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(player(eng, "D")["alive"])
-        self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 1)
-        self.assertEqual(ev["case"]["wound"], "空手")
-        self.assertIn("奇怪的动静", ev["private"]["C"])  # v3.30：在场者当场只觉奇怪动静、不知是谋杀
-        self.assertFalse(ev["case"]["evidence_vulnerable"])
-        self.assertFalse(eng.murder("A", "C")["ok"])
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertTrue(ev["defended"])
+        self.assertTrue(player(eng, "D")["alive"])
+        self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 0)
+        self.assertTrue(eng.state["stage_murder_used"])      # 未遂消耗本窗口尝试
+        self.assertFalse(eng.state["day_kill_capped"])       # 未遂不封顶当天
         self.assertEqual(eng.state["skill_uses"]["A"]["舞台魔术"], 0)
+        self.assertIn("奇怪的动静", ev["private"]["C"])
+
+        # 无救援手段的目标仍被当场击杀（多人亮房在场不受人数限制；同房者不自动救援——savior 是主动选择）
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "C": "书房", "E": "书房", "B": "监控室", "D": "会客室", "F": "会客室"})
+        ev = eng.stage_magic("A", "E")
+        self.assertEqual(ev["type"], "murder")
+        self.assertEqual(ev["case"]["wound"], "空手")
+        self.assertFalse(ev["case"]["evidence_vulnerable"])  # C 在场目击
+        self.assertTrue(eng.state["day_kill_capped"])
 
     def test_stage_magic_rejects(self):
         eng = Engine(mk_state())
         free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
-        self.assertFalse(eng.stage_magic("B", "E")["ok"])
+        self.assertFalse(eng.stage_magic("B", "E")["ok"])  # B 是杀手机械师，非魔术师
         players = default_players()
         players[0] = P("A", "平民", "魔术师", "刀", gender="男", physique=4)
         eng = Engine(mk_state(players=players))
         free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
-        self.assertFalse(eng.stage_magic("A", "E")["ok"])
+        self.assertFalse(eng.stage_magic("A", "E")["ok"])  # 平民魔术师无反派技能
 
 
 class TestVote(unittest.TestCase):
@@ -559,13 +614,15 @@ class TestVote(unittest.TestCase):
         self.assertIsNone(ev["public"]["out"])
         self.assertTrue(all(p["alive"] for p in eng.state["players"]))
 
-    def test_killer_out_succession_then_civilian_win(self):
+    def test_killer_out_no_succession_then_civilian_win(self):
+        """v4.0：杀手出局不触发继任——剩下的杀手照常行动；两名杀手全部出局 → 平民胜。"""
         eng = Engine(mk_state())
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时获胜（v4.0 从第 1 天起算）
         goto(eng, "投票", day=2)
         ev = eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
         self.assertEqual(ev["public"]["out"], "A")
-        self.assertEqual(player(eng, "B")["identity"], "杀手")
-        self.assertIn("继任", ev["private"]["B"])
+        self.assertEqual(player(eng, "B")["identity"], "杀手")   # 本就是杀手，无任何变更
+        self.assertNotIn("B", ev["private"])                     # 无继任私信
         self.assertIsNone(eng.winner)
         self.assertIn("刀", {e["name"] for e in eng.state["sealed_items"]})
 
@@ -573,16 +630,7 @@ class TestVote(unittest.TestCase):
         ev = eng.resolve_vote({"C": "B", "D": "B", "E": "B", "F": "B"})
         self.assertEqual(ev["public"]["out"], "B")
         self.assertEqual(ev.get("winner"), "平民")
-
-    def test_lite_succession_includes_killer_guide(self):
-        eng = Engine(mk_state())
-        eng.state["is_lite_rule"] = True
-        goto(eng, "投票", day=2)
-        ev = eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
-        self.assertEqual(player(eng, "B")["identity"], "杀手")
-        self.assertIn("行凶须知", ev["private"]["B"])
-        self.assertIn("从第 1 天起", ev["private"]["B"])
-        self.assertIn("进入空房没有目标", ev["private"]["B"])
+        self.assertIn("两名杀手", ev["win_reason"])
 
     def test_one_civilian_left_game_continues(self):
         """v3.14：删去"只剩 1 平民反派直接胜"（v3.13 短命补丁回滚）——2v1 票仓锁死的残局
@@ -614,9 +662,10 @@ class TestVote(unittest.TestCase):
         self.assertTrue(ev["ok"], ev)
         self.assertIsNone(eng.winner)  # 只剩 F 一名平民：游戏继续
 
-    def test_memory_implant(self):
+    def test_tamper_vote(self):
+        """v4.0【篡改投票】（原记忆植入）：反派心理医生/黑客强迫改投，公告只说"票数被更改过"。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "心理医生", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "心理医生", "不明药剂", gender="女", physique=2)
         votes = {"A": "C", "B": "C", "C": "A", "D": "A", "E": "A", "F": None}
         eng = Engine(mk_state(players=players))
         goto(eng, "投票", day=2)
@@ -628,9 +677,17 @@ class TestVote(unittest.TestCase):
         ev = eng.resolve_vote(votes, implant={"by": "B", "voter": "F", "target": "A"})
         self.assertEqual(ev["public"]["out"], "A")
         self.assertIn("票数被更改过", ev["public"]["announcements"])
-        self.assertEqual(eng.state["skill_uses"]["B"]["记忆植入"], 0)
+        self.assertEqual(eng.state["skill_uses"]["B"]["篡改投票"], 0)
 
-    def test_memory_implant_civilian_rejected(self):
+        # 黑客持有同名技能（修改投票数据），效果相同
+        players = default_players()
+        players[1] = P("B", "杀手", "黑客", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "投票", day=2)
+        ev = eng.resolve_vote(votes, implant={"by": "B", "voter": "F", "target": "A"})
+        self.assertEqual(ev["public"]["out"], "A")
+
+    def test_tamper_vote_civilian_rejected(self):
         players = default_players()
         players[5] = P("F", "平民", "心理医生", "窃听器", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
@@ -641,8 +698,8 @@ class TestVote(unittest.TestCase):
         self.assertEqual(eng.state, snap)
 
     def test_armed_accusation(self):
-        """v3：首次投票（第 2 天）无人出局即可武装指认；非平民不可指认。
-        v3.21 淘汰制：指对 → 杀手出局、帮凶继任、游戏继续；帮凶已不在才平民胜。"""
+        """首次投票（第 2 天）无人出局即可武装指认；非平民不可指认。
+        v4.0 双目标：两名杀手都是正确目标——指认任一杀手 → 其出局、游戏继续；全部出局 → 平民胜。"""
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
@@ -651,26 +708,28 @@ class TestVote(unittest.TestCase):
         self.assertFalse(eng.armed_accusation("C", "A")["ok"])  # C 手无武器
         ev = eng.armed_accusation("E", "A")
         self.assertTrue(ev["ok"], ev)
-        self.assertIsNone(eng.winner)                            # 帮凶继任，游戏继续
+        self.assertIsNone(eng.winner)                            # 另一名杀手仍在，游戏继续
         self.assertEqual(ev["public"]["out"], "A")
-        self.assertFalse(player(eng, "A")["alive"])              # 杀手出局
-        self.assertEqual(player(eng, "B")["identity"], "杀手")   # 帮凶私下继任
+        self.assertFalse(player(eng, "A")["alive"])              # 被指认的杀手出局
+        self.assertEqual(player(eng, "B")["identity"], "杀手")   # 无继任（B 本就是杀手）
         self.assertFalse(eng.armed_accusation("E", "B")["ok"])   # 每次投票至多一次（引擎级守卫）
-        # 帮凶已不在时指认杀手 → 反派全灭、平民胜
+        # 指认另一名杀手同样正确；两名杀手全部出局 → 平民胜
         players2 = default_players()
         players2[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng2 = Engine(mk_state(players=players2))
-        player(eng2, "B")["alive"] = False
+        player(eng2, "A")["alive"] = False                       # A 已出局
         goto(eng2, "投票", day=2)
-        eng2.resolve_vote({"C": "A", "D": "A", "E": None, "F": None})  # 平票无人出局
-        ev2 = eng2.armed_accusation("E", "A")
+        eng2.resolve_vote({"C": "B", "D": "B", "E": None, "F": None})  # 平票无人出局
+        ev2 = eng2.armed_accusation("E", "B")                    # 指认另一名杀手
         self.assertTrue(ev2["ok"], ev2)
+        self.assertEqual(ev2["public"]["out"], "B")
         self.assertEqual(ev2.get("winner"), "平民")
 
     def test_armed_accusation_wrong_target(self):
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时获胜（v4.0 从第 1 天起算）
         goto(eng, "投票", day=3)
         eng.resolve_vote({"C": "A", "D": "A", "E": "B", "F": "B"})
         ev = eng.armed_accusation("E", "F")
@@ -683,6 +742,7 @@ class TestVote(unittest.TestCase):
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players))
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时获胜（v4.0 从第 1 天起算）
         goto(eng, "投票", day=3)
         eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})
         ev = eng.armed_accusation("E", "B")
@@ -732,11 +792,10 @@ class TestVote(unittest.TestCase):
         self.assertIn({"name": "刀", "uses_left": 1}, eng.state["table_items"])
 
     def test_bequest_same_day_for_all(self):
-        """v3.5：遗嘱道具一律当天即可用（不再只有继任帮凶例外）。"""
+        """v3.5：遗嘱道具一律当天即可用（任何接收人）。"""
         eng = Engine(mk_state())
         goto(eng, "投票", day=2)
-        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})  # A（杀手）出局 → B（帮凶）继任
-        self.assertEqual(player(eng, "B")["identity"], "杀手")
+        eng.resolve_vote({"C": "A", "D": "A", "E": "A", "F": "A"})  # A（杀手）出局
         ev = eng.bequest("A", {"刀": "B"}, {"B": {"刀": True}})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(items_of(eng, "B")["刀"]["available_day"], 2)  # 当天即可用
@@ -764,9 +823,9 @@ class TestHallNightSleep(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"E": "会客室", "F": "会客室"}, {})
-        self.assertEqual(ev["positions"]["E"], "会客室")   # E 黑客以暴力破解开锁
+        self.assertEqual(ev["positions"]["E"], "会客室")   # E 以万能钥匙开锁
         self.assertEqual(ev["positions"]["F"], "会客室")   # 锁开后 F 随入
-        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
+        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 1)
 
     def test_hall_night_later_unlocker_admits_earlier_claimant(self):
         eng = Engine(mk_state(order=["C", "E", "F", "A", "B", "D"]))
@@ -797,6 +856,7 @@ class TestHallNightSleep(unittest.TestCase):
 
     def test_hall_sleepers_announced_next_morning(self):
         eng = Engine(mk_state())
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时直接获胜（v4.0 从第 1 天起算）
         goto(eng, "晚间休息", day=2)
         eng.night_assign({"E": "会客室"}, {})
         ev = eng.advance()  # → 第 3 天清晨
@@ -959,8 +1019,8 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertIn("无杀倒计时", winner_ev["win_reason"])
         self.assertEqual(eng.state["phase"], {"day": 5, "stage": "案件调查"})
 
-    def test_no_kill_countdown_from_day2_passive(self):
-        """倒计时自第 2 天起算：全程无谋杀行为，第 4 天清晨平民直接获胜。"""
+    def test_no_kill_countdown_from_day1_passive(self):
+        """v4.0：倒计时从第 1 天起算——全程无谋杀行为，第 3 天清晨平民直接获胜。"""
         eng = Engine(mk_state())
         winner_ev = None
         for _ in range(30):
@@ -970,7 +1030,7 @@ class TestCountdownAndNightRaid(unittest.TestCase):
                 break
         self.assertEqual(eng.winner, "平民")
         self.assertIn("无杀倒计时", winner_ev["win_reason"])
-        self.assertEqual(eng.state["phase"], {"day": 4, "stage": "案件调查"})
+        self.assertEqual(eng.state["phase"], {"day": 3, "stage": "案件调查"})
 
     def test_night_bedroom_unarmed_no_condition(self):
         """v3.16：夜间卧室（夜袭）空手谋杀无任何附加条件——体格 1 的女杀手也可空手夜袭体格 3 的男性
@@ -1006,11 +1066,14 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         self.assertIn("空手", ev["error"])
 
     def test_countdown_text_plain(self):
-        """v3.20 倒计时公告口径：0/2 直接给规则全文，1/2 给"今天再无杀则明早平民胜"——免换算。"""
+        """倒计时公告口径（v4.0 从第 1 天起算）：0/2 给规则全文，1/2 给"今天再无杀则明早平民胜"——免换算。"""
         from src.engine.state import countdown_text
-        t0 = countdown_text(2, None)
-        self.assertIn("连续 2 个完整天", t0)
+        t0 = countdown_text(2, 1)  # 第 1 天有行为 → 进度 0/2
+        self.assertIn("从第 1 天起算", t0)
         self.assertIn("当前进度 0/2", t0)
+        t_half = countdown_text(2, None)  # 第 1 天无行为 → 已空转 1 个完整天
+        self.assertIn("1/2", t_half)
+        self.assertIn("明早平民直接获胜", t_half)
         t1 = countdown_text(4, 2)  # 第 2 天有行为、第 3 天无杀 → 今天（第 4 天）再无杀则明早胜
         self.assertIn("1/2", t1)
         self.assertIn("明早平民直接获胜", t1)
@@ -1142,42 +1205,52 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         self.assertIn("A", monitoring["第2天自由活动"]["书房"])
         self.assertEqual(eng.state["sealed_items"], [])
 
-    def test_day1_two_cases_attempt_monitoring_and_investigation(self):
-        """首日双案：自由活动和晚间各一起；同日另有未遂，清晨公告、监控与调查均不得串案。"""
+    def test_day1_cap_blocks_second_kill_and_investigation(self):
+        """v4.0 每日封顶：白天成功击杀后晚间窗口不再有谋杀；清晨公告、监控宣读与公开调查不串案。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         eng.enter_rooms({"A": "书房", "E": "书房", "B": "监控室",
                          "C": "会客室", "D": "会客室", "F": "会客室"})
-        self.assertTrue(eng.set_device("B", "监控室")["ok"])
         ev = eng.murder("A", "E", weapon="刀")
         self.assertTrue(ev["ok"], ev)
+        self.assertTrue(eng.state["day_kill_capped"])   # 成功即封顶当天
         self.assertIn("万能钥匙", items_of(eng, "A"))  # 缴获供当晚进他人卧室
 
         goto(eng, "晚间休息", day=1)
-        ev = eng.night_assign({"A": "C的卧室", "F": "监控室"})
+        ev = eng.night_assign({"A": "C的卧室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev.get("device_triggers"), ["F"])
-        ev = eng.murder("A", "C")  # 黑暗卧室可空手；急救箱自动防御，形成同日未遂
-        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertEqual(ev["positions"]["A"], "C的卧室")
+        ev = eng.murder("A", "C")  # 白天已有人成功 → 晚间窗口不再有谋杀
+        self.assertFalse(ev["ok"])
+        self.assertIn("至多一起", ev["error"])
 
         ev = eng.advance()
         self.assertEqual(eng.state["phase"], {"day": 2, "stage": "案件调查"})
         text = "；".join(ev["public"]["announcements"])
         self.assertIn("E 死亡", text)
-        self.assertIn("F 死亡", text)
-        self.assertIn("C 遇袭但幸存", text)
+        self.assertNotIn("C 遇袭", text)   # 封顶后根本没有第二次袭击
         monitoring = ev["public"]["monitoring"]
         for period in ("第1天自由活动", "第1天晚间休息"):
-            for room in ("书房", "监控室", "E的卧室", "F的卧室"):
+            for room in ("书房", "E的卧室"):
                 self.assertIn(room, monitoring[period], (period, room))
         self.assertIn("A", monitoring["第1天自由活动"]["书房"])
-        self.assertIn("F", monitoring["第1天晚间休息"]["监控室"])
 
-        ev = eng.investigate("C", 1, "死亡时间")
-        self.assertEqual(ev["private"]["C"]["result"], "第1天自由活动")
-        ev = eng.investigate("C", 2, "死亡时间")
-        self.assertEqual(ev["private"]["C"]["result"], "第1天晚间休息")
-        self.assertEqual(eng.state["skill_uses"]["C"]["现场调查"], 0)
+        # v4.0 清晨调查队列：持调查手段者按行动顺序列队；调查一次拿全四项、结果公开、每案一次
+        queue = eng.investigation_queue()
+        self.assertEqual([q["case_id"] for q in queue], [1])
+        self.assertEqual([h["name"] for h in queue[0]["holders"]], ["C"])  # 仅 C（医师）持调查手段
+        ev = eng.investigate("C", 1)
+        self.assertTrue(ev["ok"], ev)
+        ann = ev["public"]["announcements"][0]
+        self.assertIn("C 调查了 E 的案件", ann)                 # 结果公开（含调查者姓名）
+        self.assertIn("死亡时间 = 第1天自由活动", ann)
+        self.assertIn("武器伤痕 = 利器", ann)
+        self.assertIn("杀手线索", ann)
+        res = ev["private"]["C"]["results"]
+        self.assertEqual(set(res), {"死亡时间", "尸体转移", "武器伤痕", "杀手线索"})
+        self.assertEqual(res["尸体转移"], False)                # v4.0 尸体不可移动（恒为假）
+        self.assertEqual(eng.state["skill_uses"]["C"]["现场调查"], 1)
+        self.assertFalse(eng.investigate("C", 1)["ok"])         # 每案一次：已定型不能再查
 
     def test_morning_seals_corpse_items_when_witnessed(self):
         eng = Engine(mk_state())
@@ -1189,56 +1262,118 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         self.assertIn("万能钥匙", sealed)
         self.assertEqual(sealed["万能钥匙"]["from"], "E")
 
-    def test_investigate_truth_and_falsify(self):
-        players = default_players()
-        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
-        eng = Engine(mk_state(players=players))
-        self.kill_e_day2(eng)
-        ev = eng.falsify("B", 1, "伪造痕迹")
-        self.assertTrue(ev["ok"], ev)
-        goto(eng, "案件调查", day=3)
-        ev = eng.investigate("C", 1, "武器伤痕")
-        self.assertEqual(ev["private"]["C"]["result"], "利器")
-        ev = eng.investigate("C", 1, "死亡时间")
-        self.assertEqual(ev["private"]["C"]["result"], "第2天晚间休息")
-        self.assertEqual(eng.state["skill_uses"]["C"]["现场调查"], 0)
-        ev = eng.investigate("C", 1, "尸体转移")
-        self.assertFalse(ev["ok"])
-
+    def test_investigate_public_truth(self):
+        """v4.0 调查：四项一次给全、结果全员公告；未篡改即全为真（线索指向凶手本人）。"""
         eng = Engine(mk_state())
+        ev = self.kill_e_day2(eng)
+        case = ev["case"]
+        self.assertIn(case["clue_trait"], ("性别", "国籍", "体格"))  # 案发时随机锁定一项
+        goto(eng, "案件调查", day=3)
+        ev = eng.investigate("C", 1)
+        self.assertTrue(ev["ok"], ev)
+        res = ev["private"]["C"]["results"]
+        self.assertEqual(res["武器伤痕"], "利器")
+        self.assertEqual(res["死亡时间"], "第2天自由活动")
+        self.assertEqual(res["尸体转移"], False)
+        a = player(eng, "A")
+        expect = {"性别": a["gender"], "国籍": a["nationality"],
+                  "体格": "健壮或魁梧" if a["physique"] >= 3 else "普通或瘦弱"}[case["clue_trait"]]
+        self.assertEqual(res["杀手线索"], expect)
+        self.assertIn(f"杀手线索：{case['clue_trait']} = {expect}", ev["public"]["announcements"][0])
+        # 确定性锁定：同一案件线索项不变（不可刷随机）
+        from src.engine.murder import lock_clue_trait
+        self.assertEqual(lock_clue_trait(eng.state, case), case["clue_trait"])
+
+    def test_tamper_investigation_queue_window(self):
+        """v4.0 篡改抢先（清晨调查队列窗口）：反派先处理 → 随机篡改两项、此后本案结论永久为假；
+        篡改一次定型（不可重复篡改），但不封闭调查——随后平民的自动调查公告的正是假值。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)  # 反派医师持调查手段
+        eng = Engine(mk_state(players=players))
         self.kill_e_day2(eng)
         goto(eng, "案件调查", day=3)
-        ev = eng.investigate("C", 1, "死亡时间")
-        self.assertEqual(ev["private"]["C"]["result"], "第2天自由活动")
-        ev = eng.investigate("C", 1, "尸体转移")
-        self.assertEqual(ev["private"]["C"]["result"], False)
+        queue = eng.investigation_queue()
+        self.assertEqual([h["name"] for h in queue[0]["holders"]], ["C", "B"])  # 两名医师按行动顺序列队
+        ev = eng.tamper_investigation("B", 1)
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("改动两项", ev["private"]["B"])          # 私下告知改了哪两项、改成什么
+        case = eng.state["cases"][0]
+        self.assertFalse(case["investigated"])                 # 篡改不封闭调查
+        self.assertEqual(len(case["falsified"]), 2)            # 随机两项
+        self.assertTrue(set(case["falsified"]) <= {"死亡时间", "尸体转移", "武器伤痕", "杀手线索"})
+        self.assertEqual(eng.state["skill_uses"]["B"]["现场调查"], 1)  # 篡改消耗一次调查次数
+        self.assertFalse(eng.tamper_investigation("B", 1)["ok"])       # 一次定型，不可刷随机
+        ev = eng.investigate("C", 1)   # 篡改后仍可调查——公告的即为假值
+        self.assertTrue(ev["ok"], ev)
+        res = ev["private"]["C"]["results"]
+        for k, v in case["falsified"].items():
+            self.assertEqual(res[k], v)
+        truth = {"死亡时间": "第2天自由活动", "尸体转移": False, "武器伤痕": "利器"}
+        for k, v in truth.items():
+            if k not in case["falsified"]:
+                self.assertEqual(res[k], v)                  # 未篡改项仍为真
+        self.assertTrue(case["investigated"])                  # 调查一次定型
+        self.assertEqual(eng.investigation_queue(), [])        # 队列清空
 
-    def test_falsify_rejected_when_witnessed(self):
+    def test_tamper_investigation_scene_window(self):
+        """毁证窗口：案发当天须身处案发现场（现场无其他非反派）；场外反派不能远程篡改；
+        在场反派（含粉末道具）可用；亮房中此行为会被同房者看见。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
-        eng = Engine(mk_state(players=players))
-        free2(eng, {"A": "地下室", "C": "地下室", "E": "地下室", "B": "会客室", "D": "会客室", "F": "会客室"})
-        eng.murder("A", "E")
-        ev = eng.falsify("B", 1, "伪造痕迹")
-        self.assertFalse(ev["ok"])
-
-    def test_coverup_requires_scene_presence(self):
-        """v3.18：毁证须身处案发现场——场外帮凶不能远程毁证/移尸；在场反派（含粉末道具）不受影响。"""
-        players = default_players()
-        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         free2(eng, {"A": "书房", "E": "书房", "B": "会客室", "C": "会客室", "D": "会客室", "F": "会客室"})
-        ev = eng.murder("A", "E")  # 现场仅 E 一名非反派 → 可毁证案件
+        ev = eng.murder("A", "E")  # 现场仅 E 一名非反派 → 可篡改案件
         self.assertTrue(ev["ok"], ev)
-        ev = eng.falsify("B", 1, "伪造痕迹")   # B 在会客室，不在案发现场
-        self.assertFalse(ev["ok"])
-        self.assertIn("案发现场", ev["error"])
-        ev = eng.move_body("B", 1, "地下室")
+        ev = eng.tamper_investigation("B", 1)   # B 在会客室，不在案发现场
         self.assertFalse(ev["ok"])
         self.assertIn("案发现场", ev["error"])
         player(eng, "A")["items"].append({"name": "可疑的粉末", "uses_left": 1, "available_day": 1})
-        ev = eng.falsify("A", 1, "伪造证物")   # 杀手本人在场 → 仍可毁证
+        ev = eng.tamper_investigation("A", 1)   # 杀手本人在场 + 粉末道具 → 可篡改
         self.assertTrue(ev["ok"], ev)
+        self.assertEqual(len(eng.state["cases"][0]["falsified"]), 2)
+        self.assertFalse(eng.state["cases"][0]["investigated"])  # 篡改不封闭调查（次日清晨照常调查，公告假值）
+        self.assertNotIn("可疑的粉末", items_of(eng, "A"))     # 消耗一次调查次数（粉末销毁）
+
+    def test_tamper_rejected_when_witnessed(self):
+        """现场有其他非反派（目击）→ 毁证窗口关闭，不能篡改。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"A": "地下室", "C": "地下室", "E": "地下室", "B": "会客室", "D": "会客室", "F": "会客室"})
+        eng.murder("A", "E")
+        self.assertFalse(eng.state["cases"][0]["evidence_vulnerable"])
+        ev = eng.tamper_investigation("B", 1)
+        self.assertFalse(ev["ok"])
+
+    def test_tamper_civilian_rejected(self):
+        """平民持有调查手段（含「可疑的粉末」）只能正常调查，不能篡改。"""
+        eng = Engine(mk_state())
+        self.kill_e_day2(eng)
+        goto(eng, "案件调查", day=3)
+        ev = eng.tamper_investigation("C", 1)
+        self.assertFalse(ev["ok"])
+        self.assertIn("反派", ev["error"])
+
+    def test_tamper_day_limit(self):
+        """毁证仅限案发当天——次日即使身处案发现场也无法再改动（清晨队列窗口亦已过）。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        self.kill_e_day2(eng)  # 第 2 天 A 书房杀 E（A、B 同为反派在场 → 现场无非反派）
+        goto(eng, "自由活动", day=3)
+        eng.state["positions"]["B"] = "书房"  # 次日亲临现场也为时已晚
+        ev = eng.tamper_investigation("B", 1)
+        self.assertFalse(ev["ok"])
+
+    def test_body_never_moves(self):
+        """v4.0：尸体不可移动（转移尸体/裹尸袋删除）——"是否移动尸体"调查项恒为假。"""
+        eng = Engine(mk_state())
+        self.kill_e_day2(eng)
+        goto(eng, "案件调查", day=3)
+        ev = eng.investigate("C", 1)
+        self.assertEqual(ev["private"]["C"]["results"]["尸体转移"], False)
+        case = eng.state["cases"][0]
+        self.assertFalse(case["body_moved"])
 
     def test_morning_gap_note_precise_periods(self):
         """v3.20：停电监控缺口公告精确到时段——白天（自由活动）修复则仅该时段缺失，
@@ -1299,54 +1434,50 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         self.assertIn("第3天自由活动时段监控记录缺失", text)
         self.assertNotIn("第3天晚间休息时段监控记录缺失", text)
 
-    def test_blackout_periods_legacy_migration(self):
+    def test_blackout_periods_manual_ledger(self):
+        """blackout_periods 为纯台账字段（v4.0 起不做旧档推断迁移）：ensure 不改动已有值。"""
         st = mk_state()
-        st["blackout_days"] = [2]
-        st["power_restored"] = "第3天自由活动"
+        st["blackout_periods"] = ["第2天自由活动"]
         Engine(st)
-        self.assertEqual(st["blackout_periods"],
-                         ["第2天自由活动", "第2天晚间休息", "第3天自由活动"])
+        self.assertEqual(st["blackout_periods"], ["第2天自由活动"])
 
     def test_coverup_day_limit(self):
-        """v3.19：毁证/移尸仅限案发当天——次日（清晨调查后）即使身处案发现场也无法再改动。"""
+        """毁证仅限案发当天——次日（清晨调查后）即使身处案发现场也无法再改动。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "医师", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
-        self.kill_e_day2(eng)  # 第 2 天 A 书房杀 E；A、B 同在案发现场
+        self.kill_e_day2(eng)  # 第 2 天 A 书房杀 E；A、B 同为反派在场
         goto(eng, "自由活动", day=3)
         eng.state["positions"]["B"] = "书房"  # 次日亲临现场也为时已晚
-        ev = eng.falsify("B", 1, "伪造痕迹")
+        ev = eng.tamper_investigation("B", 1)
         self.assertFalse(ev["ok"])
-        self.assertIn("仅限案发当天", ev["error"])
-        ev = eng.move_body("B", 1, "地下室")
-        self.assertFalse(ev["ok"])
-        self.assertIn("仅限案发当天", ev["error"])
 
-    def test_move_body(self):
-        players = default_players()
-        players[1] = P("B", "帮凶", "运动员", "不明药剂", gender="女", physique=2)
-        eng = Engine(mk_state(players=players))
+    def test_body_never_moves_v4(self):
+        """v4.0：尸体不可移动（【转移尸体】/「裹尸袋」删除）——案件的"尸体转移"调查项恒为假。"""
+        eng = Engine(mk_state())
         self.kill_e_day2(eng)
-        ev = eng.move_body("B", 1, "地下室")
+        goto(eng, "案件调查", day=3)
+        ev = eng.investigate("C", 1)
         self.assertTrue(ev["ok"], ev)
-        case = eng.state["cases"][0]
-        self.assertEqual(case["room"], "地下室")
-        self.assertTrue(case["body_moved"])
-        goto(eng, "案件调查", day=3)
-        ev = eng.investigate("C", 1, "尸体转移")
-        self.assertEqual(ev["private"]["C"]["result"], True)
-        self.assertFalse(eng.move_body("B", 1, "书房")["ok"])
+        self.assertEqual(ev["private"]["C"]["results"]["尸体转移"], False)
+        self.assertFalse(eng.state["cases"][0]["body_moved"])
 
-    def test_profile_points_to_culprit(self):
-        players = default_players()
-        players[5] = P("F", "平民", "犯罪侧写师", "窃听器", gender="女", physique=2)
-        eng = Engine(mk_state(players=players))
-        self.kill_e_day2(eng)
+    def test_clue_trait_points_to_culprit(self):
+        """v4.0：杀手线索并入现场调查第四项——案发时随机锁定一项特征（性别/国籍/体格），
+        同一案件所有人查到的都是同一项；线索指向凶手本人（技能杀指向发动者）。"""
+        eng = Engine(mk_state())
+        ev = self.kill_e_day2(eng)
+        case = ev["case"]
+        self.assertIn(case["clue_trait"], ("性别", "国籍", "体格"))
         goto(eng, "案件调查", day=3)
-        ev = eng.profile("F", 1, "体格")
-        self.assertEqual(ev["private"]["F"]["result"], "健壮或魁梧")  # v3.20：按角色表文字口径
-        ev = eng.profile("F", 1, "性别")
-        self.assertFalse(ev["ok"])
+        ev = eng.investigate("C", 1)
+        a = player(eng, "A")
+        expect = {"性别": a["gender"], "国籍": a["nationality"],
+                  "体格": "健壮或魁梧" if a["physique"] >= 3 else "普通或瘦弱"}[case["clue_trait"]]
+        self.assertEqual(ev["private"]["C"]["results"]["杀手线索"], expect)
+        # 确定性锁定：同一案件重复解析结果不变（不可刷随机）
+        from src.engine.murder import lock_clue_trait
+        self.assertEqual(lock_clue_trait(eng.state, case), case["clue_trait"])
 
 
 class TestMonitoringLocksLedger(unittest.TestCase):
@@ -1360,45 +1491,61 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(set(recs["会客室"]), {"D", "E", "F"})  # v3.5：会客室纳入监控
         self.assertEqual(recs, eng.state["monitoring_true"]["第1天自由活动"])
 
-    def test_tamper_monitoring(self):
+    def test_remote_view_and_tamper_monitoring(self):
+        """v4.0【远程入侵】/「木马程序U盘」：远程查看监控人人可用（×1）；反派额外可整段抹除
+        （某天某时段全部记录清零、永不恢复，与停电空白同口径——宣读注明缺失）。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "黑客", "不明药剂", gender="女", physique=2)  # 反派黑客【远程入侵】
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=1)
-        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "书房", "D": "会客室", "E": "会客室", "F": "会客室"})
-        goto(eng, "自由活动", day=2)
-        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
-        ev = eng.tamper_monitoring("B", "第1天自由活动", "书房", "remove", "A")
+        eng.enter_rooms({"A": "书房", "B": "书房", "C": "书房", "D": "监控室", "E": "会客室", "F": "会客室"})
+        # 远程查看：B 身处书房（不在监控室）也能看；E 平民黑客同样可以（通用技能）
+        ev = eng.remote_view_monitoring("B")
         self.assertTrue(ev["ok"], ev)
-        recs = eng.state["monitoring"]["第1天自由活动"]["书房"]
-        self.assertEqual(recs, ["C"])
-        self.assertIn("A", eng.state["monitoring_true"]["第1天自由活动"]["书房"])
-        self.assertFalse(eng.tamper_monitoring("B", "第1天自由活动", "书房", "add", "B")["ok"])
+        self.assertEqual(ev["private"]["B"], eng.state["monitoring"])
+        self.assertEqual(eng.state["skill_uses"]["B"]["远程入侵"], 0)   # 查看用掉那次次数
+        ev = eng.remote_view_monitoring("E")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["skill_uses"]["E"]["远程入侵"], 0)
+        self.assertFalse(eng.remote_view_monitoring("B")["ok"])          # ×1：用完即止
+        # 反派抹除：整段清零、永不恢复；host 侧 monitoring_true 留底
+        player(eng, "B")["items"].append({"name": "木马程序U盘", "uses_left": 1, "available_day": 1})
+        self.assertIn("A", eng.state["monitoring"]["第1天自由活动"]["书房"])
+        ev = eng.remote_tamper_monitoring("B", "第1天自由活动")
+        self.assertTrue(ev["ok"], ev)
+        self.assertNotIn("第1天自由活动", eng.state["monitoring"])
+        self.assertIn("A", eng.state["monitoring_true"]["第1天自由活动"]["书房"])  # 真实记录留底
+        self.assertIn("第1天自由活动", eng.state["blackout_periods"])   # 宣读注明缺失（同停电空白）
+        self.assertNotIn("木马程序U盘", items_of(eng, "B"))             # 用掉即销毁
 
-        players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
-        eng = Engine(mk_state(players=players))
-        goto(eng, "自由活动", day=1)
-        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
-        eng.tamper_monitoring("B", "第1天自由活动", "书房", "replace", "A", "B")
-        self.assertEqual(eng.state["monitoring"]["第1天自由活动"]["书房"], ["B"])
-        ev = eng.view_monitoring("B")
-        self.assertEqual(ev["private"]["B"], eng.state["monitoring"])  # v3：监控室查看恒为全量返回
-        self.assertEqual(ev["private"]["B"]["第1天自由活动"]["书房"], ["B"])
-
-    def test_tamper_civilian_rejected(self):
+    def test_remote_tamper_civilian_rejected(self):
+        """平民（含平民黑客/木马U盘持有者）只能远程查看，不能抹除记录。"""
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
-        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "监控室", "F": "会客室"})
-        self.assertFalse(eng.tamper_monitoring("E", "第1天自由活动", "书房", "add", "E")["ok"])
+        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "书房", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.remote_tamper_monitoring("E", "第1天自由活动")  # E 平民黑客持【远程入侵】
+        self.assertFalse(ev["ok"])
+        self.assertIn("反派", ev["error"])
+        self.assertEqual(eng.state["skill_uses"]["E"]["远程入侵"], 1)  # 驳回不消耗
+
+    def test_remote_means_item_only(self):
+        """无技能者持「木马程序U盘」可远程查看一次；查看/抹除共用这一次。"""
+        eng = Engine(mk_state())
+        player(eng, "D")["items"].append({"name": "木马程序U盘", "uses_left": 1, "available_day": 1})
+        goto(eng, "自由活动", day=1)
+        eng.enter_rooms({"A": "书房", "B": "监控室", "C": "书房", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.remote_view_monitoring("D")
+        self.assertTrue(ev["ok"], ev)
+        self.assertNotIn("木马程序U盘", items_of(eng, "D"))
+        self.assertFalse(eng.remote_view_monitoring("D")["ok"])
 
     def test_unlock_permanent_and_bedroom_relock(self):
         eng = Engine(mk_state())
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"E": "监控室", "A": "书房", "B": "书房", "C": "会客室", "D": "会客室", "F": "会客室"})
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(eng.state["locks"]["监控室"])  # v3.2：监控室上锁，暴力破解开后永久开启
-        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
+        self.assertFalse(eng.state["locks"]["监控室"])  # v3.2：监控室上锁，开锁后永久开启
+        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 1)  # E 以万能钥匙开锁
         goto(eng, "自由活动", day=2)
         self.assertFalse(eng.state["locks"]["监控室"])
 
@@ -1406,7 +1553,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         eng = Engine(mk_state())
         goto(eng, "晚间休息", day=1)
         ev = eng.night_assign({"E": "C的卧室"})
-        self.assertEqual(ev["positions"]["E"], "C的卧室")  # E 黑客以【暴力破解】开锁进入
+        self.assertEqual(ev["positions"]["E"], "C的卧室")  # E 以万能钥匙开锁进入
         self.assertFalse(eng.state["locks"]["C的卧室"])
         eng.advance()
         self.assertTrue(eng.state["locks"]["C的卧室"])
@@ -1444,8 +1591,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(eng.state["positions"]["D"], "监控室")   # 顺序靠前但无手段，不再被提前劝退
         self.assertEqual(eng.state["positions"]["F"], "会客室")   # 其余仍按行动顺序，容量不变
         self.assertEqual(eng.state["monitoring"]["第1天自由活动"]["监控室"], ["E", "D"])
-        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
-        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 2)  # 职业技能优先，道具未消耗
+        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 1)  # E 以万能钥匙开锁（消耗一次）
 
     def test_entry_unlock_is_separate_and_can_be_declined(self):
         assignments = {"D": "监控室", "E": "监控室", "F": "监控室", "A": "书房", "B": "书房", "C": "会客室"}
@@ -1456,7 +1602,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(eng.state["positions"], before)  # 开锁轮不移动任何人
         self.assertFalse(eng.state["locks"]["监控室"])
-        self.assertEqual(eng.state["skill_uses"]["E"]["暴力破解"], 0)
+        self.assertEqual(items_of(eng, "E")["万能钥匙"]["uses_left"], 1)
         entered = eng.enter_rooms(assignments, unlockers={"监控室": "E"})
         self.assertEqual(entered["positions"]["D"], "监控室")
 
@@ -1467,7 +1613,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(ev["positions"]["E"], "会客室")
         self.assertEqual(ev["positions"]["F"], "会客室")
         self.assertTrue(declined.state["locks"]["监控室"])
-        self.assertEqual(declined.state["skill_uses"]["E"]["暴力破解"], 1)
+        self.assertEqual(items_of(declined, "E")["万能钥匙"]["uses_left"], 2)
         self.assertNotIn("监控室", declined.state["monitoring"].get("第1天自由活动", {}))
 
     def test_transfer_keeps_uses(self):
@@ -1501,7 +1647,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
     def test_open_safe_dark_no_witness(self):
         """v3.3：停电（黑暗）中开保险箱，同房者收不到开箱通知（rules-6 §7.5 黑暗不可见）。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)  # 暴力破解 → 可拉电闸
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)  # 暴力破解 → 可拉电闸
         eng = Engine(mk_state(players=players))
         goto(eng, "公共发言", day=1)
         ev = eng.declare_blackout("B")
@@ -1515,7 +1661,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
 
     def test_flashlight_and_blackout(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=1)
         ev = eng.enter_rooms({"D": "地下室", "E": "地下室", "A": "书房", "B": "监控室", "C": "会客室", "F": "会客室"})
@@ -1549,7 +1695,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
 
     def test_blackout_window_until_rooms_entered(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         ev = eng.declare_blackout("B")
@@ -1558,7 +1704,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertTrue(eng.enter_rooms(rooms)["ok"])
         self.assertEqual(eng.state["rooms_entered"], "第2天自由活动")
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng2 = Engine(mk_state(players=players))
         goto(eng2, "自由活动", day=2)
         self.assertTrue(eng2.enter_rooms(rooms)["ok"])
@@ -1567,11 +1713,11 @@ class TestMonitoringLocksLedger(unittest.TestCase):
     def test_blackout_v32_package(self):
         """v3.2 停电包：门锁失效 + 监控空白 + 卧室黑暗化；杀手可在停电夜潜入满员卧室撕开守夜对。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players, order=["C", "D", "A", "B", "E", "F"]))
         goto(eng, "投票", day=2)
         self.assertTrue(eng.declare_blackout("B")["ok"])           # 消耗 B 的暴力破解
-        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 0)
+        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 1)  # 机械师×2 → 拉电闸后剩 1
         goto(eng, "自由活动", day=2)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
         self.assertNotIn("第2天自由活动", eng.state["monitoring"])  # 停电期间监控空白
@@ -1714,71 +1860,70 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(ev["positions"]["E"], "E的卧室")
         self.assertEqual(ev["positions"]["C"], "书房")
 
-    def test_passage(self):
-        """v3 密道：开局确认不绑出口；仅晚间可用；出口三功能房任选；人数条件不满足当晚失败但保留；
-        成功一次后损毁；监控无痕（记录上此人当晚在卧室）。"""
+    def test_passage_kill(self):
+        """v4.0 密道谋杀：谋杀窗口内任选出口（会客室/书房/监控室/地下室，不含卧室）现身动手——
+        走正常谋杀判定；监控无痕（记录上你一直在卧室）；整局限成功一次；杀后人在现场。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "建筑师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
-        ev = eng.set_passage("B")
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"E": "书房"})  # 书房夜间明亮，E 单独在场
+        ev = eng.passage_kill("B", "E", weapon="不明药剂")
         self.assertTrue(ev["ok"], ev)
-        goto(eng, "自由活动", day=1)
-        self.assertFalse(eng.use_passage("B", "书房")["ok"])  # 白天不可用
-        goto(eng, "晚间休息", day=1)
-        eng.night_assign({"A": "监控室"})
-        ev = eng.use_passage("B", "书房")
-        self.assertTrue(ev["ok"], ev)
-        self.assertFalse(ev.get("failed", False))
-        self.assertEqual(eng.state["positions"]["B"], "书房")
-        recs = eng.state["monitoring_true"]["第1天晚间休息"]
-        self.assertNotIn("B", recs.get("书房", []))       # 书房无痕
-        self.assertIn("B", recs.get("B的卧室", []))        # 记录上他在卧室
-        self.assertFalse(eng.use_passage("B", "书房")["ok"])  # 成功一次即损毁
+        self.assertEqual(ev["case"]["room"], "书房")
+        self.assertEqual(ev["case"]["culprit"], "B")
+        self.assertEqual(eng.state["positions"]["B"], "书房")          # 杀后人在现场
+        recs = eng.state["monitoring"]["第2天晚间休息"]["书房"]
+        self.assertEqual(recs, ["E"])  # 监控里只有受害者——密道无痕
+        self.assertTrue(eng.state["stage_murder_used"])
+        self.assertEqual(eng.state["skill_uses"]["B"]["建造密道"], 0)  # 成功一次后密道损毁
+        self.assertTrue(eng.state["passage"]["used"])
 
-        # v3.22：会客室成为合法出口（亮房、无人 → 条件满足）；卧室仍非法
-        eng = Engine(mk_state(players=players))
-        eng.set_passage("B")
-        goto(eng, "晚间休息", day=1)
-        eng.night_assign({})
-        ev = eng.use_passage("B", "会客室")
-        self.assertTrue(ev["ok"], ev)
-        self.assertFalse(ev.get("failed", False))
-        self.assertEqual(eng.state["positions"]["B"], "会客室")
-        eng = Engine(mk_state(players=players))
-        eng.set_passage("B")
-        goto(eng, "晚间休息", day=1)
-        eng.night_assign({})
-        self.assertFalse(eng.use_passage("B", "C的卧室")["ok"])
+    def test_passage_kill_normal_judgment_and_once(self):
+        """密道谋杀走正常判定：亮房人数限制/空手附加条件/自卫矩阵均适用；
+        未遂消耗本窗口尝试但密道保留；出口不含卧室。"""
 
-        # 出口人数不满足谋杀人数条件（亮房非反派 2 人）→ 当晚失败，密道保留
-        eng = Engine(mk_state(players=players))
-        eng.set_passage("B")
-        goto(eng, "晚间休息", day=1)
-        eng.night_assign({})
-        eng.state["positions"]["C"] = "书房"  # 白盒构造：两名平民在书房（平民慎入规则下正常结算做不到）
-        eng.state["positions"]["D"] = "书房"
-        ev = eng.use_passage("B", "书房")
-        self.assertTrue(ev["ok"])
-        self.assertTrue(ev["failed"])
-        self.assertFalse(eng.state["passage"]["used"])  # 失败不损毁
-        self.assertEqual(eng.state["positions"]["B"], "B的卧室")
+        def mk():
+            ps = default_players()  # 每个子场景独立 players（引擎会消耗共享道具）
+            ps[1] = P("B", "杀手", "建筑师", "不明药剂", gender="女", physique=2)
+            return Engine(mk_state(players=ps))
 
-    def test_passage_murder_channel(self):
-        """v3 密道击杀通道：杀手建筑师夜间经密道进入单独夜行者的房间并动手。"""
+        eng = mk()
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"E": "书房"})
+        ev = eng.passage_kill("B", "C")  # C 在卧室——出口不含卧室
+        self.assertFalse(ev["ok"])
+        self.assertIn("不含卧室", ev["error"])
+
+        # 自卫矩阵适用：C 的急救箱可防御密道袭击 → 未遂，密道保留
+        eng = mk()
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"C": "书房"})
+        ev = eng.passage_kill("B", "C", weapon="不明药剂")
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertEqual(eng.state["skill_uses"]["B"]["建造密道"], 1)  # 未遂不损毁
+        self.assertFalse(eng.passage_kill("B", "C")["ok"])             # 本窗口尝试已用完
+
+        # 亮房人数限制适用：书房两名非反派 → 驳回（不消耗尝试）
+        eng = mk()
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"C": "书房", "E": "书房"}, invited={"E": "C"})  # 受邀同入，书房两名平民
+        ev = eng.passage_kill("B", "E", weapon="不明药剂")
+        self.assertFalse(ev["ok"])
+        self.assertIn("非反派", ev["error"])
+        self.assertFalse(eng.state["stage_murder_used"])
+        self.assertEqual(eng.state["positions"]["B"], "B的卧室")       # 驳回不位移
+
+    def test_passage_kill_daytime_and_dark_crowd(self):
+        """密道谋杀白天同样可用；黑暗出口（地下室）不设人数限制——破满员黑暗扎堆。"""
         players = default_players()
         players[0] = P("A", "杀手", "建筑师", "刀", gender="男", physique=4)
         eng = Engine(mk_state(players=players))
-        eng.set_passage("A")
-        goto(eng, "晚间休息", day=2)
-        eng.night_assign({"E": "书房"})  # E 单独夜行（C 有急救箱、D 有闪避，E 无防御）
-        ev = eng.use_passage("A", "书房")
+        free2(eng, {"C": "地下室", "D": "地下室", "E": "地下室", "B": "会客室", "F": "会客室", "A": "会客室"})
+        ev = eng.passage_kill("A", "E", weapon="刀")  # 黑暗房无人数限制
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(ev.get("failed", False))
-        ev = eng.murder("A", "E", weapon="刀")
-        self.assertTrue(ev["ok"], ev)
-        self.assertEqual(ev["case"]["room"], "书房")
-        recs = eng.state["monitoring"]["第2天晚间休息"]["书房"]
-        self.assertEqual(recs, ["E"])  # 监控里只有受害者——凶手无痕
+        self.assertEqual(ev["case"]["room"], "地下室")
+        self.assertEqual(ev["case"]["culprit"], "A")
 
     def test_morning_monitoring_covers_whole_day(self):
         """v3.22：清晨监控宣读覆盖案发当日全天两个时段 ×（案发房间 + 死者卧室）——不暴露死亡时段。"""
@@ -1914,7 +2059,7 @@ class TestTableWeapon(unittest.TestCase):
         eng = Engine(self.mk_table())
         goto(eng, "投票", day=2)
         eng.resolve_vote({"C": "A", "D": "B", "E": "B", "F": "B"})
-        ev = eng.armed_accusation("C", "B")  # 指认帮凶 → 错误
+        ev = eng.armed_accusation("C", "F")  # 指认平民（v4.0 指认错误 = 所指非杀手）→ 指认者出局
         self.assertTrue(ev["ok"])
         self.assertFalse(player(eng, "C")["alive"])
         self.assertEqual(eng.state["table_items"], [])
@@ -1946,12 +2091,12 @@ class TestTableWeapon(unittest.TestCase):
 
     def test_accusation_last_civilian_pre_execution(self):
         """v3.21：投票将导致最后一名平民出局时，该平民可在出局执行前武装指认（背水一战）——
-        指对则杀手出局、本人获救、帮凶继任；指错按原处决；放弃则 execute_pending_out 按原处决。"""
+        v4.0：两名杀手都是正确目标（指认任一杀手 → 其出局、本人获救、游戏继续）；放弃则按原处决。"""
         trio = [P("A", "杀手", "魔术师", "刀", gender="男", physique=4),
-                P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2),
+                P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2),
                 P("C", "平民", "医师", "急救箱", gender="女", physique=3)]
 
-        # 指对：杀手伏法、最后平民获救
+        # 指对（任一杀手）：杀手伏法、最后平民获救、游戏继续（另一名杀手仍在）
         eng = Engine(mk_state(players=[dict(p) for p in trio]))
         goto(eng, "投票", day=2)
         eng.resolve_vote({"A": "C", "B": "C", "C": "A"}, defer_out=True)  # C 2 票过半 → 待执行
@@ -1961,21 +2106,10 @@ class TestTableWeapon(unittest.TestCase):
         player(eng, "C")["items"].append({"name": "左轮手枪", "uses_left": 1, "available_day": 1})
         ev = eng.armed_accusation("C", "A")
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(player(eng, "A")["alive"])   # 杀手出局
+        self.assertFalse(player(eng, "A")["alive"])   # 被指认的杀手出局
         self.assertTrue(player(eng, "C")["alive"])    # 最后平民获救
-        self.assertEqual(player(eng, "B")["identity"], "杀手")  # 帮凶继任
-        self.assertIsNone(eng.winner)
+        self.assertIsNone(eng.winner)                 # B 仍在，游戏继续（无继任）
         self.assertIsNone(eng.state.get("pending_out"))
-
-        # 指错（指到帮凶）：按原处决，本人出局 → 反派胜
-        eng2 = Engine(mk_state(players=[dict(p) for p in trio]))
-        goto(eng2, "投票", day=2)
-        eng2.resolve_vote({"A": "C", "B": "C", "C": "A"}, defer_out=True)
-        player(eng2, "C")["items"].append({"name": "左轮手枪", "uses_left": 1, "available_day": 1})
-        ev2 = eng2.armed_accusation("C", "B")
-        self.assertTrue(ev2["ok"], ev2)
-        self.assertFalse(player(eng2, "C")["alive"])
-        self.assertEqual(eng2.state["winner"], "反派")
 
         # 放弃指认：execute_pending_out 按原处决
         eng3 = Engine(mk_state(players=[dict(p) for p in trio]))
@@ -2003,7 +2137,7 @@ class TestTableWeapon(unittest.TestCase):
         self.assertTrue(ev["ok"], ev)  # 原实现：含死者共 4 名"平民" → 误驳回
         self.assertFalse(player(eng, "A")["alive"])   # 指认正确：杀手出局
         self.assertTrue(player(eng, "C")["alive"])    # 最后平民获救
-        self.assertEqual(player(eng, "B")["identity"], "杀手")  # 帮凶继任
+        self.assertEqual(player(eng, "B")["identity"], "杀手")  # v4.0：无继任（B 本就是杀手）
 
         # 仍有三名存活平民时，结算前指认窗口保持关闭
         eng2 = Engine(mk_state())
@@ -2019,6 +2153,7 @@ class TestTableWeapon(unittest.TestCase):
     def test_take_table_item_night_alone(self):
         """夜间独处会客室可取走桌上物品：当夜即可用，变动次日清晨公告。"""
         eng = Engine(self.mk_table())
+        eng.state["last_murder_day"] = 1  # 垫底：避免第 3 天清晨倒计时获胜（v4.0 从第 1 天起算）
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"E": "会客室"}, {})  # E 开锁进大厅（独占）
         self.assertEqual(ev["positions"]["E"], "会客室")
@@ -2054,7 +2189,7 @@ class TestTableWeapon(unittest.TestCase):
     def test_take_table_item_blackout_no_trace(self):
         """停电夜偷枪：门锁失效自由进入，监控缺失不留进入记录。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(self.mk_table(players=players))
         goto(eng, "投票", day=2)
         self.assertTrue(eng.declare_blackout("B")["ok"])
@@ -2079,7 +2214,7 @@ class TestTableWeapon(unittest.TestCase):
         ev = eng.take_table_item("E", "万能钥匙")
         self.assertTrue(ev["ok"], ev)
         uses = sorted(e["uses_left"] for e in player(eng, "E")["items"] if e["name"] == "万能钥匙")
-        self.assertEqual(uses, [1, 2])  # 原有的 ×2（开锁消耗的是职业技能）+ 取走的 ×1
+        self.assertEqual(uses, [1, 1])  # 原有的 ×2 被夜锁开锁消耗一次（v4.0 黑客无暴力破解，用钥匙开门）+ 取走的 ×1
 
     def test_detective_gun_lootable_on_murder(self):
         """v3.5：佩枪是普通道具——侦探遇害且现场无其他非反派时，杀手缴获佩枪。"""
@@ -2102,7 +2237,7 @@ class TestGame2ReviewFixes(unittest.TestCase):
     def test_blackout_rejected_after_selection_begins(self):
         """首个进入落定后（selection_begun）停电声明窗口关闭——杜绝选房循环内声明造成"半段监控记录"。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         self.assertTrue(eng.choose_room_one("C", "会客室")["ok"])
@@ -2114,13 +2249,13 @@ class TestGame2ReviewFixes(unittest.TestCase):
     def test_blackout_preselection_full_suppression(self):
         """声明先于任何进入生效：停电时段监控整段零记录（含真实记录）；门锁对全员一致失效。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=2)
         ev = eng.declare_blackout("B")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(eng.state["blackout_news"], "第2天自由活动")
-        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 0)
+        self.assertEqual(eng.state["skill_uses"]["B"]["暴力破解"], 1)  # 机械师×2 → 拉电闸后剩 1
         # 门锁失效对顺序前后一致：无手段的 C 也免费进入上锁的监控室
         self.assertTrue(eng.choose_room_one("C", "监控室")["ok"])
         self.assertEqual(eng.state["positions"]["C"], "监控室")
@@ -2132,7 +2267,7 @@ class TestGame2ReviewFixes(unittest.TestCase):
     def test_day1_full_bedroom_blocks_entry(self):
         """首日开放谋杀不改变卧室容量：满员仍拦截进入，且不消耗当夜谋杀机会。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "黑客", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players, order=["C", "D", "A", "B", "E", "F"]))
         goto(eng, "公共发言", day=1)
         self.assertTrue(eng.declare_blackout("B")["ok"])  # 停电令门锁失效，排除开锁变量专测满员口径
@@ -2146,13 +2281,13 @@ class TestGame2ReviewFixes(unittest.TestCase):
     def test_night_raid_empty_bedroom(self):
         """夜袭空卧室合法：照常进入、开锁手段消耗，但不产生谋杀判定/未遂记录、不重置无杀倒计时。"""
         players = default_players()
-        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        players[0] = P("A", "杀手", "机械师", "刀", gender="男", physique=4)
         eng = Engine(mk_state(players=players, order=["C", "A", "B", "D", "E", "F"]))
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"C": "书房", "A": "C的卧室"})  # C 夜不归宿去书房
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["A"], "C的卧室")
-        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 0)  # 开锁手段照常消耗
+        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 1)  # 开锁手段照常消耗（机械师×2 → 1）
         self.assertFalse(eng.state["cases"])
         self.assertFalse(eng.state["attempts"])
         self.assertIsNone(eng.state["last_murder_day"])
@@ -2181,13 +2316,13 @@ class TestNightBedroomAccess(unittest.TestCase):
     def test_killer_enters_villain_hosted_bedroom_with_means(self):
         """杀手持开锁手段可进入帮凶独居的卧室（锁对反派同样有效）；房内无平民则无可杀目标。"""
         players = default_players()
-        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)  # 暴力破解作开锁手段
+        players[0] = P("A", "杀手", "机械师", "刀", gender="男", physique=4)  # 暴力破解作开锁手段
         eng = Engine(mk_state(players=players))  # 第 2 天行动顺序 B→C→D→E→F→A
         goto(eng, "晚间休息", day=2)
         ev = eng.night_assign({"A": "B的卧室"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["A"], "B的卧室")
-        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 0)  # 开锁成本照付
+        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 1)  # 开锁成本照付（机械师×2 → 1）
         self.assertFalse(eng.murder("A", "B")["ok"])  # 不能以反派为目标
 
     def test_killer_blocked_without_means(self):
@@ -2204,7 +2339,7 @@ class TestNightBedroomAccess(unittest.TestCase):
     def test_full_bedroom_blocks_killer_even_with_accomplice(self):
         """平民邀请帮凶守夜（引狼入室）后卧室满 2 人：杀手无法进入，机会与倒计时均不受影响。"""
         players = default_players()
-        players[0] = P("A", "杀手", "黑客", "刀", gender="男", physique=4)
+        players[0] = P("A", "杀手", "机械师", "刀", gender="男", physique=4)
         # 跨日轮转后第 2 天顺序 = F→B→…→A：F（平民房主）先归房、B（帮凶）应邀随后、A 最后行动
         eng = Engine(mk_state(players=players, order=["A", "F", "B", "C", "D", "E"]))
         goto(eng, "晚间休息", day=2)
@@ -2212,7 +2347,7 @@ class TestNightBedroomAccess(unittest.TestCase):
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["positions"]["B"], "F的卧室")
         self.assertEqual(ev["positions"]["A"], "A的卧室")          # 满 2 人：容量拦截（旧内应口径已删）
-        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 1)  # 容量先于开锁判定——手段未消耗
+        self.assertEqual(eng.state["skill_uses"]["A"]["暴力破解"], 2)  # 容量先于开锁判定——手段未消耗（机械师×2）
         self.assertFalse(eng.state["stage_murder_used"])
         self.assertIsNone(eng.state["last_murder_day"])
 
@@ -2304,6 +2439,7 @@ class TestDiscovery(unittest.TestCase):
         """舞台魔术：目击者当场只知奇怪动静（不知是谋杀）；目击者当夜回到现场 → 发现并可报案。"""
         eng = Engine(mk_state())
         free2(eng, {"A": "书房", "C": "书房", "D": "书房", "B": "监控室", "E": "会客室", "F": "会客室"})
+        eng.state["skill_uses"]["D"]["敏捷闪避"] = 0  # 排除 v4.0 救援系防御，专注发现/报案链路
         ev = eng.stage_magic("A", "D")
         self.assertTrue(ev["ok"], ev)
         self.assertIn("奇怪的动静", ev["private"]["C"])
@@ -2331,18 +2467,18 @@ class TestDiscovery(unittest.TestCase):
         self.assertFalse(ev["ok"])
         self.assertIn("尚未公告的尸体", ev["error"])
 
-    def test_old_case_migration(self):
-        """v3.30 旧档迁移：无 announced/discovered_by/reported_by 的历史案件 → ensure 补齐且视为已公告。"""
+    def test_old_case_fields_complete(self):
+        """v4.0：案件结构含 clue_trait/falsified（新语义）/investigated；引擎不再做 v3 旧档迁移。"""
         st = mk_state()
         st["cases"] = [{"id": 1, "victim": "E", "room": "书房", "crime_room": "书房", "day": 1,
                         "stage": "自由活动", "period": "第1天自由活动", "method": "刀", "wound": "利器",
-                        "culprit": "A", "body_moved": False, "falsified": None, "looted": [],
-                        "evidence_vulnerable": False, "sealed": True}]
+                        "culprit": "A", "body_moved": False, "clue_trait": "体格", "falsified": None,
+                        "investigated": False, "looted": [], "evidence_vulnerable": False, "sealed": True,
+                        "announced": True, "discovered_by": [], "reported_by": []}]
         eng = Engine(st)  # __init__ 调 ensure
         case = eng.state["cases"][0]
-        self.assertTrue(case["announced"])  # 历史案件一律视为已公告（发现/报案窗口不再对其开放）
-        self.assertEqual(case["discovered_by"], [])
-        self.assertEqual(case["reported_by"], [])
+        self.assertEqual(case["clue_trait"], "体格")
+        self.assertIsNone(case["falsified"])
 
 
 class TestV331Buffs(unittest.TestCase):
@@ -2400,50 +2536,40 @@ class TestV331Buffs(unittest.TestCase):
         self.assertEqual(ev["case"]["room"], "地下室")
 
     def test_passage_into_full_dark_room(self):
-        """v3.31：密道可进满员黑暗房间（地下室 3 名平民受邀同入）并动手——破满员黑暗扎堆。"""
+        """v3.31/v4.0：密道谋杀可进满员黑暗房间（地下室 3 名平民受邀同入）并动手——破满员黑暗扎堆。"""
         players = default_players()
         players[0] = P("A", "杀手", "建筑师", "刀", gender="男", physique=4)
         eng = Engine(mk_state(players=players))
-        eng.set_passage("A")
         goto(eng, "晚间休息", day=2)
         ev0 = eng.night_assign({"C": "地下室", "D": "地下室", "E": "地下室"}, invited={"D": "C", "E": "D"})
         self.assertTrue(ev0["ok"], ev0)
         self.assertEqual([ev0["positions"][n] for n in ("C", "D", "E")], ["地下室"] * 3)
-        ev = eng.use_passage("A", "地下室")
+        ev = eng.passage_kill("A", "E", weapon="刀")  # 黑暗出口不设人数限制
         self.assertTrue(ev["ok"], ev)
-        self.assertFalse(ev.get("failed", False))  # 旧规则：3 名非反派 → failed
         self.assertEqual(eng.state["positions"]["A"], "地下室")
-        ev2 = eng.murder("A", "E", weapon="刀")
-        self.assertTrue(ev2["ok"], ev2)
+        self.assertFalse(player(eng, "E")["alive"])
 
 
 class TestV332PassageAccompliceMurder(unittest.TestCase):
-    """v3.32：经密道进场的帮凶可借道谋杀（同舞台魔术/延时装置口径）——击杀归属发动者本人。"""
+    """v4.0 双杀手制：不再有"帮凶借密道动手"的例外——两名杀手本就都有完整谋杀权。"""
 
-    def test_passage_accomplice_murder(self):
-        """帮凶建筑师经密道进场后可当场动手：击杀归属帮凶本人、占用当阶段谋杀机会。"""
+    def test_second_killer_murders_directly(self):
+        """第二名杀手（原帮凶位）无需密道即可直接谋杀：击杀归属本人、占用本窗口尝试。"""
         players = default_players()
-        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)
-        eng = Engine(mk_state(players=players))
-        eng.set_passage("B")
-        goto(eng, "晚间休息", day=2)
-        eng.night_assign({"E": "书房"})  # 书房夜间明亮，E 单独在场
-        ev = eng.use_passage("B", "书房")
-        self.assertTrue(ev["ok"], ev)
-        self.assertFalse(ev.get("failed", False))
-        ev2 = eng.murder("B", "E", weapon="不明药剂")
-        self.assertTrue(ev2["ok"], ev2)
-        self.assertEqual(ev2["case"]["culprit"], "B")   # 击杀归属发动者本人（犯罪侧写同样指向 B）
-        self.assertTrue(eng.state["stage_murder_used"])  # 占用当阶段谋杀机会
-        self.assertFalse(player(eng, "E")["alive"])
-
-    def test_accomplice_without_passage_cannot_murder(self):
-        """对照：未走密道的帮凶仍无主动谋杀权。"""
-        players = default_players()
-        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "建筑师", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         free2(eng, {"B": "地下室", "E": "地下室", "A": "会客室", "C": "会客室", "D": "会客室", "F": "会客室"})
         ev = eng.murder("B", "E", weapon="不明药剂")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["case"]["culprit"], "B")   # 击杀归属发动者本人（杀手线索同样指向 B）
+        self.assertTrue(eng.state["stage_murder_used"])  # 占用本窗口尝试
+        self.assertFalse(player(eng, "E")["alive"])
+
+    def test_civilian_still_cannot_murder(self):
+        """对照：平民仍无谋杀权。"""
+        eng = Engine(mk_state())
+        free2(eng, {"C": "地下室", "E": "地下室", "A": "会客室", "B": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("C", "E")
         self.assertFalse(ev["ok"])
         self.assertIn("只有杀手", ev["error"])
 
@@ -2460,7 +2586,7 @@ class TestCountdownText(unittest.TestCase):
         self.assertIn("倒计时完成", countdown_text(5, 1))     # 极端值同样宣告完成
 
     def test_countdown_completion_end_to_end(self):
-        """全程无谋杀 → 第 4 天清晨倒计时完成：公告宣告完成且平民当场获胜。"""
+        """全程无谋杀 → 第 3 天清晨倒计时完成（v4.0 从第 1 天起算）：公告宣告完成且平民当场获胜。"""
         eng = Engine(mk_state())
         ev = None
         for _ in range(20):
@@ -2469,6 +2595,7 @@ class TestCountdownText(unittest.TestCase):
                 break
         self.assertEqual(ev["type"], "game_over")
         self.assertEqual(eng.state["winner"], "平民")
+        self.assertEqual(eng.state["phase"], {"day": 3, "stage": "案件调查"})
         anns = "\n".join(ev["public"]["announcements"])
         self.assertIn("倒计时完成，平民直接获胜", anns)
         self.assertNotIn("明早平民直接获胜", anns)
@@ -2483,6 +2610,184 @@ class TestReceiptVerdict(unittest.TestCase):
         self.assertIn("未发动", _receipt_verdict({"ok": True, "type": "use_passage", "failed": True}))
         self.assertIn("成功", _receipt_verdict({"ok": True, "type": "murder"}))
         self.assertIn("成功", _receipt_verdict({"ok": True, "type": "report"}))
+
+
+class TestDailyCapAndWindow(unittest.TestCase):
+    """v4.0 反派轮次统一：每窗口全队一次尝试（仅放弃/无目标顺延）；未遂不封顶，成功每天封顶一起。"""
+
+    def test_attempt_costs_window_but_not_the_day(self):
+        """未遂只消耗本窗口尝试（同窗口同伙不可再动），不封顶当天——晚间窗口正常可用。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "D")  # D【敏捷闪避】→ 未遂
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertTrue(eng.state["stage_murder_used"])
+        self.assertFalse(eng.state["day_kill_capped"])          # 未遂不封顶
+        self.assertFalse(eng.murder("B", "D")["ok"])            # 本窗口全队一次：同伙被驳回
+        goto(eng, "晚间休息", day=2)
+        self.assertFalse(eng.state["stage_murder_used"])        # 新窗口重置
+        ev = eng.night_assign({"A": "E的卧室"}, invited={"A": "E"})
+        self.assertEqual(ev["positions"]["A"], "E的卧室")
+        ev = eng.murder("A", "E")  # 黑暗卧室空手（无附加条件）——晚间可再试
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder")
+        self.assertTrue(eng.state["day_kill_capped"])
+
+    def test_success_caps_the_day(self):
+        """白天成功击杀 → 晚间窗口一切谋杀/技能杀驳回；次日自由活动重置。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        self.assertTrue(eng.murder("A", "E", weapon="刀")["ok"])
+        self.assertTrue(eng.state["day_kill_capped"])
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"B": "C的卧室"})  # B（机械师）暴力破解开门
+        self.assertEqual(eng.state["positions"]["B"], "C的卧室")
+        ev = eng.murder("B", "C")  # 每日封顶：驳回
+        self.assertFalse(ev["ok"])
+        self.assertIn("至多一起", ev["error"])
+        self.assertFalse(eng.state["stage_murder_used"])  # 封顶驳回不消耗窗口尝试
+        goto(eng, "自由活动", day=3)  # 翻页重置（last_murder_day=2 避免倒计时）
+        self.assertFalse(eng.state["day_kill_capped"])
+
+
+class TestSlowPoison(unittest.TestCase):
+    """v4.0 化学家反派【缓释毒剂】：空手判定、不可防御、当夜睡梦中死亡（翻页结算）；
+    下毒即计入谋杀行为并视为当天成功封顶；中毒者被排除出一切谋杀目标。"""
+
+    def test_poison_delays_death_to_night_flip(self):
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "E": "书房", "A": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.slow_poison("B", "E")
+        self.assertTrue(ev["ok"], ev)
+        self.assertTrue(player(eng, "E")["alive"])          # 目标不知情、照常行动
+        self.assertNotIn("E", ev["private"])                # 目标不被通知
+        self.assertTrue(eng.state["day_kill_capped"])       # 下毒即视为当天成功
+        self.assertEqual(eng.state["last_murder_day"], 2)   # 下毒即重置倒计时
+        self.assertEqual(eng.state["skill_uses"]["B"]["缓释毒剂"], 0)
+        self.assertEqual(eng.state["poisoned"], [{"name": "E", "day": 2, "by": "B"}])
+        self.assertFalse(eng.murder("A", "E")["ok"])        # 中毒者不可再成为谋杀目标（本窗口尝试也已用）
+        # E 照常行动：当夜回自己卧室；翻页时（清晨公告前）结算死亡
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({})
+        self.assertTrue(player(eng, "E")["alive"])          # 晚间仍活着
+        ev = eng.advance()
+        self.assertEqual(eng.state["phase"], {"day": 3, "stage": "案件调查"})
+        self.assertFalse(player(eng, "E")["alive"])
+        case = eng.state["cases"][0]
+        self.assertEqual(case["room"], "E的卧室")           # 案发房间 = 死者卧室
+        self.assertEqual(case["period"], "第2天晚间休息")   # 时段 = 晚间休息
+        self.assertEqual(case["wound"], "毒或药物")
+        self.assertEqual(case["culprit"], "B")              # 杀手线索指向发动者本人
+        self.assertIn("E 死亡", "；".join(ev["public"]["announcements"]))
+        self.assertEqual(eng.state["poisoned"], [])
+
+    def test_poison_unarmed_conditions_and_no_defense(self):
+        """缓释毒剂走空手判定：亮房附加条件不满足 → 驳回；黑暗豁免；急救箱/闪避均不能防御。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        # 亮房：B 体格2 < D 体格3，无性别优势、无同伙在场 → 空手条件驳回
+        free2(eng, {"B": "书房", "D": "书房", "A": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.slow_poison("B", "D")
+        self.assertFalse(ev["ok"])
+        self.assertIn("空手", ev["error"])
+        self.assertEqual(eng.state["skill_uses"]["B"]["缓释毒剂"], 1)  # 驳回不消耗
+        # 黑暗（地下室）：无附加条件；人数不限；D 的闪避与 C 的急救箱都不能防御
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "地下室", "D": "地下室", "C": "地下室", "A": "监控室", "E": "会客室", "F": "会客室"})
+        ev = eng.slow_poison("B", "D")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 1)  # 不可防御：闪避未触发
+        self.assertIn("急救箱", items_of(eng, "C"))
+        self.assertEqual(eng.state["poisoned"][0]["name"], "D")
+
+    def test_poison_civilian_and_wrong_profession_rejected(self):
+        eng = Engine(mk_state())
+        free2(eng, {"B": "书房", "E": "书房", "A": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        self.assertFalse(eng.slow_poison("B", "E")["ok"])  # B 是杀手机械师，非化学家
+        players = default_players()
+        players[2] = P("C", "平民", "化学家", "急救箱", gender="女", physique=3)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"C": "书房", "E": "书房", "A": "监控室", "B": "监控室", "D": "会客室", "F": "会客室"})
+        self.assertFalse(eng.slow_poison("C", "E")["ok"])  # 平民化学家无反派技能
+
+
+class TestStrongAttack(unittest.TestCase):
+    """v4.0 运动员反派【强袭】：无任何附加条件、不可防御；仍受人数限制。"""
+
+    def test_strong_attack_no_conditions_undefendable(self):
+        players = default_players()
+        players[1] = P("B", "杀手", "运动员", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        # 亮房 1 名非反派：B 体格2 < C 体格3、女对女、无同伙在场——强袭全部豁免；
+        # C 的急救箱不能防御
+        free2(eng, {"B": "书房", "C": "书房", "A": "监控室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.strong_attack("B", "C")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder")
+        self.assertEqual(ev["case"]["wound"], "空手")
+        self.assertEqual(ev["case"]["culprit"], "B")
+        self.assertIn("急救箱", ev["case"]["looted"])  # 不可防御：急救箱未触发（尸体道具被缴获）
+        self.assertTrue(eng.state["stage_murder_used"])
+        self.assertTrue(eng.state["day_kill_capped"])
+
+    def test_strong_attack_presence_limit_still_applies(self):
+        players = default_players()
+        players[1] = P("B", "杀手", "运动员", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "C": "书房", "D": "书房", "A": "监控室", "E": "会客室", "F": "会客室"})
+        ev = eng.strong_attack("B", "C")  # 亮房 2 名非反派在场 → 驳回
+        self.assertFalse(ev["ok"])
+        self.assertIn("非反派", ev["error"])
+        self.assertEqual(eng.state["skill_uses"]["B"]["强袭"], 1)  # 驳回不消耗
+        self.assertFalse(eng.state["stage_murder_used"])
+
+
+class TestPharmacology(unittest.TestCase):
+    """v4.0 医师反派【药理学】：杀 = 等同凶器「不明药剂」（凶器判定，救援系可防）；
+    救 = 等同急救箱（savior 路径可救治同房被袭者）。杀/救共用 ×1。"""
+
+    def test_pharmacology_kill(self):
+        players = default_players()
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        # 凶器判定：B 体格2 < E 体格2 无条件限制也能动手（满足人数条件即可）
+        free2(eng, {"B": "书房", "E": "书房", "A": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.pharmacology_kill("B", "E")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["type"], "murder")
+        self.assertEqual(ev["case"]["wound"], "毒或药物")
+        self.assertEqual(eng.state["skill_uses"]["B"]["药理学"], 0)  # 无论成败消耗
+        self.assertTrue(eng.state["day_kill_capped"])
+
+    def test_pharmacology_defended_by_dodge(self):
+        players = default_players()
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "D": "书房", "A": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.pharmacology_kill("B", "D")  # D【敏捷闪避】可抵消（救援系）
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 0)
+        self.assertFalse(eng.state["day_kill_capped"])  # 未遂不封顶
+
+    def test_pharmacology_savior_heals_roommate(self):
+        """救：同房反派医师以【药理学】救治被袭目标（等同急救箱救他人）。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        player(eng, "B")["items"] = [e for e in player(eng, "B")["items"] if e["name"] != "不明药剂"]  # 排除药用防御，专测药理学救人
+        free2(eng, {"A": "地下室", "E": "地下室", "B": "地下室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E", weapon="刀", savior="B")
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertEqual(eng.state["attempts"][0]["defense"], "药理学(他人)")
+        self.assertEqual(eng.state["skill_uses"]["B"]["药理学"], 0)
+
+    def test_pharmacology_civilian_rejected(self):
+        eng = Engine(mk_state())
+        free2(eng, {"C": "书房", "E": "书房", "A": "监控室", "B": "监控室", "D": "会客室", "F": "会客室"})
+        self.assertFalse(eng.pharmacology_kill("C", "E")["ok"])  # C 平民（谋杀权先驳回）
 
 
 if __name__ == "__main__":

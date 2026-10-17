@@ -4,19 +4,24 @@
     python -m src.orchestrator --game game/012345            # 跑完整局（直至产生胜者或主神结局）
     python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点续跑（席位行动粒度）
 
-一天流程：开局准备（仅第 1 天：反派建筑师确认密道）→ 公共发言
+一天流程：开局准备（仅首发开局公告进 feed）→ 公共发言
 （第 1 天改为侦探竞选：声明轮短发言+参选宣告 → 密封退选 → 未参选者投票；v3.5 起当选者获桌上凶器作侦探佩枪；
-第 2 天起为常规发言，侦探末置发言、一票计 1.5）→ 投票（第 2 天起：收票/记忆植入/
+第 2 天起为常规发言，侦探末置发言、一票计 1.5）→ 投票（第 2 天起：收票/篡改投票/
 遗言先于身份公布/封存道具与警徽遗嘱——v3.5 遗嘱道具当天可用、未指定或拒收放回会客室桌上/
 无人出局时武装指认——v3.5 有侦探时仅侦探可指认，无侦探时持械平民或临时取用桌上凶器）→
+反派密谋频道（v4.0：每天两次固定——自由活动开始前先于停电声明轮、晚间休息选房前；
+两名存活杀手按行动顺序各发一段，互相可见、对他人完全不可见）→
 自由活动（会客室/书房/监控室/地下室四选一，白天卧室清场；停电声明并入选房菜单；同入邀请；
 v3.26：先收齐去向声明（靠后者可见先前声明），再经独立开锁行动轮统一进入；开锁者优先，其余进入规则不变；
 v3.11：停电逐人发现——各选房者抵达所选房间时才各自得知停电；房间交谈；
-房间行动（含当面赠送道具）；谋杀窗口（v3.27：谋杀/舞台魔术拆为独立环节，不占房间行动）→ 阶段末毁证窗口）→ 晚间休息（v3.22 与自由活动同构：去向=自己卧室/他人卧室/会客室/
-书房/监控室/地下室，互不可见选择；同入邀请；密道（反派建筑师，出口四房间）；卧室夜间黑暗、
-平民慎入有人的功能房；进入结算后同样是房间交谈（黑暗低语）→ 房间行动（含当面赠送道具/收听窃听器/
-取桌上物品）→ 谋杀窗口（同白天，v3.27 拆出）→ 阶段末毁证窗口）→ advance() 进入次日案件调查
-（清晨公告含状态行/昨日死亡与未遂（不公告死亡时段）/桌上物品变动/调查自荐/死者字条遗嘱）。
+房间行动（含当面赠送道具）；谋杀窗口（v4.0：每窗口全队一次尝试、仅放弃/无目标顺延、
+成功每天全队封顶一起——白天成功后晚间窗口整体跳过）→ 阶段末毁证窗口（v4.0 收窄为篡改专用））→
+晚间休息（v3.22 与自由活动同构：去向=自己卧室/他人卧室/会客室/书房/监控室/地下室，互不可见选择；同入邀请；
+卧室夜间黑暗、平民慎入有人的功能房；进入结算后同样是房间交谈（黑暗低语）→ 房间行动（含当面赠送道具/收听窃听器/
+取桌上物品）→ 谋杀窗口（同白天）→ 阶段末毁证窗口）→ advance() 进入次日案件调查
+（清晨公告含状态行/昨日死亡与未遂（不公告死亡时段）/桌上物品变动/监控宣读/死者字条遗嘱；
+v4.0 清晨调查队列：平民持调查能力者自动结算并全员公告结果（不调 API），反派持调查能力者私密三选一
+（篡改/正常调查/跳过））。
 终局（任一胜负条件满足）自动收束并落盘结局——阶段内循环（房间交谈/房间行动/手电筒判定）在
 winner 产生后即整环节停止调用（v3.24）；简报「游戏状态」段按清晨公告口径显示死亡与倒计时（v3.24）。
 
@@ -57,6 +62,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .engine import Engine
+from .engine.murder import poisoned_names
 from .engine.state import (
     ENV_WEAPON,
     FREE_ROOMS,
@@ -153,14 +159,12 @@ def morning_roster_rows(state: dict, out_day: dict) -> list[tuple[str, str, str,
         rows.append((n, status, p["identity"], p["profession"], skills, items))
     return rows
 
-COVERUP_SKILLS = ("伪造痕迹", "销毁证物", "伪造证物", "转移尸体")  # 毁证类反派技能（道具等价物：可疑的粉末/裹尸袋）
-
 # 开局背景叙述：console 启动画面与 script.md 全记录共用（仅此一份）
 OPENING = """\
 暴风雨之夜。
 你们在一座陌生古堡的石厅中醒来——没有人记得自己是谁、从何而来。
 壁炉里的火烧得正旺，长桌上放着一本规则书，和一张主人留下的字条。
-你们之中，混着杀手与帮凶。"""
+你们之中，混着两名杀手。"""
 
 
 class AbortRun(RuntimeError):
@@ -172,10 +176,10 @@ class SoftStop(Exception):
 
 
 def _receipt_verdict(ev: dict) -> str:
-    """动作裁决的回执定性：ok 不等于达成——谋杀被防御是失败（仍消耗机会），
-    密道等 failed 事件是未发动（不消耗）。此前一律写"→ 成功"，谋杀未遂回执出现成功字样。"""
+    """动作裁决的回执定性：ok 不等于达成——谋杀被防御是失败（仍消耗本窗口尝试），
+    条件不满足的未发动不消耗。此前一律写"→ 成功"，谋杀未遂回执出现成功字样。"""
     if ev.get("defended"):
-        return "→ 失败（袭击被防御，仍消耗本阶段谋杀机会）"
+        return "→ 失败（袭击被防御，仍消耗本窗口谋杀尝试）"
     if ev.get("failed"):
         return "→ 未发动（条件不满足，不消耗）"
     return "→ 成功"
@@ -545,15 +549,15 @@ class Orchestrator:
         if "投票" in title:
             need = (n + 1) / 2  # 严格过半的最小票值（0.5 步进）：n=4→2.5，n=5→3，n=6→3.5
             accuse_ref = ("见规则书 §7.3" if not self.lite else
-                          "持武器的平民可当众指认某人为杀手：指对则当前杀手出局（帮凶存活会继任，反派全灭才平民获胜）、"
-                          "指错指认者出局；资格细节届时见菜单")
+                          "持武器的平民可当众指认某人为杀手：指对则该杀手出局（两名杀手全部出局平民才获胜）、"
+                          "指错（所指为平民）指认者出局；资格细节届时见菜单")
             return [f"存活 {n} 人：出局线 = 得票严格超过 {n}/2，即至少 {need:g} 票（普通票 1、侦探票 1.5）——"
                     f"{need - 0.5:g} 票不够。",
                     "可弃权；平票或未过线 → 本轮无人出局。",
                     f"本轮无人出局时，之后可能进入武装指认（{accuse_ref}）。"]
         if "武装指认" in title:
             return ["每次投票至多接受一次指认，按行动顺序先声明者优先。",
-                    "指认对象确为杀手 → 当前杀手出局（帮凶存活会继任，反派全灭才平民获胜）；指错（帮凶/平民）→ 你直接出局。"]
+                    "指认对象确为杀手（两名杀手都是正确目标）→ 其出局；两名杀手全部出局平民才获胜；指错（所指为平民）→ 你直接出局。"]
         if "死者字条" in title or "遗言" in title:
             return ["遗言/死者字条在身份公布之前——可以撒谎。",
                     "有未使用的遗留道具时一并立遗嘱：逐件指定归属；接收人可拒收；未指定/被拒收的道具不销毁，"
@@ -561,8 +565,8 @@ class Orchestrator:
         if "遗嘱回应" in title:
             return ["拒收的道具不销毁，放回会客室桌上；接受的道具当天即可用。"]
         if "案件调查" in title:
-            return ["现场调查三项任选一项：武器伤痕 / 死亡时间 / 尸体转移；多起案件每起都可查，同一项可被多人重复验证。",
-                    "结果仅你本人可见——公布、隐瞒或撒谎由你决定。"]
+            return ["现场调查一次拿全四项：死亡时间 / 尸体是否被移动过 / 武器伤痕 / 杀手线索；结果由主持人向全员公告（含调查者姓名）。",
+                    "每起案件只被调查一次，首个完成的调查即定型；平民持调查能力者由主持人自动结算，反派持调查能力者可选择篡改/正常调查/跳过。"]
         if "选房" in title:
             return ["顺序靠后者可见顺序靠前者的去向声明；声明收齐后先统一开锁，再统一进入。",
                     "房间满员/上锁而无人开门/被【封闭空间】挡住 → 滞留会客室。"]
@@ -577,9 +581,13 @@ class Orchestrator:
                     "当面赠送：限同房者，对方可拒绝；赠送算你的本阶段房间行动（谋杀不在此环节，见谋杀窗口）。",
                     "报案也算你的本阶段房间行动；不报案则无人知道你发现了尸体（除非你亲口说出）。"]
         if "谋杀窗口" in title:
-            return ["每阶段独立一次谋杀机会（自由活动与晚间休息各一次），放弃不消耗——没有目标也不消耗。",
-                    "谋杀不占房间行动，房间行动也不占谋杀机会（v3.27 拆为两个独立环节）。",
-                    "动作被驳回 = 未发生袭击，不消耗机会；谋杀失败 = 已进入攻击判定但被防御，消耗机会，且自第 2 天起重置无杀倒计时。"]
+            return ["每个谋杀窗口全队至多一次尝试（自由活动与晚间休息各一个窗口），仅放弃或无合法目标才顺延给同伙；一旦有人发动（无论成败）本窗口结束。",
+                    "每天全队至多一起成功谋杀：今天已有人得手，后续窗口不再有谋杀；未遂不封顶——当晚窗口仍可再试。",
+                    "谋杀不占房间行动，房间行动也不占谋杀尝试（两个独立环节）。",
+                    "动作被驳回 = 未发生袭击，不消耗尝试；谋杀失败 = 已进入攻击判定但被防御，消耗尝试，且从第 1 天起任何谋杀出手（含未遂）都重置无杀倒计时。"]
+        if "密谋" in title:
+            return ["密谋频道只有两名杀手可见——互相可见、对其他所有人完全不可见；每人只发一段，写在 speech 字段。",
+                    "每天两次固定（自由活动开始前、晚间休息选房前），不随当天谋杀是否已发生而取消。"]
         if "密谈" in title or "夜谈" in title or "低语" in title:
             return ["密谈/低语内容只有房间内的人能听到（含你们看不见的潜伏者）；按行动顺序各发言一次。"]
         if "晚间休息" in title:
@@ -587,10 +595,9 @@ class Orchestrator:
                     "平民不敢非受邀进入已有他人的书房/监控室/地下室（被邀请者与反派不受此限）。",
                     "夜宿会客室：始终明亮、人数不限，但夜宿者名单次日清晨公开。",
                     "若你进入的房间有尚未公告的尸体，你会当场私下发现（见私密事件）；是否报案见房间行动菜单。"]
-        if "秘密布置" in title:
-            return ["反派建筑师只需确认密道网存在，无需选定出口；之后可在晚间休息时使用。"]
         if "毁证机会" in title:
-            return ["仅当现场没有其他非反派角色时：杀手可缴获尸体上的未使用道具、可发动毁证类技能/道具。"]
+            return ["毁证窗口（v4.0 收窄为篡改专用）：仅当现场没有其他非反派角色且你身处案发现场时，"
+                    "可消耗一次调查次数篡改案件（随机改两项结论，此后本案调查结果永久为假）；亮房中此行为会被同房者看见。"]
         return []
 
     def _game_state_lines(self) -> list[str]:
@@ -679,9 +686,9 @@ class Orchestrator:
             parts = ["你当前持有凶器：" + "、".join(held)]
         elif self.lite:
             # lite 规则书无 §7.6：空手条件临场内联发给杀手
-            parts = ["你当前未持有凶器（只能空手。空手谋杀需满足其一：帮凶在场 / 你体格不弱于目标 / "
+            parts = ["你当前未持有凶器（只能空手。空手谋杀需满足其一：另一名杀手在场 / 你体格不弱于目标 / "
                      "你男而目标女；黑暗房间（含夜间卧室）中无任何附加条件——空手不被凶器克制，"
-                     "但仍可能被急救箱/敏捷闪避抵消）"]
+                     "但仍可能被急救箱/敏捷闪避等救援手段抵消）"]
         else:
             parts = ["你当前未持有凶器（只能空手，空手条件见规则 §7.6）"]
         env = ENV_WEAPON.get(room or "")
@@ -797,8 +804,9 @@ class Orchestrator:
 
     def reject_note(self, p: dict, ev: dict) -> None:
         msg = f"你的动作被驳回：{ev.get('error', '未知原因')}"
-        if ev.get("type") in ("murder", "stage_magic"):
-            msg += "（本次未发生袭击，不消耗本阶段谋杀机会，也不重置无杀倒计时）"
+        if ev.get("type") in ("murder", "stage_magic", "strong_attack", "slow_poison",
+                              "passage_kill", "pharmacology_kill", "device_fire"):
+            msg += "（本次未发生袭击，不消耗本窗口谋杀尝试，也不重置无杀倒计时）"
         self.tell(p["name"], msg)
 
     def apply_actions(self, p: dict, actions: list[dict], retry: dict | None = None,
@@ -882,11 +890,14 @@ class Orchestrator:
             ev = self.eng.view_monitoring(name)
             if ev.get("ok"):
                 ev["private"] = {name: "监控记录（公开口径，今日新增置顶）：" + fmt_monitoring(ev["private"][name], day)}
-        elif at == "tamper":
-            ev = self.eng.tamper_monitoring(
-                name, str(act.get("period", "")), str(act.get("room", "")),
-                str(act.get("op", "")), str(act.get("name", "")), act.get("new_name"),
-            )
+        elif at == "remote_view_monitoring":
+            # v4.0【远程入侵】/「木马程序U盘」：远程查看（无需身处监控室）
+            ev = self.eng.remote_view_monitoring(name)
+            if ev.get("ok"):
+                ev["private"] = {name: "监控记录（公开口径，今日新增置顶）：" + fmt_monitoring(ev["private"][name], day)}
+        elif at == "remote_tamper_monitoring":
+            # v4.0 反派用途：远程抹除某天某时段的全部监控记录（永不恢复）
+            ev = self.eng.remote_tamper_monitoring(name, str(act.get("period", "")))
         elif at == "open_safe":
             ev = self.eng.open_safe(name)
         elif at == "unlock":
@@ -914,32 +925,36 @@ class Orchestrator:
             return self._gift(p, act)  # v3.27：当面赠送——含接收方同意流，自行记录与路由
         elif at == "seal_room":
             ev = self.eng.seal_room(name, act.get("allowed") or [])
-        elif at == "use_passage":
-            ev = self.eng.use_passage(name, str(act.get("room", "")))
         elif at == "set_device":
             ev = self.eng.set_device(name, str(act.get("room", "")))
         elif at == "murder":
             ev = self.eng.murder(name, str(act.get("target", "")), act.get("weapon"), act.get("savior"))
         elif at == "stage_magic":
-            ev = self.eng.stage_magic(name, str(act.get("target", "")))
+            ev = self.eng.stage_magic(name, str(act.get("target", "")), act.get("savior"))
+        elif at == "strong_attack":
+            ev = self.eng.strong_attack(name, str(act.get("target", "")))
+        elif at == "slow_poison":
+            ev = self.eng.slow_poison(name, str(act.get("target", "")))
+        elif at == "pharmacology_kill":
+            ev = self.eng.pharmacology_kill(name, str(act.get("target", "")), act.get("savior"))
+        elif at == "passage_kill":
+            ev = self.eng.passage_kill(name, str(act.get("target", "")), act.get("weapon"), act.get("savior"))
+        elif at == "device_fire":
+            ev = self.eng.device_fire(name)
         elif at == "report":
             ev = self.eng.report(name)
         elif at == "declare_blackout":
             ev = self.eng.declare_blackout(name)
-        elif at in ("falsify", "move_body", "investigate", "profile"):
+        elif at in ("investigate", "tamper_investigation"):
             # 案件指认主口径 = 受害者名字（"case"/"victim" 字段）；兼容旧式整数 case_id。
             # 解析失败走驳回重报，绝不允许异常炸穿跑局（game/18 复盘）
             case, err = self._resolve_case(act)
             if err is not None:
                 ev = err
-            elif at == "falsify":
-                ev = self.eng.falsify(name, case["id"], str(act.get("kind", "")))
-            elif at == "move_body":
-                ev = self.eng.move_body(name, case["id"], str(act.get("to_room", "")))
             elif at == "investigate":
-                ev = self.eng.investigate(name, case["id"], str(act.get("choice", "")))
+                ev = self.eng.investigate(name, case["id"])  # v4.0：一次拿全四项、结果公开
             else:
-                ev = self.eng.profile(name, case["id"], str(act.get("aspect", "")))
+                ev = self.eng.tamper_investigation(name, case["id"])
         if ev is None:
             return None
         self.script_action(name, act, ev)
@@ -990,9 +1005,10 @@ class Orchestrator:
             raise SoftStop
 
     def run_prep(self) -> None:
-        """开局准备：仅反派建筑师需要确认密道；窃听器改为后续到场放置。"""
+        """开局准备（v4.0：无秘密布置环节——密道改为谋杀窗口动作，建筑师无需开局确认）：
+        仅在新局首发把开局公告（保险箱内容/桌上凶器，§2 公开信息）送入 feed。"""
         if not self.orch["feed"]:
-            # 开局公告（保险箱内容/桌上凶器，§2 公开信息）此前只进 script.md/console，从未送达玩家
+            # 开局公告此前只进 script.md/console，从未送达玩家
             # （game/5 复盘：全员引用"开局公告"但内容靠编）。新局首发进 feed。
             # script.md 开头 _init_script 已写「开局公告（主人字条）」整节——这里只送 feed/public/console，不进 script（避免重复）
             ann = self.dir / "public" / "announcement.md"
@@ -1002,24 +1018,44 @@ class Orchestrator:
                     if ln and not ln.startswith("#"):
                         self.feed_line(ln)
                         self._fire("on_public", ln)
-        day = self.state["phase"]["day"]
-        w = self.wip(f"{day}:开局准备:布置", done=[])
-        for p in self.alive():
+
+    def run_villain_chat(self, day: int, stage: str) -> None:
+        """反派密谋频道（v4.0）：每天两次固定——自由活动开始前（先于停电声明轮）与晚间休息选房前。
+
+        两名存活杀手按行动顺序各发一段密谋发言（纯文本、无动作、互相可见、对其他人完全不可见）；
+        一方死亡后频道自然消失；两次密谋无条件进行，不随当天谋杀是否已发生而取消。
+        存档：双方 private/<id>/log.md 与 script.md（剧透线）；不进 public/feed。
+        """
+        s = self.state
+        killers = [p for n in s["order"]
+                   if (p := self.player(n)) and p["alive"] and is_villain(p)]
+        if len(killers) < 2:
+            return  # 一方死亡后频道自然消失
+        w = self.wip(f"{day}:{stage}:密谋", done=[], lines=[])
+        lines: list[str] = list(w["lines"])
+        for p in killers:
+            if s["winner"]:
+                return
             if p["name"] in w["done"]:
                 continue
-            menu = []
-            if is_villain(p) and p["profession"] == "建筑师" and skill_left(self.state, p["name"], "建造密道") > 0:
-                menu.append('- 确认密道（无需指定出口；晚间休息时可经密道前往书房/监控室/地下室）：{"type": "set_passage"}')
-            if not menu:
-                continue
-            briefing = self.build_briefing(p, "开局准备 · 秘密布置", menu,
-                                           f"开局前的秘密布置环节。这是你的开局义务，现在声明。\n{NO_SPEECH_NOTE}")
-            payload = self.call_ai(p, "开局准备", briefing)
-            for act in payload["actions"]:
-                if act.get("type") == "set_passage":
-                    ev = self.eng.set_passage(p["name"])
-                    self.script_action(p["name"], act, ev)
-                    self.route(ev) if ev["ok"] else self.reject_note(p, ev)
+            partner = next(q["name"] for q in killers if q["name"] != p["name"])
+            menu = ["- 本环节无任何动作：actions 返回 []；把你要对同伙说的话写在 speech 字段（只有 TA 能看到）"]
+            extra = (f"密谋频道：此刻只有你和你的同伙 {partner}。你说的内容互相可见、对其他所有人完全不可见。"
+                     "每人只发一段——协调接下来的分工与口径（谁动手、何时动手、如何串供）。")
+            if lines:
+                extra += "\n本频道已发生的密谋：\n" + "\n".join(lines)
+            briefing = self.build_briefing(p, f"第{day}天 · {stage}（反派密谋）", menu, extra)
+            payload = self.call_ai(p, f"{stage}-密谋", briefing)
+            speech = str(payload.get("speech") or "").strip()
+            line = f"{p['name']}：{speech}" if speech else f"{p['name']}：（沉默）"
+            lines.append(line)
+            w["lines"] = list(lines)
+            for q in killers:  # 双方私密存档（互相可见）；不进公开渠道
+                seat = self.seat(q)
+                with open(self.dir / "private" / seat / "log.md", "a", encoding="utf-8") as f:
+                    f.write(f"\n## 第{day}天 · {stage}（反派密谋）\n\n{line}\n")
+            self.script_line(f"  密谋频道（{stage}前）｜{line}")  # script.md 剧透线
+            self._fire("on_private", "密谋频道", line)
             w["done"].append(p["name"])
             self.save_state()
             self.check_stop()
@@ -1205,20 +1241,26 @@ class Orchestrator:
         return ev
 
     def murder_menu(self, p: dict, day: int) -> list[str]:
-        """谋杀窗口菜单（v3.27）：谋杀/舞台魔术从房间行动拆出后的独立小菜单。"""
+        """谋杀窗口菜单（v4.0）：普通谋杀 + 反派职业技能杀 + 机关启动推送。
+
+        全队共享本窗口一次尝试（stage_murder_used）与每日成功封顶（day_kill_capped）——
+        两者置位即无菜单；中毒目标排除出一切谋杀/技能杀对象（rules-6 §3 化学家）。
+        """
         s = self.state
         name = p["name"]
-        if s["stage_murder_used"]:
+        if s["stage_murder_used"] or s["day_kill_capped"]:
             return []
+        if not is_villain(p):
+            return []
+        menu: list[str] = []
         room = s["positions"].get(name)
+        poisoned = poisoned_names(s)
         targets = [q["name"] for q in self.alive()
-                   if q["name"] != name and s["positions"].get(q["name"]) == room and not is_villain(q)]
-        if not targets:
-            return []
-        menu = []
-        if p["identity"] == "杀手" or name in s["passage_stealth"]:
-            # v3.32：经密道进场的帮凶同获当阶段谋杀权（击杀归属发动者本人）
-            menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
+                   if q["name"] != name and s["positions"].get(q["name"]) == room
+                   and not is_villain(q) and q["name"] not in poisoned]
+        prof = p["profession"]
+        if targets:
+            menu.append(f'- 谋杀（本窗口全队一次尝试）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
             if room == HALL:
                 # v3.31：会客室桌上凶器视同环境凶器临时取用（无需持有，用后消耗）
                 table_weapons = [e["name"] for e in s["table_items"] if e["name"] in WEAPONS]
@@ -1226,34 +1268,65 @@ class Orchestrator:
                     menu.append('- 使用会客室桌上凶器（视同环境凶器临时取用，无需持有，用后消耗，'
                                 f'次日清晨公告桌上变动）：{{"type": "murder", "target": "{"|".join(targets)}", '
                                 f'"weapon": "{"|".join(table_weapons)}"}}')
-        if is_villain(p) and p["profession"] == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
-            menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御；占用当阶段谋杀机会）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
+            if prof == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
+                menu.append(f'- 舞台魔术（任意人数在场也可空手完成谋杀；可被急救箱/敏捷闪避/药理学/药用不明药剂抵消；占用本窗口尝试，整局一次）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
+            if prof == "运动员" and skill_left(s, name, "强袭") > 0:
+                menu.append(f'- 强袭（空手强杀：无附加条件、不可防御，但仍受人数限制；占用本窗口尝试，整局一次）：{{"type": "strong_attack", "target": "{"|".join(targets)}"}}')
+            if prof == "医师" and skill_left(s, name, "药理学") > 0:
+                menu.append(f'- 药理学·毒杀（等同凶器不明药剂：凶器判定、可被急救箱/敏捷闪避等救援手段防御；占用本窗口尝试，整局一次）：{{"type": "pharmacology_kill", "target": "{"|".join(targets)}"}}')
+            if prof == "化学家" and skill_left(s, name, "缓释毒剂") > 0:
+                menu.append(f'- 缓释毒剂（走空手判定、不可防御；目标不知情、当夜睡梦中死亡；占用本窗口尝试并视为当天成功，整局一次）：{{"type": "slow_poison", "target": "{"|".join(targets)}"}}')
+        if prof == "建筑师" and skill_left(s, name, "建造密道") > 0:
+            # v4.0 密道谋杀：出口实况标注（明/暗、在场非反派、可选目标），经密道现身该房间动手
+            exits = []
+            for r in FREE_ROOMS:
+                nv = [q["name"] for q in self.alive()
+                      if not is_villain(q) and s["positions"].get(q["name"]) == r and q["name"] not in poisoned]
+                light = "暗" if is_dark(s, r) else "亮"
+                exits.append(f"{r}（{light}，非反派 {len(nv)} 人{(('：' + '、'.join(nv)) if nv else '，无目标')}）")
+            targets_out = [q["name"] for q in self.alive()
+                           if not is_villain(q) and q["name"] not in poisoned
+                           and s["positions"].get(q["name"]) in FREE_ROOMS]
+            if targets_out:
+                menu.append("- 密道谋杀（经密道现身出口房间动手：走正常谋杀判定；监控与众人眼中你本阶段一直在自己卧室；"
+                            "整局限成功一次；占用本窗口尝试）："
+                            + "；".join(exits)
+                            + f'——{{"type": "passage_kill", "target": "{"|".join(targets_out)}"}}（可加 "weapon"）')
+        if prof == "机械师":
+            for d in self.eng.pending_devices():
+                if d["setter"] == name:
+                    menu.append(f'- 启动延时装置（机关感应到猎物：{d["room"]}的{d["victim"]}独处——远程启动将其击杀，'
+                                f'不可防御；占用本窗口尝试）：{{"type": "device_fire"}}')
         return menu
 
     def murder_window(self, day: int, stage: str) -> None:
-        """谋杀窗口（v3.27）：房间行动结束后的独立环节——杀手/反派魔术师单独决定是否动用
-        本阶段谋杀机会。从房间行动拆出（试玩期实测杀手胜率偏低：拆出后"杀人"不再与"用设施"
-        互斥，杀手每阶段可多做一个非谋杀行动）。谋杀/舞台魔术仍是本阶段唯一一次谋杀机会。"""
+        """谋杀窗口（v4.0）：房间行动结束后的独立环节。按行动顺序逐一私密询问有合法手段的杀手：
+        仅"放弃/无合法目标"顺延给下一位；一旦有人发动（无论成败）本窗口结束（stage_murder_used）。
+        成功击杀每天全队封顶一起（day_kill_capped）：封顶后本窗口直接整体跳过。
+        窗口全私密——后收到菜单的杀手可知"本窗口你的同伙尚未动手"。"""
+        s = self.state
+        if s["day_kill_capped"]:
+            return  # 每日封顶：白天已有人成功 → 晚间窗口整体跳过
         w = self.wip(f"{day}:{stage}:谋杀", done=[])
-        for name in self.state["order"]:
-            if self.state["winner"]:
-                return
+        for name in s["order"]:
+            if s["winner"] or s["stage_murder_used"] or s["day_kill_capped"]:
+                return  # 一旦有人发动（无论成败）本窗口结束
             if name in w["done"]:
                 continue
             p = self.player(name)
-            if not p or not p["alive"]:
+            if not p or not p["alive"] or not is_villain(p):
                 continue
             menu = self.murder_menu(p, day)
             if not menu:
-                if p["identity"] == "杀手" and not self.state["stage_murder_used"]:
-                    room = self.state["positions"].get(name) or "当前位置"
-                    self.tell(name, f"本阶段（{stage}）你在{room}没有可攻击目标；未发生袭击，"
-                                    "不消耗本阶段谋杀机会，也不重置无杀倒计时")
-                    w["done"].append(name)
-                    self.save_state()
+                room = s["positions"].get(name) or "当前位置"
+                self.tell(name, f"本窗口（{stage}）你在{room}没有可攻击目标与可用手段；未发生袭击，"
+                                "不消耗本窗口谋杀尝试，也不重置无杀倒计时（机会顺延给你的同伙）")
+                w["done"].append(name)
+                self.save_state()
                 continue
-            extra = (f"这是本阶段（{stage}）的谋杀窗口——房间行动已结束，现在只需决定：动手，还是收手。"
-                     "声明发动即消耗机会——失败（被自卫/技能抵消）同样消耗；放弃或没有目标则不消耗。"
+            extra = (f"这是本窗口（{stage}）的谋杀环节——房间行动已结束，现在只需决定：动手，还是收手。"
+                     "本窗口你的同伙尚未动手；全队至多一次尝试：你放弃或无合法目标才顺延给 TA，"
+                     "一旦有人发动（无论成败）本窗口结束；今天全队至多一起成功谋杀。"
                      f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · {stage}（谋杀窗口）", menu, extra)
             payload = self.call_ai(p, f"{stage}-谋杀窗口", briefing)
@@ -1265,10 +1338,11 @@ class Orchestrator:
             self.check_stop()
 
     def run_free_activity(self) -> None:
-        """自由活动：停电声明轮（选房前）→ 秘密选房+邀请 → 结算 → 手电筒判定 → 房间交谈 → 房间行动 → 谋杀窗口。"""
+        """自由活动：反派密谋频道（先于停电声明轮）→ 秘密选房+邀请（内含停电声明轮）→ 结算 → 手电筒判定 → 房间交谈 → 房间行动 → 谋杀窗口。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         if self.state["rooms_entered"] != period:
+            self.run_villain_chat(day, "自由活动")  # v4.0 密谋频道①：先于停电声明轮
             self.select_rooms(day, period)
         if self.state["rooms_entered"] != period:
             return
@@ -1469,8 +1543,6 @@ class Orchestrator:
             for ln in summary:
                 self.script_line("- " + ln if ln.startswith("选房结果") else "  " + ln)
             self._fire("on_summary", "选房结果", summary)
-            for v in ev.get("device_triggers", []):
-                self.script_line(f"  延时装置触发：{v}")
             self.save_state()
         else:
             print(f"  选房收尾失败：{ev.get('error')}")
@@ -1615,8 +1687,12 @@ class Orchestrator:
         # 但谋杀/舞台魔术/延时装置合法——永不黑暗、不可封闭由下方各项自身条件保证。
         if room == "监控室":
             menu.append('- 查看监控（返回全部已有记录，无需参数）：{"type": "view_monitoring"}')
-            if is_villain(p) and (skill_left(s, name, "信号干扰") > 0 or held_item(p, "病毒U盘", day) is not None):
-                menu.append('- 篡改一条监控记录：{"type": "tamper", "period": "第N天自由活动", "room": "场所", "op": "add|remove|replace", "name": "进入者", "new_name": "替换为"}')
+        # v4.0【远程入侵】/「木马程序U盘」：远程查看监控（人人可用）；反派额外可整段抹除（×1，查看/抹除任选其一）
+        if skill_left(s, name, "远程入侵") > 0 or held_item(p, "木马程序U盘", day) is not None:
+            menu.append('- 远程查看监控（无需身处监控室；用掉即消耗）：{"type": "remote_view_monitoring"}')
+            if is_villain(p):
+                menu.append('- 远程抹除监控记录（指定某天某时段的全部记录清零、永不恢复，宣读时注明缺失）：'
+                            '{"type": "remote_tamper_monitoring", "period": "第N天自由活动|第N天晚间休息"}')
         if room == "书房" and not s["safe_open"]:
             menu.append('- 打开保险箱：{"type": "open_safe"}（需要开锁手段）')
         if s["locks"].get(room) and not is_bedroom(room):
@@ -1639,8 +1715,8 @@ class Orchestrator:
                     items_desc = "、".join(f"「{e['name']}」（剩 {e['uses_left']} 次）" for e in s["table_items"])
                     menu.append(f'- 取走桌上一物品（当前桌上：{items_desc}；取用无人看见，明早会公告物品不见了）：{{"type": "take_table", "item": "物品名"}}')
         if room in FREE_ROOMS and is_villain(p) and p["profession"] == "机械师":
-            # v3.29：任何房间行动阶段均可设置；本阶段不触发，后续进入结算才检查
-            menu.append('- 设置延时装置（本阶段不触发，后续进入结算时检查）：{"type": "set_device", "room": "当前房间名"}')
+            # v4.0：预设后不再自动触发——从下一阶段起，谋杀窗口内猎物独处时你会收到机关推送（手动远程启动）
+            menu.append('- 预设延时装置（本阶段不触发；之后猎物独处时你会在谋杀窗口收到推送，远程决定启动）：{"type": "set_device", "room": "当前房间名"}')
         if room in FREE_ROOMS and s["bug_room"] is None and held_item(p, "窃听器", day) is not None:
             menu.append('- 在当前房间放置窃听器（只记录放置后发生的交谈）：{"type": "place_bug", "room": "当前房间名"}')
         if any(not c.get("announced") and c["room"] == room for c in s["cases"]):
@@ -1656,14 +1732,14 @@ class Orchestrator:
         return menu
 
     def run_night(self) -> None:
-        """晚间休息（v3.22 与自由活动同构）：去向收集（互不可见）→ 进入结算 → 密道 → 手电筒判定 → 房间交谈 → 房间行动。"""
+        """晚间休息（v3.22 与自由活动同构）：反派密谋频道（选房前）→ 去向收集（互不可见）→ 进入结算 → 手电筒判定 → 房间交谈 → 房间行动 → 谋杀窗口。"""
         day = self.state["phase"]["day"]
         period = current_period(self.state)
         if self.state["night_assigned"] != period:
+            self.run_villain_chat(day, "晚间休息")  # v4.0 密谋频道②：晚间休息选房前
             self.night_select(day, period)
         if self.state["night_assigned"] != period:
             return
-        self.night_passages(day)
         self.flashlight_phase(day, "晚间休息")
         self.room_talks(day, "晚间休息")
         self.room_actions(day, "晚间休息")
@@ -1671,11 +1747,10 @@ class Orchestrator:
 
     def night_select(self, day: int, period: str) -> None:
         """秘密收齐去向，随后统一执行开锁行动轮与进入轮。"""
-        w = self.wip(f"{day}:晚间休息:归宿", done=[], assignments={}, invites={}, passages={},
-                     settled=False, passage_done=[], unlock_done=[], unlockers={})
+        w = self.wip(f"{day}:晚间休息:归宿", done=[], assignments={}, invites={},
+                     settled=False, unlock_done=[], unlockers={})
         assignments: dict[str, str] = dict(w["assignments"])
         pending_invite: dict[str, str] = dict(w["invites"])
-        passages: dict[str, dict] = {k: dict(v) for k, v in w.get("passages", {}).items()}
         if w["settled"]:
             return
         alive_names = [p["name"] for p in self.alive()]
@@ -1707,14 +1782,12 @@ class Orchestrator:
                 v = pending_invite[name]
                 dest = assignments.get(v) or f"{bedroom_of(v)}（TA 的卧室，默认）"
                 extra += f"\n{v} 邀请你今晚与 TA 同去——接受就把 choose_room 选为与 TA 相同的目的地（TA 的目的地：{dest}）。"
-            if is_villain(p) and p["profession"] == "建筑师" and self.state["passage"] and not self.state["passage"]["used"]:
-                menu.append('- 使用密道（当夜行动，与 choose_room 互斥——从卧室出发；监控无痕；出口人数须满足谋杀人数条件，否则当晚失败但密道保留）：{"type": "use_passage", "room": "会客室|书房|监控室|地下室", "do": "open_safe|view_monitoring|fix_generator|unlock（可选）"}')
-            # v3.22：白天死亡不再即时公告——毁证提示只发给案件凶手本人（其他反派无从得知案发）
+            # v3.22：白天死亡不再即时公告——篡改提示只发给案件凶手本人（其他反派无从得知案发）
             coverable = [c for c in self._coverable_cases(day) if c["culprit"] == name]
             if coverable and is_villain(p) and self._has_coverup_means(p):
                 rooms = "、".join(dict.fromkeys(c["room"] for c in coverable))
-                extra += (f"\n提示：你制造的案件（{rooms}）现场仍可处理——毁证/移尸仅限案发当天，"
-                          "明晨案件调查后现场即无法改动。今晚前往案发房间，房间行动阶段即可获得毁证机会。")
+                extra += (f"\n提示：你制造的案件（{rooms}）现场仍可处理——篡改仅限案发当天，"
+                          "明晨案件调查后现场即无法改动。今晚前往案发房间，阶段末毁证窗口即可篡改案件调查。")
             briefing = self.build_briefing(p, f"第{day}天 · 晚间休息", menu, extra)
             payload = self.call_ai(p, "晚间休息", briefing)
             for act in payload["actions"]:
@@ -1728,18 +1801,11 @@ class Orchestrator:
                     owner = bedroom_owner(room) if is_bedroom(room) else None
                     if room in FREE_ROOMS or (owner and owner != name and owner in alive_names):
                         assignments[name] = room
-                        passages.pop(name, None)
                 elif at == "stay":
                     assignments.pop(name, None)
-                    passages.pop(name, None)
-                elif at == "use_passage":
-                    room = str(act.get("room", ""))
-                    if room in FREE_ROOMS and name not in assignments:
-                        passages[name] = {"room": room, "do": str(act.get("do", ""))}
             w["done"].append(name)
             w["assignments"] = dict(assignments)
             w["invites"] = dict(pending_invite)
-            w["passages"] = {k: dict(v) for k, v in passages.items()}
             self.save_state()
             self.check_stop()
         unlockers = self.entry_unlock_round(day, "晚间休息", assignments, w)
@@ -1760,33 +1826,13 @@ class Orchestrator:
             self.script_line("  " + summary[-1])
         self._fire("on_summary", "晚间归宿", summary)  # console：结算总结独立分隔段
         self.script_private(ev)
-        for v in ev.get("device_triggers", []):
-            self.script_line(f"  延时装置触发：{v}")
         w["settled"] = True
         self.save_state()
 
-    def night_passages(self, day: int) -> None:
-        """密道执行（归宿结算后）：成功则隐身转移到出口房间，随后参与该房间的交谈与行动。"""
-        w = self.wip(f"{day}:晚间休息:归宿", done=[], assignments={}, invites={}, passages={},
-                     settled=False, passage_done=[])
-        passages: dict[str, dict] = {k: dict(v) for k, v in w.get("passages", {}).items()}
-        for name, ps in passages.items():
-            if name in w["passage_done"]:
-                continue
-            w["passage_done"].append(name)
-            p = self.player(name)
-            if p is not None and p["alive"]:
-                ev = self.eng.use_passage(name, ps["room"])
-                self.script_action(name, {"type": "use_passage", "room": ps["room"]}, ev)
-                self.route(ev) if ev["ok"] else self.reject_note(p, ev)
-                if ev["ok"] and not ev.get("failed") and ps.get("do"):
-                    self.dispatch(p, {"type": ps["do"], "room": ps["room"]})
-            self.save_state()
-
     def run_investigation(self) -> None:
-        """案件调查：调查自荐（现场调查/鲁米诺试剂/犯罪侧写）+ 死者字条遗嘱。
+        """案件调查：死者字条遗嘱 + v4.0 清晨调查队列。
 
-        清晨公告（死亡/未遂/强制开锁/职业公开/监控宣读）由 advance() 统一路由，此处只管调查动作。
+        清晨公告（死亡/未遂/强制开锁/职业公开/监控宣读）由 advance() 统一路由，此处只管遗嘱与调查队列。
         无案件的清晨不调用任何 AI（未遂不产生案件：无尸体无现场，无可调查对象），直接跳过。
         """
         day = self.state["phase"]["day"]
@@ -1811,34 +1857,71 @@ class Orchestrator:
             if has_will:
                 self.run_bequest(victim, mapping)
             self.check_stop()
+        # v4.0 清晨调查队列（rules-6 §7.1）：公告案件后，持调查能力者按行动顺序逐一处理每起未定型案件——
+        # 平民自动调查（不调 API，系统直接结算并全员公告）；反派私密菜单三选一（篡改/正常调查/跳过）。
+        # 队列由引擎 investigation_queue() 重建：案件定型（investigated）或持有者次数用尽即自动消失。
+        # 篡改不封闭调查：篡改者只记 tkey，随后仍会被再次询问（可亲自调查把假结论公告出去）；
+        # 无平民持调查能力且反派也不查 → 本案永不调查（规则书 §7.1）。
         w = self.wip(f"{day}:案件调查:调查", done=[])
-        case_lines = [f"{c['victim']}（第{c['day']}天，{c['room']}）" for c in self.state["cases"]]
-        for name in self.state["order"]:
-            if self.state["winner"]:
-                return
+        done: set[str] = set(w["done"])
+        while not self.state["winner"]:
+            queue = self.eng.investigation_queue()
+            step = None
+            for entry in queue:
+                for h in entry["holders"]:
+                    if f"{entry['case_id']}:{h['name']}" not in done:
+                        step = (entry, h)
+                        break
+                if step:
+                    break
+            if step is None:
+                break
+            entry, h = step
+            name = h["name"]
             p = self.player(name)
-            if not p or not p["alive"] or name in w["done"]:
+            if not h["villain"]:
+                # 平民：自动调查（不消耗 API 调用）——系统直接结算并向全员公告结果
+                ev = self.eng.investigate(name, entry["case_id"])
+                self.script_action(name, {"type": "investigate", "case": entry["victim"]}, ev)
+                self.route(ev)
+                done.add(f"{entry['case_id']}:{name}")
+                w["done"] = sorted(done)
+                self.save_state()
+                self.check_stop()
                 continue
-            menu = []
-            if skill_left(self.state, name, "现场调查") > 0 or held_item(p, "鲁米诺试剂", day) is not None:
-                menu.append('- 现场调查（每起案件可选一项获知真实结论，可申报多次、次数以剩余为准）：{"type": "investigate", "case": "受害者名字", "choice": "武器伤痕|死亡时间|尸体转移"}')
-            if skill_left(self.state, name, "犯罪侧写") > 0:
-                menu.append('- 犯罪侧写（获知凶手本人的一项特征）：{"type": "profile", "case": "受害者名字", "aspect": "性别|国籍|体格"}')
-            if not menu:
-                continue
-            extra = "已发生的案件（用受害者名字指认）：\n" + "\n".join(case_lines)
-            extra += "\n调查结果仅你本人可见——是否公布、隐瞒或撒谎，由你在发言中决定。"
-            extra += f"\n{NO_SPEECH_NOTE}"
-            briefing = self.build_briefing(p, f"第{day}天 · 案件调查", menu, extra)
+            # 反派：私密菜单——正常调查（结果公开为真）/ 篡改（随机两项，永久为假）/ 跳过
+            victim = entry["victim"]
+            case_now = next(c for c in self.state["cases"] if c["id"] == entry["case_id"])
+            menu = [
+                f'- 正常调查（一次拿全四项结论，结果向全员公告并含你的名字——第一个公开调查的人能攒清白度）：{{"type": "investigate", "case": "{victim}"}}',
+            ]
+            if case_now["falsified"] is None:
+                menu.append(f'- 篡改（随机篡改四项中的两项，此后本案调查结果永久为假；无人会察觉篡改本身；消耗一次调查次数）：{{"type": "tamper_investigation", "case": "{victim}"}}')
+            menu.append("- 跳过（不处理本案——队列中排在你之后的持有者仍可能调查它）：actions 返回 []")
+            extra = (f"清晨调查队列轮到你了：案件 = {victim}（{entry['room']}）。你是反派，"
+                     + ("本案已被你方篡改——你可以亲自调查，把污染过的结论公告出去（公告口径与真调查无异）。"
+                        if case_now["falsified"] is not None else
+                        "本案尚未被篡改也尚未被调查。第一个公开调查的人能攒清白度；"
+                        "篡改则永久污染本案结论（你可以顺势按假结论撒谎）。")
+                     + f"\n{NO_SPEECH_NOTE}")
+            briefing = self.build_briefing(p, f"第{day}天 · 案件调查（轮到你了）", menu, extra)
             payload = self.call_ai(p, "案件调查", briefing)
+            falsified_before = case_now["falsified"]
             self.apply_actions(p, payload["actions"], retry={
-                "label": "案件调查", "title": f"第{day}天 · 案件调查", "menu": menu, "extra": extra})
-            w["done"].append(name)
+                "label": "案件调查", "title": f"第{day}天 · 案件调查（轮到你了）", "menu": menu, "extra": extra},
+                max_actions=1)
+            case_after = next(c for c in self.state["cases"] if c["id"] == entry["case_id"])
+            tampered_now = falsified_before is None and case_after["falsified"] is not None \
+                and not case_after["investigated"]
+            if not tampered_now:
+                # 调查定型 / 跳过 / 驳回 → 本案本席处理完毕；篡改不封闭调查：稍后仍会被再次询问
+                done.add(f"{entry['case_id']}:{name}")
+            w["done"] = sorted(done)
             self.save_state()
             self.check_stop()
 
     def run_vote(self) -> None:
-        """投票：逐席收票（反派心理医生可夹带记忆植入）→ 结算 → 遗言先于身份公布 → 封存道具与警徽遗嘱 → 武装指认。
+        """投票：逐席收票（反派心理医生/黑客可夹带篡改投票）→ 结算 → 遗言先于身份公布 → 封存道具与警徽遗嘱 → 武装指认。
 
         断点设计：收票逐席落盘（wip.votes/implant）；结算结果 ev 本身也落盘（wip.ev），
         续跑从遗言/公布处继续，绝不会重复结算投票。
@@ -1857,8 +1940,9 @@ class Orchestrator:
                 others = [n for n in alive_names if n != name]
                 menu = [f'- 投给一名存活玩家：{{"type": "vote", "target": "{"|".join(others)}"}}',
                         '- 弃权：{"type": "abstain"}']
-                if is_villain(p) and p["profession"] == "心理医生" and skill_left(self.state, name, "记忆植入") > 0:
-                    menu.append('- 记忆植入（与你的投票一并声明，强迫一名玩家改投你指定的人；只会公布"票数被更改过"）：{"type": "memory_implant", "voter": "玩家名", "target": "玩家名"}')
+                if is_villain(p) and p["profession"] in ("心理医生", "黑客") \
+                        and skill_left(self.state, name, "篡改投票") > 0:
+                    menu.append('- 篡改投票（与你的投票一并声明，强迫一名玩家改投你指定的人；只会公布"票数被更改过"）：{"type": "tamper_vote", "voter": "玩家名", "target": "玩家名"}')
                 det = self.state.get("detective")
                 det_note = f"；侦探（{det}）一票计 1.5 票" if det in alive_names else ""
                 briefing = self.build_briefing(
@@ -1873,7 +1957,7 @@ class Orchestrator:
                         votes[name] = tgt if tgt in others else None
                     elif at == "abstain":
                         votes[name] = None
-                    elif at == "memory_implant" and implant is None:
+                    elif at == "tamper_vote" and implant is None:
                         implant = {"by": name, "voter": str(act.get("voter", "")), "target": str(act.get("target", ""))}
                 self.tell(name, f"第{day}天投票记录：你{'投给了 ' + str(votes[name]) if votes.get(name) else '弃权'}")
                 w["done"].append(name)
@@ -1889,8 +1973,8 @@ class Orchestrator:
             if not ev["ok"] and implant is not None:
                 ev = self.eng.resolve_vote(votes, None, defer_out=True)  # 植入声明非法（如目标已死）：作废植入，不影响投票本身
             elif ev["ok"] and implant is not None:
-                self.script_line(f"  记忆植入：{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
-                self._fire("on_private", "记忆植入", f"{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
+                self.script_line(f"  篡改投票：{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
+                self._fire("on_private", "篡改投票", f"{implant['by']} 强迫 {implant['voter']} 投给 {implant['target']}")
             w["resolved"] = True
             w["ev"] = ev if ev["ok"] else None
             w["error"] = "" if ev["ok"] else str(ev.get("error", ""))
@@ -1964,7 +2048,7 @@ class Orchestrator:
             else:
                 verdict = f"无人过半数（存活 {voters} 人，需 >{threshold} 票），本轮无人出局"
             self.log_line(f"投票结果：{detail or '无人得票'}——{verdict}")
-            self.route(ev)  # 出局公告与身份公布、帮凶继任私密通知（遗言之后）
+            self.route(ev)  # 出局公告与身份公布（遗言之后；v4.0 无继任私信）
             if out:
                 self.orch["out_day"][out] = day
             w["routed"] = True
@@ -2053,10 +2137,11 @@ class Orchestrator:
         self.save_state()
 
     def run_armed_accusation(self) -> None:
-        """武装指认（rules-6 §7.3，v3.22）：指对→杀手出局（帮凶继任，游戏继续），指错→指认者出局。
+        """武装指认（rules-6 §7.3）：v4.0 两名杀手都是正确目标——指认任一杀手→其出局（另一名仍在则
+        游戏继续，全部出局→平民胜），指错（所指为平民）→指认者出局。
         触发：① 本轮投票无人出局；② 最后一名平民出局执行前（pending_out 为本人，背水一战）。
         出局者的遗言（先于身份公布）与遗嘱流程与投票出局一致。每次投票至多一次（引擎级守卫）。
-        v3.22：指认消耗武器（等同攻击）——自己的武器销毁；临时取用的桌上凶器消耗掉、不再放回。"""
+        指认消耗武器（等同攻击）——自己的武器销毁；临时取用的桌上凶器消耗掉、不再放回。"""
         day = self.state["phase"]["day"]
         w = self.wip(f"{day}:投票:武装指认", done=[], fired=False)
         if w["fired"]:
@@ -2081,7 +2166,7 @@ class Orchestrator:
             elif not armed and not table_armed:
                 continue  # 无侦探：持武器平民，或桌上凶器仍在时的任意平民（临时取用）
             others = [q["name"] for q in self.alive() if q["name"] != name]
-            payoff = "指对 → 杀手出局（帮凶继任，游戏继续）；指错 → 你出局；无论对错武器都消耗"
+            payoff = "指对 → 该杀手出局（两名杀手全部出局平民才获胜）；指错 → 你出局；无论对错武器都消耗"
             if armed:
                 menu = [f'- 武装指认某人为杀手（{payoff}）：{{"type": "armed_accuse", "target": "{"|".join(others)}"}}（可加 "weapon": "刀" 指定用哪件，缺省用第一件）',
                         "- 不指认则 actions 为 []"]
@@ -2144,33 +2229,34 @@ class Orchestrator:
         for act in payload["actions"]:
             if act.get("type") == "bequeath" and isinstance(act.get("mapping"), dict):
                 mapping = {str(k): (None if v in (None, "销毁") else str(v)) for k, v in act["mapping"].items()}
-        self.route(ev)  # 出局公告与身份公布、帮凶继任私密通知（遗言之后）
+        self.route(ev)  # 出局公告与身份公布（遗言之后；v4.0 无继任私信）
         if owned or has_badge:
             self.run_bequest(out, mapping)
 
     def _coverable_cases(self, day: int) -> list[dict]:
-        """仍可毁证的案件（v3.19 起仅限案发当天；v3.18 起毁证者须身处案发现场）。"""
+        """仍可篡改的案件（仅限案发当天；篡改者须身处案发现场；一次定型——已篡改/已调查的不再可动）。"""
         return [c for c in self.state["cases"]
                 if c["day"] == day and c["evidence_vulnerable"]
-                and (c["falsified"] is None or not c["body_moved"])]
+                and c["falsified"] is None and not c.get("investigated")]
 
     def _has_coverup_means(self, p: dict) -> bool:
+        """篡改手段 = 一次调查次数：技能【现场调查】或「可疑的粉末」（反派持有时可用来篡改）。"""
         s, day = self.state, self.state["phase"]["day"]
-        return (any(skill_left(s, p["name"], sk) > 0 for sk in COVERUP_SKILLS)
-                or held_item(p, "可疑的粉末", day) is not None
-                or held_item(p, "裹尸袋", day) is not None)
+        return (skill_left(s, p["name"], "现场调查") > 0
+                or held_item(p, "可疑的粉末", day) is not None)
 
     def run_coverup(self) -> None:
-        """毁证窗口（自由活动/晚间休息结束前）：存在可毁证案件且反派有手段时，按 杀手→帮凶 顺序提供机会。
-        v3.18：毁证须身处案发现场（rules-6 §7.6）——只通知当前位置在案件房间的反派，
-        场外反派既不可远程毁证，也不再被即时告知案发信息。v3.19：仅限案发当天。"""
+        """毁证窗口（v4.0 收窄为篡改专用；自由活动/晚间休息结束前）：存在可篡改案件且反派有
+        调查手段时，按行动顺序提供机会。篡改须身处案发现场（rules-6 §7.6）——只通知当前位置在
+        案件房间的反派，场外反派既不可远程篡改，也不再被即时告知案发信息。仅限案发当天。"""
         s = self.state
         day = s["phase"]["day"]
         vulnerable = self._coverable_cases(day)
         if not vulnerable:
             return
+        order_idx = {n: i for i, n in enumerate(s["order"])}
         villains = sorted((p for p in self.alive() if is_villain(p) and self._has_coverup_means(p)),
-                          key=lambda p: 0 if p["identity"] == "杀手" else 1)
+                          key=lambda p: order_idx.get(p["name"], 99))
         if not villains:
             return
         w = self.wip(f"{day}:{s['phase']['stage']}:毁证", done=[])
@@ -2179,26 +2265,25 @@ class Orchestrator:
                 return
             if p["name"] in w["done"]:
                 continue
-            here = [c for c in vulnerable if s["positions"].get(p["name"]) == c["room"]]
+            here = [c for c in self._coverable_cases(day) if s["positions"].get(p["name"]) == c["room"]]
             if not here:
                 w["done"].append(p["name"])  # 不在案发现场：本窗口与 TA 无关
                 continue
             case_lines = [f"{c['victim']}（{c['room']}）" for c in here]
-            menu = []
-            if skill_left(s, p["name"], "伪造痕迹") > 0:
-                menu.append('- 伪造痕迹（该案件除武器伤痕外的调查结果全部出错）：{"type": "falsify", "case": "受害者名字", "kind": "伪造痕迹"}')
-            if skill_left(s, p["name"], "销毁证物") > 0:
-                menu.append('- 销毁证物（该案件仅死亡时间保持正确）：{"type": "falsify", "case": "受害者名字", "kind": "销毁证物"}')
-            if skill_left(s, p["name"], "伪造证物") > 0 or held_item(p, "可疑的粉末", day) is not None:
-                menu.append('- 伪造证物（该案件除尸体转移外的调查结果全部出错）：{"type": "falsify", "case": "受害者名字", "kind": "伪造证物"}')
-            if skill_left(s, p["name"], "转移尸体") > 0 or held_item(p, "裹尸袋", day) is not None:
-                menu.append('- 转移尸体到另一房间：{"type": "move_body", "case": "受害者名字", "to_room": "会客室|书房|监控室|地下室|某人的卧室"}')
-            extra = ("以下案件的现场没有其他非反派角色，且你就在案发现场——你可以动手毁证（也可以不动）：\n"
+            menu = [
+                f'- 篡改案件调查（随机篡改四项结论中的两项，此后本案调查结果永久为假；私下告知你改了哪两项；'
+                f'消耗一次调查次数）：{{"type": "tamper_investigation", "case": "{c["victim"]}"}}'
+                for c in here
+            ]
+            menu.append("- 不动手则 actions 为 []")
+            extra = ("以下案件的现场没有其他非反派角色，且你就在案发现场——你可以篡改案件调查（也可以不动；"
+                     "篡改不会被任何人发现——但亮房中同房者看得见你动手这个行为）：\n"
                      + "\n".join(case_lines) + f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)
             payload = self.call_ai(p, "毁证机会", briefing)
             self.apply_actions(p, payload["actions"], retry={
-                "label": "毁证机会", "title": f"第{day}天 · 毁证机会", "menu": menu, "extra": extra})
+                "label": "毁证机会", "title": f"第{day}天 · 毁证机会", "menu": menu, "extra": extra},
+                max_actions=1)
             w["done"].append(p["name"])
             self.save_state()
             self.check_stop()

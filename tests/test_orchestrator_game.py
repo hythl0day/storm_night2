@@ -1,11 +1,12 @@
 """M5 编排器全流程集成测试：mock providers.chat，不打真实 API。
 
 用脚本化全知策略驱动 run_game() 主循环，验证：
-- 倒计时结局（全程消极：无谋杀行为、投票全弃权 → 第 4 天清晨平民胜，倒计时自第 2 天起算）
+- 倒计时结局（全程消极：无谋杀行为、投票全弃权 → 第 3 天清晨平民胜，v4.0 倒计时从第 1 天起算）
 - 主神结局（第 4 天一次未遂重置倒计时后再无行为 → 拖至第 6 天终审投票，v3.15）
-- 平民胜结局（杀手第 2 天谋杀 → 第 3 天投票出局 → 帮凶继任再杀 → 第 4 天被投出）
+- 平民胜结局（杀手 A 第 2 天谋杀 → 第 3 天投票出局 → 另一名杀手 B 第 3 天再杀 → 第 4 天被投出）
 - 阶段边界停止 + 重建 Orchestrator 续跑至结局（--resume 语义）
 - 归档产物：public/log.md 结局行、private 内心独白、inbox/outbox 存档
+- v4.0：反派密谋频道（每天两次）、谋杀窗口顺延与每日封顶、清晨调查队列（平民自动/反派三选一）
 
 运行：python -m unittest discover -s tests -v
 """
@@ -56,7 +57,7 @@ def payload(speech="", inner="……", notes="", actions=None) -> str:
 
 
 def make_fake_chat(killer_script: bool):
-    """脚本化全知策略。killer_script=False：全程消极（主神结局）；True：A/B 依次作案、平民第 3 天起投反派。"""
+    """脚本化全知策略。killer_script=False：全程消极（主神结局）；True：A/B 两名杀手依次作案、平民第 3 天起投反派。"""
 
     def fake_chat(player, messages, *, on_token=None, reasoning_effort=None):
         name = player.name
@@ -66,7 +67,9 @@ def make_fake_chat(killer_script: bool):
         day = int(m.group(1)) if m else 1
         speech = f"{name} 的第{day}天发言"
         acts: list[dict] = []
-        if "开局准备" in title:
+        if "密谋" in title:
+            speech = f"{name} 的第{day}天密谋"  # v4.0 密谋频道：speech 即密谋发言（不进公开日志）
+        elif "开局准备" in title:
             pass
         elif "侦探竞选声明" in title:
             acts = [{"type": "declare", "run": name in ("C", "D")}]  # v3.3：C/D 参选，竞选票 C 当选
@@ -82,8 +85,10 @@ def make_fake_chat(killer_script: bool):
         elif "遗嘱回应" in title:
             acts = [{"type": "bequest_reply", "decisions": {"万能钥匙": "接受"}}]
         elif "案件调查" in title:
-            if '"type": "profile"' in briefing:
-                acts = [{"type": "profile", "case": "E", "aspect": "性别"}]  # 案件指认=受害者名字
+            # v4.0：平民持有者自动结算（不调 API）；反派持有者私密三选一——mock 一律正常调查
+            if '"type": "investigate"' in briefing and '"type": "tamper_investigation"' in briefing:
+                t = re.search(r'"case": "([^"]+)"', briefing)
+                acts = [{"type": "investigate", "case": t.group(1)}] if t else []
         elif "武装指认" in title:
             pass
         elif "投票" in title:
@@ -99,7 +104,7 @@ def make_fake_chat(killer_script: bool):
             if killer_script and day == 2 and name in ("A", "E"):
                 room = "书房"      # A 第 2 天在书房杀 E（E 无自卫手段）
             if killer_script and day >= 3 and name in ("B", "F"):
-                room = "书房"      # B 继任后第 3 天在书房杀 F（v3.2：监控室上锁，改走书房）
+                room = "书房"      # B 第 3 天在书房杀 F（v3.2：监控室上锁，改走书房）
             acts = [{"type": "choose_room", "room": room}]
         elif "内交谈" in title:
             pass  # 只发言
@@ -144,13 +149,13 @@ class MockGameTestBase(unittest.TestCase):
 
 class TestMainGodEnding(MockGameTestBase):
     def test_passive_game_countdown_civilian_win(self):
-        """全程消极（无谋杀行为、投票全弃权）：倒计时自第 2 天起算，第 4 天清晨平民胜。"""
+        """全程消极（无谋杀行为、投票全弃权）：v4.0 倒计时从第 1 天起算，第 3 天清晨平民胜。"""
         d = write_game_dir(self.root, default_players())
         orch = self.run_game(d, killer_script=False)
         s = orch.state
         self.assertEqual(s["winner"], "平民")
         self.assertIn("无杀倒计时", s["win_reason"])
-        self.assertEqual(s["phase"], {"day": 4, "stage": "案件调查"})
+        self.assertEqual(s["phase"], {"day": 3, "stage": "案件调查"})
         self.assertTrue(all(p["alive"] for p in s["players"]))  # 全程无死无伤
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("游戏结束：平民获胜——无杀倒计时完成", log)
@@ -228,41 +233,43 @@ class TestMainGodEnding(MockGameTestBase):
 
 class TestCivilianWinEnding(MockGameTestBase):
     def players(self):
-        # 职业不重复；A/B 都有开锁手段（黑客/机械师的【暴力破解】）用于潜入他人卧室；
-        # 受害者 E/F 均无自卫手段（C 的急救箱、D 的侧写都挡不了谋杀，故不选他们做目标）。
+        # 职业不重复；B（机械师的【暴力破解】×2）有开锁手段用于潜入他人卧室；
+        # 受害者 E/F 均无自卫手段（C 的急救箱、D 的闪避都不在他们身上）。
         return [
             P("A", "杀手", "黑客", "刀", gender="男", physique=4),
-            P("B", "帮凶", "机械师", "不明药剂", gender="女", physique=2),
+            P("B", "杀手", "机械师", "不明药剂", gender="女", physique=2),  # v4.0 双杀手制
             P("C", "平民", "医师", "急救箱", gender="女", physique=3),
-            P("D", "平民", "犯罪侧写师", "手电筒", gender="男", physique=3),
+            P("D", "平民", "运动员", "手电筒", gender="男", physique=3),
             P("E", "平民", "建筑师", "万能钥匙", gender="男", physique=2),
             P("F", "平民", "心理医生", "窃听器", gender="女", physique=2),
         ]
 
-    def test_killer_voted_out_then_successor_voted_out(self):
+    def test_killer_voted_out_then_second_killer_voted_out(self):
         players = self.players()
         d = write_game_dir(self.root, players)
         orch = self.run_game(d, killer_script=True)
         s = orch.state
         self.assertEqual(s["winner"], "平民")
-        self.assertIn("杀手与帮凶均已出局", s["win_reason"])
+        self.assertIn("两名杀手均已出局", s["win_reason"])
         names = {p["name"]: p for p in s["players"]}
         self.assertFalse(names["E"]["alive"])   # 第 2 天被 A 刀杀
-        self.assertFalse(names["F"]["alive"])   # 第 3 天被继任的 B 毒杀
+        self.assertFalse(names["F"]["alive"])   # 第 3 天被 B 毒杀（v4.0：无继任，B 本就是杀手）
         self.assertFalse(names["A"]["alive"])   # 第 3 天投票出局
         self.assertFalse(names["B"]["alive"])   # 第 4 天投票出局
         self.assertTrue(names["C"]["alive"])
-        self.assertEqual(names["B"]["identity"], "杀手")  # 帮凶已继任
+        self.assertEqual(names["B"]["identity"], "杀手")
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("**A 的遗言**", log)          # 遗言先于身份公布
         self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", log)
         self.assertIn("游戏结束：平民获胜", log)
+        # v4.0 清晨调查队列：平民 C（医师）自动结算，结果全员公告（不调 API）
+        self.assertIn("C 调查了 E 的案件", log)
+        self.assertIn("杀手线索", log)
+        self.assertFalse((d / "inbox" / "C" / "day3-案件调查.md").exists())  # 自动结算不调 API
         # v3.3 侦探竞选：C/D 参选、未参选者投票，C 当选（末置发言 + 1.5 票权）
         self.assertEqual(s["detective"], "C")
         self.assertIn("C 宣告参选侦探", log)
         self.assertIn("侦探竞选：C 当选侦探", log)
-        # 侧写的调用确实发生（简报已存档）
-        self.assertTrue((d / "inbox" / "D" / "day3-案件调查.md").exists())
         self.assertTrue((d / "inbox" / "A" / "day1-竞选声明.md").exists())
         # 案件台账：两起案件，凶手分别为 A 与 B
         self.assertEqual([(c["victim"], c["culprit"]) for c in s["cases"]], [("E", "A"), ("F", "B")])
@@ -330,36 +337,39 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertNotIn("use_flashlight", brief)
 
     def test_coverup_only_for_scene_villain(self):
-        """v3.18：毁证窗口只通知身处案发现场的反派——场外帮凶不再收到毁证机会
+        """毁证窗口（v4.0 篡改专用）只通知身处案发现场的反派——场外杀手不收到毁证机会
         （也不再被即时告知"谋杀成功/案发房间/现场干净"）。"""
         d = write_game_dir(self.root, self.players())
         sj = d / "state.json"
         st = json.loads(sj.read_text(encoding="utf-8"))
-        next(p for p in st["players"] if p["name"] == "A")["extra_items"] = ["裹尸袋"]  # 给杀手毁证手段
+        next(p for p in st["players"] if p["name"] == "A")["extra_items"] = ["可疑的粉末"]  # 给杀手篡改手段
         sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
         self.run_game(d, killer_script=True)
-        self.assertTrue((d / "inbox" / "A" / "day2-毁证机会.md").exists())   # 杀手在案发现场（书房）
-        self.assertFalse((d / "inbox" / "B" / "day2-毁证机会.md").exists())  # 帮凶在会客室，不通知
+        inbox_a = (d / "inbox" / "A" / "day2-毁证机会.md").read_text(encoding="utf-8")
+        self.assertIn("tamper_investigation", inbox_a)   # 杀手在案发现场（书房），菜单为篡改
+        self.assertNotIn("move_body", inbox_a)           # v4.0：转移尸体已删除
+        self.assertFalse((d / "inbox" / "B" / "day2-毁证机会.md").exists())  # B 在会客室，不通知
 
     def test_coverup_night_hint(self):
-        """v3.19：白天案件当晚归宿选择时，持有毁证手段的反派收到"今晚可前往案发现场毁证、
-        仅限案发当天"的提示（基于公开死亡公告+阵营自知，无额外泄漏）；无毁证手段者不提示。"""
+        """白天案件当晚归宿选择时，持有篡改手段（调查次数/粉末）的反派收到"今晚可前往案发现场篡改、
+        仅限案发当天"的提示（基于公开死亡公告+阵营自知，无额外泄漏）；无手段者不提示。"""
         d = write_game_dir(self.root, self.players())
         sj = d / "state.json"
         st = json.loads(sj.read_text(encoding="utf-8"))
-        next(p for p in st["players"] if p["name"] == "A")["extra_items"] = ["裹尸袋"]  # 给杀手毁证手段
+        next(p for p in st["players"] if p["name"] == "A")["extra_items"] = ["可疑的粉末"]  # 给杀手篡改手段
         sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
         self.run_game(d, killer_script=True)
         brief = (d / "inbox" / "A" / "day2-晚间休息.md").read_text(encoding="utf-8")
-        self.assertIn("仅限案发当天", brief)  # A 第 2 天白天在书房杀 E → 当晚收到毁证提示
+        self.assertIn("仅限案发当天", brief)  # A 第 2 天白天在书房杀 E → 当晚收到篡改提示
         self.assertIn("书房", brief)
         b_brief = (d / "inbox" / "B" / "day2-晚间休息.md").read_text(encoding="utf-8")
-        self.assertNotIn("仅限案发当天", b_brief)  # B 无毁证手段（延时装置不算），不提示
+        self.assertNotIn("仅限案发当天", b_brief)  # B 无调查手段（延时装置不算），不提示
 
     def test_last_civilian_pre_execution_accusation(self):
-        """v3.21 集成（1v2 残局）：投票将导致最后平民出局 → 结算前窗口发动指认 → 指对则杀手出局
-        （遗言/身份公布/遗嘱同投票出局）、帮凶继任、本人获救、游戏继续。v3.22：指认消耗武器（桌上枪用掉即消失）。"""
-        players = [p for p in self.players() if p["name"] in ("A", "B", "D")]  # 1 平民 D + 2 反派
+        """v3.21 集成（1v2 残局）：投票将导致最后平民出局 → 结算前窗口发动指认 → 指对则该杀手出局
+        （遗言/身份公布/遗嘱同投票出局；v4.0 无继任——另一名杀手照常行动）、本人获救、游戏继续。
+        指认消耗武器（桌上枪用掉即消失）。"""
+        players = [p for p in self.players() if p["name"] in ("A", "B", "D")]  # 1 平民 D + 2 杀手
         d = write_game_dir(self.root, players)
         sj = d / "state.json"
         st = json.loads(sj.read_text(encoding="utf-8"))
@@ -380,10 +390,13 @@ class TestCivilianWinEnding(MockGameTestBase):
                                                   actions=[{"type": "armed_accuse", "target": "A"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "谋杀窗口" in title and "晚间休息" in title and name == "B" and '"type": "murder"' in briefing:
-                return ChatResult(name, ok=True, content=payload(actions=[{"type": "murder", "target": "D", "weapon": "不明药剂"}]),
+                # 不明药剂第 4 夜已消耗（未遂也耗凶器）；第 5 夜改空手（黑暗卧室豁免附加条件）
+                act = {"type": "murder", "target": "D"} | ({"weapon": "不明药剂"} if day == 4 else {})
+                return ChatResult(name, ok=True, content=payload(actions=[act]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
-            if "晚间休息" in title and name == "B" and day == 4:
-                # 继任杀手夜间开锁进 D 的卧室（B 机械师的【暴力破解】；v3.22 锁对反派一视同仁）
+            if "晚间休息" in title and name == "B" and day >= 4:
+                # 另一名杀手夜间开锁进 D 的卧室（B 机械师的【暴力破解】；锁对反派一视同仁）；
+                # 第 4 夜被敏捷闪避挡下（未遂不封顶），第 5 夜再试得手
                 return ChatResult(name, ok=True, content=payload(actions=[{"type": "choose_room", "room": "D的卧室"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "投票" in title:
@@ -397,8 +410,8 @@ class TestCivilianWinEnding(MockGameTestBase):
         names = {p["name"]: p for p in s["players"]}
         self.assertFalse(names["A"]["alive"])              # 杀手被指认出局（第 4 天投票处）
         self.assertTrue(s["orch"]["out_day"].get("A") == 4)
-        self.assertEqual(names["B"]["identity"], "杀手")   # 帮凶继任
-        self.assertFalse(names["D"]["alive"])              # 平民获救后当夜被继任者杀死（决斗真实发生）
+        self.assertEqual(names["B"]["identity"], "杀手")   # v4.0：无继任，B 本就是杀手
+        self.assertFalse(names["D"]["alive"])              # 平民获救后当夜遇袭（闪避挡下）、次日被票出（决斗真实发生）
         self.assertEqual(s["winner"], "反派")
         self.assertNotIn("左轮手枪", [e["name"] for e in s["table_items"]])  # v3.22：临时取用的桌上枪已消耗
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
@@ -424,9 +437,9 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertNotIn("……", section)   # mock 的 inner 固定为 "……"：内心独白不进简报
 
     def test_night_features_v3(self):
-        """夜间特性端到端：密道、窃听器到场放置与防追溯、受邀组合低语、清晨状态表。"""
+        """夜间特性端到端：密道谋杀（v4.0 窗口化）、窃听器到场放置与防追溯、受邀组合低语、清晨状态表。"""
         players = self.players()
-        players[1] = P("B", "帮凶", "建筑师", "不明药剂", gender="女", physique=2)  # 密道持有者
+        players[1] = P("B", "杀手", "建筑师", "不明药剂", gender="女", physique=2)  # 密道谋杀持有者
         d = write_game_dir(self.root, players)
         base = make_fake_chat(True)
 
@@ -436,10 +449,6 @@ class TestCivilianWinEnding(MockGameTestBase):
             title = briefing.splitlines()[0]
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
-            if "开局准备" in title:
-                acts = [{"type": "set_passage"}] if name == "B" and '"type": "set_passage"' in briefing else []
-                return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
-                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "房间行动" in title and "自由活动" in title and name == "F" and day == 1 \
                     and '"type": "place_bug"' in briefing:
                 return ChatResult(player.name, ok=True,
@@ -453,14 +462,20 @@ class TestCivilianWinEnding(MockGameTestBase):
                 return ChatResult(player.name, ok=True,
                                   content=payload(speech=f"{name} 的密谈内容", notes="x"),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and "晚间休息" in title and day == 1 and name == "B" \
+                    and '"type": "passage_kill"' in briefing:
+                # v4.0：密道是谋杀窗口动作——B 经密道现身书房动手（E 夜行独处；空手体格 2≥2）
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "passage_kill", "target": "E"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "晚间休息" in title:
                 acts = []
                 if name == "C" and day == 1:
                     acts = [{"type": "invite", "target": "D"}]
                 elif name == "D" and day == 1:
                     acts = [{"type": "choose_room", "room": "C的卧室"}]  # 应邀 = 与邀请者同目的地
-                elif name == "B" and day == 2 and '"type": "use_passage"' in briefing:
-                    acts = [{"type": "use_passage", "room": "书房"}]
+                elif name == "E" and day == 1:
+                    acts = [{"type": "choose_room", "room": "书房"}]     # E 第 1 夜单独夜行书房
                 return ChatResult(player.name, ok=True, content=payload(notes="x", actions=acts),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
@@ -468,9 +483,11 @@ class TestCivilianWinEnding(MockGameTestBase):
         orch = self.run_game_with(d, chat_v3)
         s = orch.state
         self.assertEqual(s["winner"], "平民")  # 主线剧本不受影响
-        self.assertTrue(s["passage"]["used"])  # 密道第 2 夜成功使用
-        self.assertNotIn("B", s["monitoring_true"]["第2天晚间休息"].get("书房", []))  # 监控无痕
+        self.assertTrue(s["passage"]["used"])  # 密道谋杀第 1 夜成功，密道损毁
+        self.assertFalse(next(p for p in s["players"] if p["name"] == "E")["alive"])  # E 第 1 夜遇害
+        self.assertNotIn("B", s["monitoring_true"]["第1天晚间休息"].get("书房", []))  # 监控无痕
         script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("◆ B｜密道谋杀 → E", script)          # 密道谋杀入全记录
         self.assertIn("内低语（黑暗）", script)            # 受邀组合在黑暗卧室摸黑低语
         self.assertIn("C 的密谈内容", script)
         self.assertIn("窃听器录音下发给 F（会客室）", script)
@@ -497,6 +514,15 @@ class TestCivilianWinEnding(MockGameTestBase):
             if "内交谈" in title and "晚间休息" in title:
                 return ChatResult(player.name, ok=True,
                                   content=payload(speech=f"{name} 的夜谈内容", notes="x"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "选房" in title and day == 1 and name in ("A", "C"):
+                # 第 1 天一次未遂（C 的急救箱挡下）重置倒计时——否则 v4.0 下第 3 天清晨游戏就结束了
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 1 and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "C", "weapon": "刀"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "晚间休息" in title:
                 # 第 2 夜 E（万能钥匙开锁）与 F（随入）夜宿会客室
@@ -709,15 +735,16 @@ class StageHintsTest(MockGameTestBase):
         hints = self.orch._stage_hints("第1天 · 侦探竞选投票")
         self.assertTrue(any("未参选者" in h for h in hints), hints)
 
-    def test_armed_accusation_hint_includes_succession(self):
+    def test_armed_accusation_hint_dual_targets(self):
+        """v4.0：武装指认速查写明双目标口径（两名杀手都是正确目标，全部出局平民才获胜）。"""
         hints = self.orch._stage_hints("第2天 · 武装指认")
-        self.assertTrue(any("帮凶存活会继任" in h and "反派全灭才平民获胜" in h for h in hints), hints)
-        self.assertFalse(any("平民立即获胜" in h for h in hints), hints)
+        self.assertTrue(any("两名杀手" in h and "全部出局" in h for h in hints), hints)
+        self.assertFalse(any("继任" in h for h in hints), hints)
 
         self.orch.state["is_lite_rule"] = True
         hints = self.orch._stage_hints("第2天 · 投票")
-        self.assertTrue(any("帮凶存活会继任" in h and "反派全灭才平民获胜" in h for h in hints), hints)
-        self.assertFalse(any("平民立即获胜" in h for h in hints), hints)
+        self.assertTrue(any("两名杀手全部出局平民才获胜" in h for h in hints), hints)
+        self.assertFalse(any("继任" in h or "平民立即获胜" in h for h in hints), hints)
 
     def test_night_hint(self):
         hints = self.orch._stage_hints("第2天 · 晚间休息")
@@ -1038,12 +1065,12 @@ class TestSpeechRouting(MockGameTestBase):
         self.assertIn("本环节不发言", night_briefing)
 
 
-class TestAccompliceStageMagic(MockGameTestBase):
-    """v3.9 修复：舞台魔术是反派技能——帮凶魔术师的自由活动菜单必须包含舞台魔术，且声明后真正击杀。"""
+class TestSecondKillerSkills(MockGameTestBase):
+    """v4.0 双杀手：第二名杀手（原帮凶位）的谋杀窗口菜单同时含普通谋杀与反派技能杀，声明后真正击杀。"""
 
-    def test_accomplice_magician_stage_magic(self):
+    def test_second_killer_magician_stage_magic(self):
         players = default_players()
-        players[1] = P("B", "帮凶", "魔术师", "不明药剂", gender="女", physique=2)
+        players[1] = P("B", "杀手", "魔术师", "不明药剂", gender="女", physique=2)
         d = write_game_dir(self.root / "g11", players)
         base = make_fake_chat(False)
 
@@ -1065,11 +1092,12 @@ class TestAccompliceStageMagic(MockGameTestBase):
 
         orch = self.run_game_with(d, chat_fn)
         s = orch.state
-        # 菜单证据：帮凶魔术师的谋杀窗口简报含舞台魔术项，且不含杀手专属的谋杀项（v3.27 拆为独立环节）
+        # 菜单证据：第二名杀手的谋杀窗口简报同时含普通谋杀与舞台魔术项（v4.0 两人都是完整杀手）
         inbox = (d / "inbox" / "B" / "day2-自由活动-谋杀窗口.md").read_text(encoding="utf-8")
         self.assertIn('"type": "stage_magic"', inbox)
-        self.assertNotIn('"type": "murder"', inbox)
-        # 击杀落账：E 死亡，案件方法=舞台魔术，凶手=帮凶 B 本人（独处现场，E 的万能钥匙被 B 缴获）
+        self.assertIn('"type": "murder"', inbox)
+        self.assertIn("可被急救箱", inbox)  # v4.0 削弱：舞台魔术可防御（菜单口径同步）
+        # 击杀落账：E 死亡，案件方法=舞台魔术，凶手=B 本人（独处现场，E 的万能钥匙被 B 缴获）
         self.assertTrue(any(c["victim"] == "E" and c["method"] == "舞台魔术" and c["culprit"] == "B"
                             for c in s["cases"]))
         self.assertFalse(next(p for p in s["players"] if p["name"] == "E")["alive"])
@@ -1247,8 +1275,9 @@ class TestCaseIdRobustness(MockGameTestBase):
     def _mk_case(cid, victim, room="书房"):
         return {"id": cid, "victim": victim, "room": room, "crime_room": room, "day": 2,
                 "stage": "自由活动", "period": "第2天自由活动", "method": "刀", "wound": "利器",
-                "culprit": "A", "body_moved": False, "falsified": None, "looted": [],
-                "evidence_vulnerable": True, "sealed": True}
+                "culprit": "A", "body_moved": False, "clue_trait": None, "falsified": None,
+                "investigated": False, "looted": [], "evidence_vulnerable": True, "sealed": True,
+                "announced": True, "discovered_by": [], "reported_by": []}
 
     def _orch_with_cases(self, name, cases):
         d = write_game_dir(self.root / name, default_players())
@@ -1260,14 +1289,15 @@ class TestCaseIdRobustness(MockGameTestBase):
     def test_case_resolved_by_victim_name(self):
         orch = self._orch_with_cases("g13a", [self._mk_case(1, "E"), self._mk_case(2, "F", "地下室")])
         p = next(q for q in orch.state["players"] if q["name"] == "C")  # 医师：现场调查×2
-        ev = orch.dispatch(p, {"type": "investigate", "case": "F", "choice": "武器伤痕"})
+        ev = orch.dispatch(p, {"type": "investigate", "case": "F"})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["private"]["C"]["case"], "F")      # 回执回显受害者与房间（选错可自查）
         self.assertEqual(ev["private"]["C"]["room"], "地下室")
-        ev = orch.dispatch(p, {"type": "investigate", "case": "「E案」", "choice": "死亡时间"})
+        self.assertEqual(set(ev["private"]["C"]["results"]), {"死亡时间", "尸体转移", "武器伤痕", "杀手线索"})  # v4.0 四项全给
+        ev = orch.dispatch(p, {"type": "investigate", "case": "「E案」"})
         self.assertTrue(ev["ok"], ev)  # 容忍「」引号与"案"后缀
         self.assertEqual(ev["private"]["C"]["case"], "E")
-        ev = orch.dispatch(p, {"type": "investigate", "case": "格罗克", "choice": "尸体转移"})
+        ev = orch.dispatch(p, {"type": "investigate", "case": "格罗克"})
         self.assertFalse(ev["ok"])     # 未知名：解析层驳回（先于引擎，不耗次数）
         self.assertIn("受害者名字", ev["error"])
         self.assertIn("E", ev["error"])
@@ -1275,27 +1305,27 @@ class TestCaseIdRobustness(MockGameTestBase):
     def test_case_legacy_case_id_still_accepted(self):
         orch = self._orch_with_cases("g13b", [self._mk_case(1, "E"), self._mk_case(2, "F", "地下室")])
         p = next(q for q in orch.state["players"] if q["name"] == "C")
-        ev = orch.dispatch(p, {"type": "investigate", "case_id": 2, "choice": "武器伤痕"})
+        ev = orch.dispatch(p, {"type": "investigate", "case_id": 2})
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["private"]["C"]["case"], "F")
-        ev = orch.dispatch(p, {"type": "investigate", "case_id": "案件1", "choice": "死亡时间"})
+        ev = orch.dispatch(p, {"type": "investigate", "case_id": "案件1"})
         self.assertTrue(ev["ok"], ev)  # 可提取数字的写法兼容
         self.assertEqual(ev["private"]["C"]["case"], "E")
 
     def test_single_case_auto_default(self):
         orch = self._orch_with_cases("g13c", [self._mk_case(1, "E")])
         p = next(q for q in orch.state["players"] if q["name"] == "C")
-        ev = orch.dispatch(p, {"type": "investigate", "choice": "武器伤痕"})  # 缺省 → 唯一案件
+        ev = orch.dispatch(p, {"type": "investigate"})  # 缺省 → 唯一案件
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["private"]["C"]["case"], "E")
 
     def test_unknown_case_rejected_not_raised(self):
         orch = self._orch_with_cases("g13d", [])
         p = next(q for q in orch.state["players"] if q["name"] == "C")
-        ev = orch.dispatch(p, {"type": "investigate", "case_id": "格罗克遇袭", "choice": "武器伤痕"})
+        ev = orch.dispatch(p, {"type": "investigate", "case_id": "格罗克遇袭"})
         self.assertFalse(ev["ok"])
         self.assertIn("受害者名字", ev["error"])
-        ev2 = orch.dispatch(p, {"type": "profile", "case_id": None})
+        ev2 = orch.dispatch(p, {"type": "tamper_investigation", "case_id": None})
         self.assertFalse(ev2["ok"])
 
     def test_investigation_skipped_without_cases(self):
@@ -1460,8 +1490,15 @@ class TestBlackoutDiscovery(MockGameTestBase):
                                   content=payload(notes="x", actions=[{"type": "declare_blackout"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if day in (2, 3) and "选房" in title:
-                acts = [{"type": "choose_room", "room": "地下室" if name == "C" else "会客室"}]
+                room = {"C": "地下室"}.get(name, "会客室")
+                if day == 2 and name in ("A", "D"):
+                    room = "书房"  # 第 2 天一次未遂（D 的敏捷闪避挡下）重置倒计时，游戏才能拖到第 3 天修复
+                acts = [{"type": "choose_room", "room": room}]
                 return ChatResult(name, ok=True, content=payload(notes="x", actions=acts),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if day == 2 and "谋杀窗口" in title and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "D", "weapon": "刀"}]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if day == 3 and "房间行动" in title and name == "C":
                 return ChatResult(name, ok=True, content=payload(notes="x", actions=[{"type": "fix_generator"}]),
@@ -1494,6 +1531,15 @@ class TestBlackoutDiscovery(MockGameTestBase):
             title = briefing.splitlines()[0]
             m = re.search(r"第(\d+)天", title)
             day = int(m.group(1)) if m else 1
+            if "选房" in title and day == 1 and player.name in ("A", "C"):
+                # 第 1 天一次未遂（C 的急救箱挡下）重置倒计时——否则 v4.0 下第 3 天清晨游戏就结束了
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 1 and player.name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(player.name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "C", "weapon": "刀"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "选房" in title:
                 briefings.append((day, briefing))
                 if day == 2 and player.name == "E":
@@ -1606,7 +1652,7 @@ class TestFirstDayMurderAndFeedback(MockGameTestBase):
         messages = [m for m in orch.state["orch"]["hist"]["A"] if "没有可攻击目标" in m]
         self.assertEqual(len(messages), 1)
         self.assertIn("未发生袭击", messages[0])
-        self.assertIn("不消耗本阶段谋杀机会", messages[0])
+        self.assertIn("不消耗本窗口谋杀尝试", messages[0])
         self.assertIn("A", orch.state["orch"]["wip"]["1:晚间休息:谋杀"]["done"])
         saved = json.loads((orch.dir / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(len([m for m in saved["orch"]["hist"]["A"] if "没有可攻击目标" in m]), 1)
@@ -1639,7 +1685,7 @@ class TestFirstDayMurderAndFeedback(MockGameTestBase):
         orch.reject_note(p, {"type": "murder", "error": "未持有可用凶器"})
         msg = orch.state["orch"]["hist"]["A"][-1]
         self.assertIn("未发生袭击", msg)
-        self.assertIn("不消耗本阶段谋杀机会", msg)
+        self.assertIn("不消耗本窗口谋杀尝试", msg)
         hints = orch._stage_hints("第1天 · 自由活动（谋杀窗口）")
         self.assertTrue(any("动作被驳回" in h and "谋杀失败" in h for h in hints), hints)
 
@@ -1678,7 +1724,9 @@ class TestFirstDayMurderAndFeedback(MockGameTestBase):
         self.assertIn("放置后的新谈话", recordings[1])
         self.assertNotIn("放置前的旧谈话", recordings[1])
 
-    def test_day1_two_cases_flow_to_vote(self):
+    def test_day1_single_case_daily_cap_flow_to_vote(self):
+        """v4.0 每日封顶端到端：白天 A 杀 E 后，晚间窗口整体跳过（零调用）；次日清晨公告 +
+        监控宣读 + 平民自动调查（不调 API、结果公开）。"""
         d = write_game_dir(self.root / "day1-two-cases", default_players())
         base = make_fake_chat(False)
 
@@ -1706,12 +1754,6 @@ class TestFirstDayMurderAndFeedback(MockGameTestBase):
             if "第1天" in title and "谋杀窗口" in title and name == "A":
                 if "自由活动" in title:
                     return respond([{"type": "murder", "target": "E", "weapon": "刀"}])
-                return respond([{"type": "murder", "target": "C"}])
-            if "第2天" in title and "案件调查" in title and name == "C":
-                return respond([
-                    {"type": "investigate", "case": "E", "choice": "死亡时间"},
-                    {"type": "investigate", "case": "F", "choice": "死亡时间"},
-                ])
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
 
         orch = Orchestrator(d)
@@ -1725,19 +1767,19 @@ class TestFirstDayMurderAndFeedback(MockGameTestBase):
 
         self.assertEqual(orch.state["phase"], {"day": 2, "stage": "投票"})
         self.assertEqual([(c["victim"], c["period"]) for c in orch.state["cases"]],
-                         [("E", "第1天自由活动"), ("F", "第1天晚间休息")])
-        self.assertEqual([a["target"] for a in orch.state["attempts"]], ["C"])
+                         [("E", "第1天自由活动")])
+        self.assertEqual(orch.state["attempts"], [])
+        # v4.0 每日封顶：白天已有人成功 → 晚间谋杀窗口整体跳过（A/B 均未被调用）
+        self.assertFalse((d / "inbox" / "A" / "day1-晚间休息-谋杀窗口.md").exists())
+        self.assertFalse((d / "inbox" / "B" / "day1-晚间休息-谋杀窗口.md").exists())
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
         self.assertIn("E 死亡", log)
-        self.assertIn("F 死亡", log)
-        self.assertIn("C 遇袭但幸存", log)
         self.assertIn("监控公开宣读", log)
-        investigation = (d / "inbox" / "C" / "day2-案件调查.md").read_text(encoding="utf-8")
-        self.assertIn("E（第1天", investigation)
-        self.assertIn("F（第1天", investigation)
-        hist = orch.state["orch"]["hist"]["C"]
-        self.assertTrue(any('"case": "E"' in m and '"result": "第1天自由活动"' in m for m in hist), hist)
-        self.assertTrue(any('"case": "F"' in m and '"result": "第1天晚间休息"' in m for m in hist), hist)
+        # v4.0 清晨调查队列：平民 C（医师）自动结算、结果全员公告，不调 API
+        self.assertFalse((d / "inbox" / "C" / "day2-案件调查.md").exists())
+        self.assertIn("C 调查了 E 的案件", log)
+        self.assertIn("死亡时间 = 第1天自由活动", log)
+        self.assertIn("杀手线索", log)
 
 
 class TestLiteJustInTimeRules(MockGameTestBase):
@@ -1754,7 +1796,7 @@ class TestLiteJustInTimeRules(MockGameTestBase):
         orch.state["is_lite_rule"] = True
         hints = "、".join(orch._stage_hints("第2天 · 投票"))
         self.assertNotIn("§", hints)
-        self.assertIn("帮凶存活会继任，反派全灭才平民获胜", hints)  # 武装指认内联口径
+        self.assertIn("两名杀手全部出局平民才获胜", hints)  # 武装指认内联口径（v4.0 双杀手）
         self.assertNotIn("指对平民立即获胜", hints)
         w = orch._weapon_hint(orch.player("C"), None)
         self.assertNotIn("§", w)
@@ -1843,6 +1885,163 @@ class TestScriptFmt(MockGameTestBase):
         self.assertIn("守夜成立：C 进入 D 的卧室", out)
         self.assertEqual(out.count("行动回执"), 1)          # 连续回执归拢为一块，不窜行
         self.assertLess(out.index("行动回执"), out.index("B无法进入"))
+
+
+class TestVillainChannel(MockGameTestBase):
+    """v4.0 反派密谋频道：每天两次（自由活动开始前先于停电声明轮、晚间休息选房前）；
+    两名杀手按行动顺序各发一段，互相可见、对他人完全不可见；一方出局后频道消失。"""
+
+    def test_channel_twice_daily_and_private(self):
+        d = write_game_dir(self.root / "vc1", default_players())
+        orch = Orchestrator(d)
+        orch.hooks = {"should_stop": lambda: orch.state["phase"] == {"day": 2, "stage": "投票"}}
+        orig = orchestrator.chat
+        orchestrator.chat = make_fake_chat(False)
+        try:
+            orch.run_game()
+        finally:
+            orchestrator.chat = orig
+        # 第 1 天两次密谋：自由活动前 + 晚间休息选房前（两名杀手各被调用一次）
+        for name in ("A", "B"):
+            self.assertTrue((d / "inbox" / name / "day1-自由活动-密谋.md").exists(), name)
+            self.assertTrue((d / "inbox" / name / "day1-晚间休息-密谋.md").exists(), name)
+        for name in ("C", "D", "E", "F"):  # 平民完全不可见
+            self.assertFalse((d / "inbox" / name / "day1-自由活动-密谋.md").exists(), name)
+        # 按行动顺序各发一段：B 的简报能看到 A 刚发的密谋（互相可见）
+        brief_b = (d / "inbox" / "B" / "day1-自由活动-密谋.md").read_text(encoding="utf-8")
+        self.assertIn("A：A 的第1天密谋", brief_b)
+        # 存档分线：双方私密 log 都有两段；script.md 剧透线有；公开日志没有
+        log_a = (d / "private" / "A" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("A：A 的第1天密谋", log_a)
+        self.assertIn("B：B 的第1天密谋", log_a)
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("密谋频道（自由活动前）｜A：A 的第1天密谋", script)
+        self.assertIn("密谋频道（晚间休息前）｜B：B 的第1天密谋", script)
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertNotIn("密谋", log)
+
+    def test_channel_disappears_when_partner_out(self):
+        """A 第 3 天被票出后，频道消失（B 第 4 天起不再收到密谋调用）。"""
+        d = write_game_dir(self.root / "vc2", TestCivilianWinEnding.players(self))
+        self.run_game(d, killer_script=True)
+        self.assertTrue((d / "inbox" / "A" / "day2-自由活动-密谋.md").exists())   # 第 2 天两名杀手都在
+        self.assertTrue((d / "inbox" / "B" / "day2-晚间休息-密谋.md").exists())
+        # A 第 3 天白天被票出：密谋频道在自由活动前（投票后）——第 3 天起只剩 B 一人，频道已消失
+        self.assertFalse((d / "inbox" / "B" / "day3-自由活动-密谋.md").exists())
+        self.assertFalse((d / "inbox" / "B" / "day4-晚间休息-密谋.md").exists())
+
+    def test_decline_defers_to_partner(self):
+        """窗口顺延口径：前排杀手放弃 → 顺延给同伙（其简报明写"本窗口你的同伙尚未动手"）；
+        同伙一旦发动，本窗口结束。"""
+        d = write_game_dir(self.root / "mw1", default_players())
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "第1天" in title and "选房" in title and name in ("A", "B", "E"):
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 1 and name == "A":
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=[]),  # A 放弃
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 1 and name == "B" and '"type": "murder"' in briefing:
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "E", "weapon": "不明药剂"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fn)
+        s = orch.state
+        self.assertTrue((d / "inbox" / "A" / "day1-自由活动-谋杀窗口.md").exists())  # A 先被询问
+        brief_b = (d / "inbox" / "B" / "day1-自由活动-谋杀窗口.md").read_text(encoding="utf-8")
+        self.assertIn("本窗口你的同伙尚未动手", brief_b)  # 顺延给 B 时简报明写
+        self.assertTrue(any(c["victim"] == "E" and c["culprit"] == "B" for c in s["cases"]))  # B 发动
+        self.assertEqual(s["cases"][0]["day"], 1)
+
+    def test_daily_cap_skips_night_window(self):
+        """每日封顶：白天已有人成功 → 晚间谋杀窗口整体跳过（两名杀手零调用）。"""
+        d = write_game_dir(self.root / "mw2", default_players())
+        base = make_fake_chat(False)
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "第1天" in title and "选房" in title and name in ("A", "E"):
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 1 and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "E", "weapon": "刀"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fn)
+        self.assertTrue(any(c["victim"] == "E" and c["day"] == 1 for c in orch.state["cases"]))  # 白天已得手
+        # 晚间窗口整体跳过：无谋杀窗口简报（每日封顶）
+        self.assertFalse((d / "inbox" / "A" / "day1-晚间休息-谋杀窗口.md").exists())
+        self.assertFalse((d / "inbox" / "B" / "day1-晚间休息-谋杀窗口.md").exists())
+
+
+class TestInvestigationQueueV4(MockGameTestBase):
+    """v4.0 清晨调查队列：平民自动结算（不调 API）；反派私密菜单（篡改/调查/跳过）；
+    篡改不封闭调查——篡改者可亲自把假结论公告出去。"""
+
+    def test_villain_tamper_then_publicize(self):
+        players = default_players()
+        players[0] = P("A", "杀手", "医师", "刀", gender="男", physique=4)   # 反派医师持调查手段（×2）
+        players[2] = P("C", "平民", "运动员", "急救箱", gender="女", physique=3)  # C 换无调查手段职业
+        players[3] = P("D", "平民", "心理医生", "手电筒", gender="男", physique=3)  # 保持职业不重复
+        d = write_game_dir(self.root / "iq1", players)
+        base = make_fake_chat(False)
+        calls = {"n": 0}
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "第2天" in title and "选房" in title and name in ("A", "E"):
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 2 and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "E", "weapon": "刀"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "案件调查" in title and name == "A":
+                calls["n"] += 1
+                # 第一次：篡改（菜单含三选一）；第二次：正常调查（本案已被篡改，菜单只剩调查/跳过）
+                act = {"type": "tamper_investigation", "case": "E"} if calls["n"] == 1 \
+                    else {"type": "investigate", "case": "E"}
+                if calls["n"] == 1:
+                    self.assertIn("tamper_investigation", briefing)
+                else:
+                    self.assertNotIn("tamper_investigation", briefing)  # 一次定型：篡改项消失
+                return ChatResult(name, ok=True, content=payload(notes="x", actions=[act]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fn)
+        s = orch.state
+        case = s["cases"][0]
+        self.assertEqual(calls["n"], 2)                  # 篡改后仍被再次询问
+        self.assertEqual(len(case["falsified"]), 2)      # 随机篡改两项
+        self.assertTrue(case["investigated"])            # 随后调查定型
+        self.assertTrue(any("改动两项" in m for m in s["orch"]["hist"]["A"]))  # 私下告知明细
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("A 调查了 E 的案件", log)          # 假结论由篡改者亲自公告
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("篡改案件调查（E案）", script)
 
 
 if __name__ == "__main__":

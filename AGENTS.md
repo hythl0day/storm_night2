@@ -61,6 +61,6 @@ python -m unittest discover -s tests   # 运行测试用例
 
 ## 当前进度与待办
 
-里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成；
+里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成；**v4.0 规则重做已落地**（规格书 `docs/v4.0-plan.md`，里程碑 M5.1）：双杀手制（删帮凶/继任，4 平民 + 2 杀手）、职业 9→8、道具 14→12、反派密谋频道（每天两次：自由活动前先于停电声明轮、晚间休息选房前）、谋杀窗口每窗全队一次尝试 + 每日成功封顶一起、现场调查四项全给且全员公告 + 清晨调查队列（平民自动/反派篡改抢先）、延时装置手动化、密道改谋杀窗口动作、舞台魔术可防御、无杀倒计时从第 1 天起算。**v4.0 与 v3.x 存档不兼容：旧档仅供查看，不可续跑。**
 
-当前处于**试玩调优期**：反复手动跑局（`python -m src.console --game game/<seed>`，必要时 `--resume` 断点续跑），边跑边检查 bug、修订规则（规则书 `docs/rules-6.md`，引擎 `src/engine/` 同步改）。每局跑完后分析存档（`python -m src.view status --game ...` / `python -m tools.scorecard --game <seed>`），挑合格的完整局入 `selected_games/`。
+当前回到**试玩调优期**（v4.0 规则面）：反复手动跑局（`python -m src.console --game game/<seed>`，必要时 `--resume` 断点续跑），重点观察 plan §11 的平衡风险点（杀手线索公开化后的反派胜率、双向 buff 净效果、未遂不当场封顶的防御道具贬值、技能杀利用率）。每局跑完后分析存档（`python -m src.view status --game ...` / `python -m tools.scorecard --game <seed>`），挑合格的完整局入 `selected_games/`。

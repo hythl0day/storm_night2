@@ -57,14 +57,14 @@ class TestScorecard(unittest.TestCase):
         self.assertIn("—— 戏剧性评分：", text)
         self.assertIn("主角弧线候选", text)
         self.assertIn("—— 成本 ——", text)
-        # 指标包字段核对：mock 剧本为 A/B 依次作案（E、F 遇害），C 当选侦探
+        # 指标包字段核对：mock 剧本为 A/B 两名杀手依次作案（E、F 遇害），C 当选侦探
         import json as _json
         from tools.scorecard import load_game
         a = analyze(load_game(self.sel / "1001"))
         self.assertEqual(a["murders"], 2)
         self.assertTrue(a["elected"])
         self.assertEqual(a["detectives"], ["C"])
-        self.assertTrue(a["succession"])  # A 出局后 B 继任杀手
+        self.assertFalse(a["succession"])  # v4.0：删除帮凶继任（两名杀手本就都是杀手）
         self.assertTrue(a["complete"])
         score, parts = drama(a)
         self.assertGreater(score, 0)

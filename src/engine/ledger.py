@@ -1,16 +1,20 @@
 """道具/技能台账与房间行动裁决（rules-6 §4/§5/§9，M3 引擎）。
 
-涵盖：开锁、保险箱、赠送、手电筒、停电/发电机、监控查看与篡改、
-现场调查/伪造/移尸/犯罪侧写、看破伪装、封闭空间、密道、窃听器。
+涵盖：开锁、保险箱、赠送、手电筒、停电/发电机、监控查看与远程入侵、
+现场调查（四项全给、结果公开、每案一次）与篡改、看破伪装、封闭空间、窃听器。
 
 通用约定：
-- 技能与道具次数用尽即不可用；同名效果的道具是反派道具时仅反派可用。
+- 技能与道具次数用尽即不可用；同名效果的道具是反派道具时，篡改/抹除用途仅反派可用。
 - 同时持有对应技能与道具时，优先消耗技能次数（技能不可转让，结果确定）。
-- 伪造错误结果取值是确定性的：武器伤痕取选项表下一项，死亡时间取当天另一时段，尸体转移取反。
+- v4.0：删除伪造痕迹/销毁证物/伪造证物/信号干扰/犯罪侧写/转移尸体/裹尸袋/病毒U盘；
+  案件篡改统一为【tamper_investigation】（随机改四项中两项，一次定型，确定性随机不可刷）。
 """
 from __future__ import annotations
 
+import random
+
 from ..gamedata import ITEM_USES, ITEMS, PROFESSIONS
+from .murder import lock_clue_trait
 from .state import (
     ACTION_STAGES,
     ALL_SKILLS,
@@ -35,10 +39,12 @@ from .state import (
 
 WOUND_OPTIONS = ["利器", "钝器", "枪", "毒或药物", "空手", "机关", "雕像", "电线"]
 
-FALSY_SKILL = {"伪造痕迹": "伪造痕迹", "销毁证物": "销毁证物", "伪造证物": "伪造证物"}
+INVESTIGATE_ITEMS = ("鲁米诺试剂", "可疑的粉末")  # 调查道具（等同【现场调查】；粉末仅反派可用来篡改）
+REMOTE_ITEMS = ("木马程序U盘",)  # 远程入侵道具（查看人人可用；抹除仅反派）
 
 
 def _wrong_result(case: dict, choice: str):
+    """篡改假值取值（确定性）：武器伤痕取选项表下一项，死亡时间取当天另一时段，尸体转移取真。"""
     if choice == "武器伤痕":
         i = WOUND_OPTIONS.index(case["wound"]) if case["wound"] in WOUND_OPTIONS else -1
         return WOUND_OPTIONS[(i + 1) % len(WOUND_OPTIONS)]
@@ -47,15 +53,73 @@ def _wrong_result(case: dict, choice: str):
         if period.endswith("自由活动"):
             return period[: -len("自由活动")] + "晚间休息"
         return period[: -len("晚间休息")] + "自由活动"
-    return not case["body_moved"]
+    if choice == "尸体转移":
+        return True
+    raise ValueError(choice)
 
 
-def _falsified_wrong(kind: str | None, choice: str) -> bool:
-    return (
-        (kind == "伪造痕迹" and choice != "武器伤痕")
-        or (kind == "销毁证物" and choice != "死亡时间")
-        or (kind == "伪造证物" and choice != "尸体转移")
-    )
+def _clue_value(state: dict, case: dict) -> str:
+    """杀手线索真值：按案件锁定的特征项报凶手本人的特征（体格按文字口径）。"""
+    trait = lock_clue_trait(state, case)
+    cp = get_player(state, case["culprit"])
+    if trait == "性别":
+        return cp["gender"]
+    if trait == "国籍":
+        return cp["nationality"]
+    return "健壮或魁梧" if cp["physique"] >= 3 else "普通或瘦弱"
+
+
+def _fake_clue(state: dict, case: dict) -> str:
+    """杀手线索假值：同一特征项的错误值。"""
+    trait = lock_clue_trait(state, case)
+    cp = get_player(state, case["culprit"])
+    if trait == "性别":
+        return "女" if cp["gender"] == "男" else "男"
+    if trait == "国籍":
+        return "美国" if cp["nationality"] == "中国" else "中国"
+    return "普通或瘦弱" if cp["physique"] >= 3 else "健壮或魁梧"
+
+
+def _case_results(state: dict, case: dict) -> dict:
+    """案件四项调查结论（篡改覆盖已生效）。"""
+    res = {
+        "死亡时间": case["period"],
+        "尸体转移": case["body_moved"],
+        "武器伤痕": case["wound"],
+        "杀手线索": _clue_value(state, case),
+    }
+    if case["falsified"]:
+        res.update(case["falsified"])
+    return res
+
+
+def investigation_means(state: dict, p: dict) -> tuple[str, str] | None:
+    """可用调查手段：优先技能【现场调查】，其次「鲁米诺试剂」「可疑的粉末」。"""
+    if skill_left(state, p["name"], "现场调查") > 0:
+        return ("skill", "现场调查")
+    day = state["phase"]["day"]
+    for item in INVESTIGATE_ITEMS:
+        if held_item(p, item, day) is not None:
+            return ("item", item)
+    return None
+
+
+def _consume_means(state: dict, p: dict, means: tuple[str, str]) -> None:
+    if means[0] == "skill":
+        consume_skill(state, p["name"], means[1])
+    else:
+        consume_item_entry(p, held_item(p, means[1], state["phase"]["day"]))
+
+
+def _remote_means(state: dict, p: dict) -> tuple[str, str] | None:
+    """可用远程入侵手段：优先技能【远程入侵】，其次「木马程序U盘」。"""
+    if skill_left(state, p["name"], "远程入侵") > 0:
+        return ("skill", "远程入侵")
+    day = state["phase"]["day"]
+    for item in REMOTE_ITEMS:
+        if held_item(p, item, day) is not None:
+            return ("item", item)
+    return None
 
 
 def _roommates(state: dict, room: str, exclude: str) -> list[str]:
@@ -69,7 +133,7 @@ def _roommates(state: dict, room: str, exclude: str) -> list[str]:
 def unlock(state: dict, user: str, room: str) -> dict:
     """打开一扇上锁的房门（手段：职业技能【暴力破解】/「万能钥匙」/「螺丝起子」）。
 
-    v3.5 门锁口径：功能房（书房/监控室/地下室）的门与保险箱打开后永久开启；
+    门锁口径：功能房（书房/监控室/地下室）的门与保险箱打开后永久开启；
     卧室被他人开锁后下一时间阶段恢复上锁（登记 bedroom_relock）；会客室夜锁每天重新落下。
     停电期间所有门锁失效，无需也无法开锁。
     """
@@ -276,52 +340,56 @@ def view_monitoring(state: dict, user: str) -> dict:
     return {"ok": True, "type": "view_monitoring", "public": None, "private": {user: s["monitoring"]}}
 
 
-def tamper_monitoring(state: dict, user: str, period: str, room: str, op: str, name: str, new_name: str | None = None) -> dict:
-    """【信号干扰】/「病毒U盘」：在监控室改动指定"时间段×场所"的一条进入记录。
+def remote_view_monitoring(state: dict, user: str) -> dict:
+    """【远程入侵】/「木马程序U盘」（v4.0）：任意行动阶段远程查看当前监控记录（等同进监控室查看）。
 
-    op: "add" 添加一条 / "remove" 移除一条 / "replace" 把一条 name 换成 new_name。
-    一次只能改动一条；篡改后的记录对所有人（含公开宣读）生效。
+    查看与抹除共用一次次数（查看或抹除任选其一，用掉即消耗）。
     """
     s = state
     p = get_player(s, user)
     if p is None or not p["alive"]:
-        return reject("tamper_monitoring", "玩家不存在或已死亡")
-    if not is_villain(p):
-        return reject("tamper_monitoring", "只有反派能篡改监控")
+        return reject("remote_view_monitoring", "玩家不存在或已死亡")
     if s["phase"]["stage"] not in ACTION_STAGES:
-        return reject("tamper_monitoring", "当前阶段不能篡改监控")
-    if s["positions"].get(user) != "监控室":
-        return reject("tamper_monitoring", "你不在监控室")
-    if skill_left(s, user, "信号干扰") > 0:
-        means = ("skill", "信号干扰")
-    elif held_item(p, "病毒U盘", s["phase"]["day"]) is not None:
-        means = ("item", "病毒U盘")
-    else:
-        return reject("tamper_monitoring", "没有【信号干扰】或「病毒U盘」")
-    recs = s["monitoring"].setdefault(period, {}).setdefault(room, [])
-    if op == "add":
-        recs.append(name)
-    elif op == "remove":
-        if name not in recs:
-            return reject("tamper_monitoring", "记录中没有该进入者")
-        recs.remove(name)
-    elif op == "replace":
-        if name not in recs or not new_name:
-            return reject("tamper_monitoring", "替换需要指定原有进入者与新名字")
-        recs[recs.index(name)] = new_name
-    else:
-        return reject("tamper_monitoring", "未知篡改操作")
-    if means[0] == "skill":
-        consume_skill(s, user, means[1])
-    else:
-        consume_item_entry(p, held_item(p, means[1], s["phase"]["day"]))
-    return {"ok": True, "type": "tamper_monitoring", "public": None, "private": {user: "监控记录已篡改"}}
+        return reject("remote_view_monitoring", "当前阶段不能远程入侵")
+    means = _remote_means(s, p)
+    if means is None:
+        return reject("remote_view_monitoring", "没有【远程入侵】或「木马程序U盘」")
+    _consume_means(s, p, means)
+    return {"ok": True, "type": "remote_view_monitoring", "public": None, "private": {user: s["monitoring"]}}
 
 
-def investigate(state: dict, user: str, case_id: int, choice: str) -> dict:
-    """【现场调查】/「鲁米诺试剂」：案件调查阶段获知某起案件的一项真实结论（私下告知）。
+def remote_tamper_monitoring(state: dict, user: str, period: str) -> dict:
+    """【远程入侵】/「木马程序U盘」反派用途（v4.0）：远程抹除某天某时段的全部监控记录。
 
-    choice ∈ {武器伤痕, 死亡时间, 尸体转移}；被伪造的案件按伪造类型给出错误结果。
+    period 形如 "第2天自由活动" / "第2天晚间休息"；抹除永不恢复——记录清空且宣读时注明缺失
+    （等同停电空白：记入 blackout_periods；【看破伪装】对该时段判"无法验证"）。
+    """
+    s = state
+    p = get_player(s, user)
+    if p is None or not p["alive"]:
+        return reject("remote_tamper_monitoring", "玩家不存在或已死亡")
+    if not is_villain(p):
+        return reject("remote_tamper_monitoring", "只有反派能抹除监控记录")
+    if s["phase"]["stage"] not in ACTION_STAGES:
+        return reject("remote_tamper_monitoring", "当前阶段不能远程入侵")
+    means = _remote_means(s, p)
+    if means is None:
+        return reject("remote_tamper_monitoring", "没有【远程入侵】或「木马程序U盘」")
+    if not isinstance(period, str) or not (period.endswith("自由活动") or period.endswith("晚间休息")):
+        return reject("remote_tamper_monitoring", "时段须形如「第N天自由活动」或「第N天晚间休息」")
+    _consume_means(s, p, means)
+    s["monitoring"].pop(period, None)  # 抹除永不恢复（host 侧 monitoring_true 仍留底）
+    mark_blackout_period(s, period)
+    return {"ok": True, "type": "remote_tamper_monitoring", "public": None,
+            "private": {user: f"已远程抹除 {period} 的全部监控记录（宣读时将注明该时段缺失）"}}
+
+
+def investigate(state: dict, user: str, case_id: int) -> dict:
+    """【现场调查】/「鲁米诺试剂」/「可疑的粉末」（v4.0）：清晨案件调查阶段一次获知全部四项结论——
+    死亡时间 / 尸体是否被移动过 / 武器伤痕 / 杀手线索；结果由事件 public 字段向全员公告（含调查者姓名）。
+
+    每起案件只被调查一次：首个完成的调查即定型（investigated），此后任何人不能再查本案。
+    被篡改过的案件按篡改值公告（announce 的内容即结算结果，调用方无需区分真假）。
     """
     s = state
     p = get_player(s, user)
@@ -329,104 +397,80 @@ def investigate(state: dict, user: str, case_id: int, choice: str) -> dict:
         return reject("investigate", "玩家不存在或已死亡")
     if s["phase"]["stage"] != "案件调查":
         return reject("investigate", "只能在案件调查阶段使用")
-    if choice not in ("武器伤痕", "死亡时间", "尸体转移"):
-        return reject("investigate", "调查项必须是 武器伤痕/死亡时间/尸体转移")
     case = next((c for c in s["cases"] if c["id"] == case_id), None)
     if case is None:
         return reject("investigate", "案件不存在")
-    day = s["phase"]["day"]
-    if skill_left(s, user, "现场调查") > 0:
-        consume_skill(s, user, "现场调查")
-    elif held_item(p, "鲁米诺试剂", day) is not None:
-        consume_item_entry(p, held_item(p, "鲁米诺试剂", day))
-    else:
-        return reject("investigate", "没有【现场调查】或「鲁米诺试剂」")
-    truth = {"武器伤痕": case["wound"], "死亡时间": case["period"], "尸体转移": case["body_moved"]}[choice]
-    result = _wrong_result(case, choice) if _falsified_wrong(case["falsified"], choice) else truth
+    if case["investigated"]:
+        return reject("investigate", "该案件已有定论（每起案件只被调查一次）")
+    means = investigation_means(s, p)
+    if means is None:
+        return reject("investigate", "没有可用的调查手段（【现场调查】/「鲁米诺试剂」/「可疑的粉末」）")
+    _consume_means(s, p, means)
+    case["investigated"] = True
+    res = _case_results(s, case)
+    trait = lock_clue_trait(s, case)
+    ann = (f"{user} 调查了 {case['victim']} 的案件（{case['room']}），结论："
+           f"死亡时间 = {res['死亡时间']}；尸体{'被移动过' if res['尸体转移'] else '未被移动'}；"
+           f"武器伤痕 = {res['武器伤痕']}；杀手线索：{trait} = {res['杀手线索']}")
     return {
         "ok": True,
         "type": "investigate",
-        "public": None,
-        "private": {user: {"case": case["victim"], "room": case["room"], "choice": choice, "result": result}},
+        "public": {"announcements": [ann]},
+        "private": {user: {"case": case["victim"], "room": case["room"], "results": res}},
     }
 
 
-def falsify(state: dict, user: str, case_id: int, kind: str) -> dict:
-    """毁证类反派技能：【伪造痕迹】/【销毁证物】/【伪造证物】（「可疑的粉末」等同伪造证物）。
+def tamper_investigation(state: dict, user: str, case_id: int) -> dict:
+    """篡改案件调查（v4.0）：反派消耗一次调查次数，随机篡改四项结论中的两项（私下告知改了哪两项、
+    改成什么），此后本案的调查结果永久为假。同一案件篡改一次即定型（不可重复篡改刷随机数）；
+    篡改行为不会被任何人发现（毁证窗口的亮房可见性除外，见下）。
 
-    仅当谋杀现场没有其他非反派角色（evidence_vulnerable）时可发动；每起案件只生效一次伪造；
-    v3.18：发动者须身处案发现场（场外反派不能远程毁证，编排侧亦不再通知）；
-    v3.19：毁证仅限案发当天（次日清晨调查后现场即无法改动）。
+    注意：篡改不封闭调查——本案此后仍可被正常调查一次（公告的即为假值）。篡改抢先的意义正在于此：
+    反派在清晨队列中先于平民调查者行动时篡改，随后平民的自动调查会把假结论当成真的公告出去。
+
+    两处窗口：
+    ① 毁证窗口——案发当天（自由活动/晚间休息），身处案发现场且现场无其他非反派（evidence_vulnerable）；
+       亮房中此行为会被同房者看见（沿用毁证可见性口径）；
+    ② 清晨调查队列——案件调查阶段，本案已公告、尚未被任何人调查且未被篡改。
     """
     s = state
+    day, stage = s["phase"]["day"], s["phase"]["stage"]
     p = get_player(s, user)
     if p is None or not p["alive"]:
-        return reject("falsify", "玩家不存在或已死亡")
+        return reject("tamper_investigation", "玩家不存在或已死亡")
     if not is_villain(p):
-        return reject("falsify", "只有反派能毁证")
-    if kind not in FALSY_SKILL:
-        return reject("falsify", "毁证类型必须是 伪造痕迹/销毁证物/伪造证物")
-    if s["phase"]["stage"] not in ACTION_STAGES:
-        return reject("falsify", "毁证只能在自由活动/晚间休息（调查开始前）进行")
+        return reject("tamper_investigation", "只有反派能篡改案件调查")
     case = next((c for c in s["cases"] if c["id"] == case_id), None)
     if case is None:
-        return reject("falsify", "案件不存在")
-    if case["day"] != s["phase"]["day"]:
-        return reject("falsify", "毁证仅限案发当天——次日清晨调查后现场已无法改动")
-    if not case["evidence_vulnerable"]:
-        return reject("falsify", "现场有其他非反派角色，不能毁证")
-    if s["positions"].get(user) != case["room"]:
-        return reject("falsify", "你不在案发现场，无法毁证")
+        return reject("tamper_investigation", "案件不存在")
     if case["falsified"] is not None:
-        return reject("falsify", "该案件已被伪造过")
-    if skill_left(s, user, FALSY_SKILL[kind]) > 0:
-        consume_skill(s, user, FALSY_SKILL[kind])
-    elif kind == "伪造证物" and held_item(p, "可疑的粉末", s["phase"]["day"]) is not None:
-        consume_item_entry(p, held_item(p, "可疑的粉末", s["phase"]["day"]))
-    else:
-        return reject("falsify", "没有对应的毁证手段")
-    case["falsified"] = kind
-    return {"ok": True, "type": "falsify", "public": None,
-            "private": {user: f"已对 {case['victim']} 的案件（{case['room']}）发动【{kind}】"}}
-
-
-def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
-    """【转移尸体】/「裹尸袋」：谋杀成功后把尸体移到另一房间而不被发现。
-    v3.18：发动者须身处案发现场（场外反派不能远程移尸）；v3.19：仅限案发当天。"""
-    s = state
-    p = get_player(s, user)
-    if p is None or not p["alive"]:
-        return reject("move_body", "玩家不存在或已死亡")
-    if not is_villain(p):
-        return reject("move_body", "只有反派能转移尸体")
-    if s["phase"]["stage"] not in ACTION_STAGES:
-        return reject("move_body", "当前阶段不能转移尸体")
-    case = next((c for c in s["cases"] if c["id"] == case_id), None)
-    if case is None:
-        return reject("move_body", "案件不存在")
-    if case["day"] != s["phase"]["day"]:
-        return reject("move_body", "转移尸体仅限案发当天——次日清晨调查后现场已无法改动")
-    if not case["evidence_vulnerable"]:
-        return reject("move_body", "现场有其他非反派角色，不能转移尸体")
-    if s["positions"].get(user) != case["room"]:
-        return reject("move_body", "你不在案发现场，无法转移尸体")
-    if case["body_moved"]:
-        return reject("move_body", "尸体已被移动过")
-    legal_rooms = FREE_ROOMS + [bedroom_of(q["name"]) for q in s["players"]]
-    if to_room not in legal_rooms:
-        return reject("move_body", f"非法房间：{to_room}")
-    if to_room == case["room"]:
-        return reject("move_body", "尸体已在该房间，需转移到另一个房间")
-    if skill_left(s, user, "转移尸体") > 0:
-        consume_skill(s, user, "转移尸体")
-    elif held_item(p, "裹尸袋", s["phase"]["day"]) is not None:
-        consume_item_entry(p, held_item(p, "裹尸袋", s["phase"]["day"]))
-    else:
-        return reject("move_body", "没有【转移尸体】或「裹尸袋」")
-    case["room"] = to_room
-    case["body_moved"] = True
-    return {"ok": True, "type": "move_body", "public": None,
-            "private": {user: f"{case['victim']} 的尸体已转移到{to_room}"}}
+        return reject("tamper_investigation", "该案件已被篡改过（一次即定型）")
+    if case["investigated"]:
+        return reject("tamper_investigation", "该案件已被调查定型，无法再篡改")
+    at_scene = (stage in ACTION_STAGES and case["day"] == day
+                and case["evidence_vulnerable"] and s["positions"].get(user) == case["room"])
+    in_queue = stage == "案件调查" and case["announced"] and case["day"] == day - 1
+    if not (at_scene or in_queue):
+        return reject("tamper_investigation",
+                      "篡改只能在两处窗口进行：案发当天身处案发现场（毁证窗口），或清晨调查队列中轮到你了")
+    means = investigation_means(s, p)
+    if means is None:
+        return reject("tamper_investigation", "没有可用的调查手段（篡改消耗一次调查次数）")
+    _consume_means(s, p, means)
+    # 随机篡改四项中的两项：确定性随机（存档seed × 案件号），一次定型、不可刷随机
+    rng = random.Random(f"{s.get('seed')}:{case_id}:tamper")
+    picks = rng.sample(["死亡时间", "尸体转移", "武器伤痕", "杀手线索"], 2)
+    faked = {}
+    for item in picks:
+        faked[item] = _fake_clue(s, case) if item == "杀手线索" else _wrong_result(case, item)
+    case["falsified"] = faked
+    detail = "；".join(f"{k} → {v if not isinstance(v, bool) else ('是' if v else '否')}" for k, v in faked.items())
+    private = {user: f"你已篡改 {case['victim']} 的案件调查：改动两项——{detail}。"
+                     f"此后本案的调查结果永久为假（无人会察觉篡改本身）。"}
+    if at_scene and not is_dark(s, case["room"]):
+        for w in _roommates(s, case["room"], user):  # 毁证可见性口径：亮房中同房者看见此行为
+            private[w] = f"{user} 在{case['room']}对案发现场做了些什么（疑似篡改证物）"
+    return {"ok": True, "type": "tamper_investigation", "public": None, "private": private}
 
 
 def report(state: dict, user: str) -> dict:
@@ -455,37 +499,6 @@ def report(state: dict, user: str) -> dict:
                              f"你将被列为报案人，随次日清晨公告公开。"}}
 
 
-def profile(state: dict, user: str, case_id: int, aspect: str) -> dict:
-    """【犯罪侧写】：获知杀手本人的一项特征（性别/国籍/体格）；装置与魔术案件指向设置者/表演者。"""
-    s = state
-    p = get_player(s, user)
-    if p is None or not p["alive"]:
-        return reject("profile", "玩家不存在或已死亡")
-    if s["phase"]["stage"] != "案件调查":
-        return reject("profile", "只能在案件调查阶段使用")
-    if aspect not in ("性别", "国籍", "体格"):
-        return reject("profile", "侧写项必须是 性别/国籍/体格")
-    if skill_left(s, user, "犯罪侧写") <= 0:
-        return reject("profile", "没有可用的【犯罪侧写】")
-    case = next((c for c in s["cases"] if c["id"] == case_id), None)
-    if case is None:
-        return reject("profile", "案件不存在")
-    culprit = get_player(s, case["culprit"])
-    consume_skill(s, user, "犯罪侧写")
-    if aspect == "性别":
-        result = culprit["gender"]
-    elif aspect == "国籍":
-        result = culprit["nationality"]
-    else:
-        result = "健壮或魁梧" if culprit["physique"] >= 3 else "普通或瘦弱"
-    return {
-        "ok": True,
-        "type": "profile",
-        "public": None,
-        "private": {user: {"case": case["victim"], "room": case["room"], "aspect": aspect, "result": result}},
-    }
-
-
 def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     """【看破伪装】/「测谎仪」：验证目标此前关于 职业/道具/技能/行踪 的声明是否含谎言。
 
@@ -493,7 +506,7 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     {"profession", "item", "skill", "visited_rooms": [...], "denied_rooms": [...]}。
     每项裁决为三态：属实 / 谎言 / 无法验证（无效名目、对方未作此类声明、或房间无监控覆盖），
     "无法验证"不计入谎言判定。行踪以真实监控记录（monitoring_true）验证（v3.5 起监控覆盖所有房间门口，含会客室）。
-    v3.12（game/20 复盘）：存在停电空白（blackout_days）时，行踪声称的"无记录"不构成谎言证据，
+    v3.12（game/20 复盘）：存在监控空白（停电或被远程抹除的时段）时，行踪声称的"无记录"不构成谎言证据，
     判"无法验证"；全部为非法名目的 claims 整体驳回且不消耗次数（进驳回重报流程）；
     visited_rooms/denied_rooms 容错接受单个字符串。
     """
@@ -520,9 +533,10 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
     def monitorable(room: str) -> bool:
         return room in FREE_ROOMS or is_bedroom(room)  # v3.5：监控覆盖所有房间门口（含会客室）
 
-    # v3.12（game/20 复盘）：存在停电空白的对局，"无记录"不能作为行踪谎言的证据——
-    # 与清晨宣读"缺失不代表无人进入"同口径；有记录为证的声称不受空白影响
-    gap = bool(s.get("blackout_days"))
+    # v3.12（game/20 复盘）：存在监控空白的对局，"无记录"不能作为行踪谎言的证据——
+    # 与清晨宣读"缺失不代表无人进入"同口径；有记录为证的声称不受空白影响。
+    # v4.0：空白来源含停电与【远程入侵】/「木马程序U盘」的整段抹除（均记入 blackout_periods）
+    gap = bool(s.get("blackout_periods")) or bool(s.get("blackout_days"))
 
     verdicts: dict[str, str] = {}
     wellformed = 0  # 名目合法的声明数；全部为非法名目（如整句描述）→ 整体驳回、不消耗次数（v3.12）
@@ -562,24 +576,21 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
                 if got:
                     verdicts[f"{ph}{r}"] = "属实"
                 elif gap:
-                    verdicts[f"{ph}{r}"] = "无法验证（监控存在停电空白，不能排除其在空白期进入）"
+                    verdicts[f"{ph}{r}"] = "无法验证（监控存在空白时段，不能排除其在空白期进入）"
                 else:
                     verdicts[f"{ph}{r}"] = "谎言"
             else:
                 if got:
                     verdicts[f"{ph}{r}"] = "谎言"
                 elif gap:
-                    verdicts[f"{ph}{r}"] = "无法验证（监控存在停电空白，不能确认其从未进入）"
+                    verdicts[f"{ph}{r}"] = "无法验证（监控存在空白时段，不能确认其从未进入）"
                 else:
                     verdicts[f"{ph}{r}"] = "属实"
     if not wellformed:
         return reject("see_through",
                       '没有可验证的声明：职业/道具/技能/房间须填规则书原名（如 "黑客"、"刀"、"书房"），'
                       "不要填整句描述——本次不消耗次数，请重新声明")
-    if means[0] == "skill":
-        consume_skill(s, user, means[1])
-    else:
-        consume_item_entry(p, held_item(p, means[1], day))
+    _consume_means(s, p, means)
     n_lie = sum(1 for v in verdicts.values() if v == "谎言")
     n_true = sum(1 for v in verdicts.values() if v == "属实")
     lies = n_lie > 0
@@ -620,65 +631,6 @@ def seal_room(state: dict, user: str, allowed: list[str] | None = None) -> dict:
     consume_skill(s, user, "封闭空间")
     s["sealed_room"] = {"room": room, "owner": user, "allowed": list(allowed or [])}
     return {"ok": True, "type": "seal_room", "public": None, "private": {user: f"{room}已临时锁死至下一个自由活动时间"}}
-
-
-def set_passage(state: dict, user: str) -> dict:
-    """反派建筑师【建造密道】：开局准备阶段确认密道网存在（v3 起无需指定出口）。"""
-    s = state
-    p = get_player(s, user)
-    if p is None or not p["alive"]:
-        return reject("set_passage", "玩家不存在或已死亡")
-    if s["phase"]["stage"] != "开局准备":
-        return reject("set_passage", "只能在开局准备阶段确认密道")
-    if not is_villain(p) or p["profession"] != "建筑师":
-        return reject("set_passage", "只有反派建筑师能建造密道")
-    if skill_left(s, user, "建造密道") <= 0:
-        return reject("set_passage", "建造密道次数已用完")
-    consume_skill(s, user, "建造密道")
-    s["passage"] = {"used": False}
-    return {"ok": True, "type": "set_passage", "public": None,
-            "private": {user: "你确认了古堡的密道网：晚间休息时可经密道前往会客室/书房/监控室/地下室（监控不留记录；出口房间人数须满足谋杀人数条件，否则当晚无法使用；成功使用一次后密道损毁）"}}
-
-
-def use_passage(state: dict, user: str, room: str) -> dict:
-    """使用密道（v3.22）：晚间休息时从自己卧室经密道前往会客室/书房/监控室/地下室之一。
-
-    - 进入条件与谋杀人数条件相同：出口房间在场非反派 ≤1（v3.31 起黑暗房间不设人数限制——容量仍是硬约束）；
-      不满足则当晚无法使用——密道保留、不暴露（返回 ok=True, failed=True）；
-    - 成功：监控不留记录（当晚记录上你一直在卧室），密道损毁（整局至多成功一次）；
-      经密道进入会客室者不上次日清晨的夜宿名单（隐身，见 core._morning_report）；
-    - 进入后可正常行动（含谋杀——v3.32 起反派（杀手或帮凶）皆可借密道动手：帮凶不受"不能主动谋杀"
-      限制，击杀归属于发动者本人，同舞台魔术/延时装置口径；由编排器的谋杀窗口提供）。
-    """
-    s = state
-    p = get_player(s, user)
-    if p is None or not p["alive"]:
-        return reject("use_passage", "玩家不存在或已死亡")
-    if s["phase"]["stage"] != "晚间休息":
-        return reject("use_passage", "只能在晚间休息时间使用密道")
-    passage = s["passage"]
-    if not passage or passage["used"]:
-        return reject("use_passage", "密道不可用")
-    if not is_villain(p) or p["profession"] != "建筑师":
-        return reject("use_passage", "只有反派建筑师能使用密道")
-    if s["positions"].get(user) != bedroom_of(user):
-        return reject("use_passage", "你必须在自己卧室才能使用密道")
-    if room not in FREE_ROOMS:
-        return reject("use_passage", "密道只能通往会客室/书房/监控室/地下室")
-    non_villains = [
-        q for q in s["players"]
-        if q["alive"] and not is_villain(q) and s["positions"].get(q["name"]) == room
-    ]
-    # v3.31：进入条件与谋杀人数条件同步——黑暗出口不设人数限制（容量上限天然约束）
-    if not is_dark(s, room) and len(non_villains) > 1:
-        return {"ok": True, "type": "use_passage", "public": None,
-                "private": {user: f"密道出口（{room}）今晚人多眼杂，无法使用——密道保留，未被任何人察觉"},
-                "failed": True}
-    passage["used"] = True
-    s["positions"][user] = room
-    s["passage_stealth"].append(user)
-    return {"ok": True, "type": "use_passage", "public": None,
-            "private": {user: f"你经密道抵达{room}，监控与众人眼中你当晚一直在自己卧室；密道随后损毁"}}
 
 
 def place_bug(state: dict, user: str, room: str) -> dict:

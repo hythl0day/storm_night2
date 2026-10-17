@@ -4,14 +4,17 @@
 - 第 1 天没有投票，公共发言时段改为侦探竞选（rules-6 §7.4，v3.3）；v3.29 起首日自由活动与晚间均可谋杀。
 - 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
-- 无杀倒计时：自第 2 天起算，连续两个完整天无谋杀行为（含未遂）则下一清晨平民胜。
+- 无杀倒计时（v4.0）：从第 1 天起算（基准日 0），连续两个完整天无谋杀行为（含未遂与下毒）则下一清晨平民胜。
 - 第 6 天为终审日（只有白天会议），其投票结束仍无结果 → 主神获胜（全员失败）。
 - 自由活动合法去向 = 会客室/书房/监控室/地下室（白天卧室清场）；会客室不限人数、
   永不黑暗、夜间可夜宿（v3.4）；v3.5 起监控覆盖会客室门口。
 - v3.26 昼夜统一为去向声明 → 独立开锁 → 正常进入：每扇门由拟进入者私密决定是否开锁，
-  开锁者优先，其余按行动顺序；容量与其他进入规则不变。延时装置仍在全员进入后统一判定。
-- v3.22：晚间休息与自由活动同构（合法去向含卧室；卧室夜间黑暗；平民慎入功能房；
-  每阶段独立一次谋杀机会）；死亡/未遂不再阶段末即时公告，统一由次日清晨发布。
+  开锁者优先，其余按行动顺序；容量与其他进入规则不变。
+- v3.22：晚间休息与自由活动同构（合法去向含卧室；卧室夜间黑暗；平民慎入功能房）；
+  死亡/未遂不再阶段末即时公告，统一由次日清晨发布。
+- v4.0：缓释毒剂的延迟死亡在晚间→清晨翻页时结算（死于自己卧室，计入案件，清晨公告前落账）；
+  延时装置改为谋杀窗口手动启动（device_fire），进入结算不再自动触发；密道改为谋杀动作（passage_kill）；
+  每窗口全队一次谋杀尝试（stage_murder_used），每天全队至多一起成功谋杀（day_kill_capped，翻页进自由活动重置）。
 """
 from __future__ import annotations
 
@@ -61,11 +64,30 @@ class Engine:
     def murder(self, killer: str, target: str, weapon: str | None = None, savior: str | None = None) -> dict:
         return murder_mod.murder(self.state, killer, target, weapon, savior)
 
+    def pharmacology_kill(self, user: str, target: str, savior: str | None = None) -> dict:
+        return murder_mod.pharmacology_kill(self.state, user, target, savior)
+
+    def strong_attack(self, user: str, target: str) -> dict:
+        return murder_mod.strong_attack(self.state, user, target)
+
+    def slow_poison(self, user: str, target: str) -> dict:
+        return murder_mod.slow_poison(self.state, user, target)
+
+    def passage_kill(self, user: str, target: str, weapon: str | None = None, savior: str | None = None) -> dict:
+        return murder_mod.passage_kill(self.state, user, target, weapon, savior)
+
     def set_device(self, user: str, room: str) -> dict:
         return murder_mod.set_device(self.state, user, room)
 
-    def stage_magic(self, user: str, target: str) -> dict:
-        return murder_mod.stage_magic(self.state, user, target)
+    def device_fire(self, user: str) -> dict:
+        return murder_mod.device_fire(self.state, user)
+
+    def pending_devices(self) -> list[dict]:
+        """机关推送查询（谋杀窗口菜单用）：当前可启动的延时装置列表。"""
+        return murder_mod.pending_devices(self.state)
+
+    def stage_magic(self, user: str, target: str, savior: str | None = None) -> dict:
+        return murder_mod.stage_magic(self.state, user, target, savior)
 
     def resolve_vote(self, votes: dict[str, str | None], implant: dict | None = None,
                      defer_out: bool = False) -> dict:
@@ -107,32 +129,47 @@ class Engine:
     def view_monitoring(self, user: str) -> dict:
         return ledger.view_monitoring(self.state, user)
 
-    def tamper_monitoring(self, user: str, period: str, room: str, op: str, name: str, new_name: str | None = None) -> dict:
-        return ledger.tamper_monitoring(self.state, user, period, room, op, name, new_name)
+    def remote_view_monitoring(self, user: str) -> dict:
+        """【远程入侵】/「木马程序U盘」：远程查看当前监控记录（不要求身处监控室）。"""
+        return ledger.remote_view_monitoring(self.state, user)
 
-    def investigate(self, user: str, case_id: int, choice: str) -> dict:
-        return ledger.investigate(self.state, user, case_id, choice)
+    def remote_tamper_monitoring(self, user: str, period: str) -> dict:
+        """【远程入侵】/「木马程序U盘」反派用途：远程抹除某天某时段的全部监控记录（永不恢复）。"""
+        return ledger.remote_tamper_monitoring(self.state, user, period)
 
-    def falsify(self, user: str, case_id: int, kind: str) -> dict:
-        return ledger.falsify(self.state, user, case_id, kind)
+    def investigate(self, user: str, case_id: int) -> dict:
+        """现场调查（v4.0）：一次获知全部四项结论，结果经事件 public 字段全员公告；每案一次。"""
+        return ledger.investigate(self.state, user, case_id)
 
-    def move_body(self, user: str, case_id: int, to_room: str) -> dict:
-        return ledger.move_body(self.state, user, case_id, to_room)
+    def tamper_investigation(self, user: str, case_id: int) -> dict:
+        """篡改案件调查（v4.0）：反派消耗一次调查次数，随机篡改两项；一次定型。"""
+        return ledger.tamper_investigation(self.state, user, case_id)
 
-    def profile(self, user: str, case_id: int, aspect: str) -> dict:
-        return ledger.profile(self.state, user, case_id, aspect)
+    def investigation_queue(self) -> list[dict]:
+        """清晨调查队列（v4.0，供编排器驱动）：当日清晨公告、尚未定型的案件 × 持调查手段者
+        （按行动顺序，含反派）。编排器按队列顺序处理：平民自动 investigate，反派私密菜单
+        （tamper_investigation / investigate / 跳过）。"""
+        s = self.state
+        out = []
+        if s["phase"]["stage"] != "案件调查":
+            return out
+        day = s["phase"]["day"]
+        for c in s["cases"]:
+            if not c.get("announced") or c.get("investigated") or c["day"] != day - 1:
+                continue
+            holders = []
+            for name in s["order"]:
+                p = get_player(s, name)
+                if p and p["alive"] and ledger.investigation_means(s, p):
+                    holders.append({"name": name, "villain": is_villain(p)})
+            out.append({"case_id": c["id"], "victim": c["victim"], "room": c["room"], "holders": holders})
+        return out
 
     def see_through(self, user: str, target: str, claims: dict) -> dict:
         return ledger.see_through(self.state, user, target, claims)
 
     def seal_room(self, user: str, allowed: list[str] | None = None) -> dict:
         return ledger.seal_room(self.state, user, allowed)
-
-    def set_passage(self, user: str) -> dict:
-        return ledger.set_passage(self.state, user)
-
-    def use_passage(self, user: str, room: str) -> dict:
-        return ledger.use_passage(self.state, user, room)
 
     def place_bug(self, user: str, room: str) -> dict:
         return ledger.place_bug(self.state, user, room)
@@ -183,6 +220,15 @@ class Engine:
         elif stage == "自由活动":
             new_day, new_stage = day, "晚间休息"
         elif stage == "晚间休息":
+            # v4.0：缓释毒剂延迟死亡在翻页时、清晨公告前结算——中毒者死于自己卧室
+            # （案发房间=其卧室，时段=晚间休息，伤痕=毒或药物；已被投票出局者不再结算）
+            for e in list(s["poisoned"]):
+                if e["day"] != day:
+                    continue
+                s["poisoned"].remove(e)
+                tp = get_player(s, e["name"])
+                if tp and tp["alive"]:
+                    murder_mod._apply_kill(s, e["name"], "缓释毒剂", bedroom_of(e["name"]), e["by"])
             new_day, new_stage = day + 1, "案件调查"
             s["order"] = s["order"][1:] + s["order"][:1]
             alive_names = [p["name"] for p in s["players"] if p["alive"]]
@@ -193,9 +239,9 @@ class Engine:
             public["announcements"].append(ann)
             # 清晨状态行：host 算好的全局状态，避免玩家自行推算规则状态出错（game/42 复盘项）
             public["announcements"].append(f"目前存活 {len(alive_names)} 人：{'、'.join(alive_names)}")
-            # 无杀倒计时自第 2 天起算（rules-6 §8）：尚无谋杀行为时视同末次行为为第 1 天；
-            # 公告口径见 countdown_text，判定仍用 last_behavior
-            last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 1
+            # 无杀倒计时从第 1 天起算（rules-6 §8，v4.0）：尚无谋杀行为时基准为第 0 天
+            # （第 1、2 天均无行为 → 第 3 天清晨平民直接获胜）；公告口径见 countdown_text
+            last_behavior = s["last_murder_day"] if s["last_murder_day"] is not None else 0
             public["announcements"].append(countdown_text(new_day, s["last_murder_day"]))
             if s["sealed_items"]:
                 public["announcements"].append(f"遗留道具待立遗嘱：{len(s['sealed_items'])} 件")
@@ -238,6 +284,7 @@ class Engine:
             s["locks"][HALL] = False  # 会客室夜锁随夜晚结束解除（v3.4）
         if stage == "自由活动":
             s["stage_murder_used"] = False
+            s["day_kill_capped"] = False  # v4.0：每日成功封顶随新一天自由活动重置
             s["flashlight_lit"] = []
             s["passage_stealth"] = []
             s["sealed_room"] = None
@@ -245,7 +292,7 @@ class Engine:
                 # 当天新声明的停电在选房收尾后统一公布（rules-6 §7.5）；这里只公告跨日延续的停电
                 public["announcements"].append("停电中：除会客室外所有房间一片黑暗（可前往地下室修复发电机恢复供电——未修复则停电一直持续）")
         if stage == "晚间休息":
-            # v3.22：每阶段独立一次谋杀机会——白天成功杀人不再占用当夜机会（rules-6 §7.6"每阶段一次"）
+            # 每窗口一次尝试：进入晚间窗口重置（v4.0：白天成功击杀后的晚间封顶由 day_kill_capped 承担）
             s["stage_murder_used"] = False
             s["flashlight_lit"] = []
             s["passage_stealth"] = []
@@ -449,7 +496,8 @@ class Engine:
         return room, None
 
     def finish_room_entries(self) -> dict:
-        """选房收尾（v3.5）：落结算标记，延时装置在全员进入后统一判定；v3.30 之后统一判定凶案发现。"""
+        """选房收尾（v3.5）：落结算标记；v3.30 之后统一判定凶案发现。
+        v4.0：延时装置不再在进入结算时自动触发（改谋杀窗口手动 device_fire），此处只发现尸体。"""
         s = self.state
         if s["winner"]:
             return reject("finish_room_entries", "游戏已结束")
@@ -457,14 +505,9 @@ class Engine:
             return reject("finish_room_entries", "当前不是自由活动阶段")
         s["rooms_entered"] = current_period(s)
         private: dict = {}
-        device_events = murder_mod.trigger_devices(s)
-        for dev_ev in device_events:
-            private.update(dev_ev["private"])
         for name, msg in discover_bodies(s).items():  # v3.30：发现只私下告知（当前阶段顺序下此处恒为空操作）
             private[name] = (private.get(name, "") + "；" if name in private else "") + msg
         ev: dict = {"ok": True, "type": "finish_room_entries", "public": None, "private": private}
-        if device_events:
-            ev["device_triggers"] = [e["case"]["victim"] for e in device_events]
         if check_winner(s):
             ev["winner"] = s["winner"]
             ev["win_reason"] = s["win_reason"]
@@ -509,8 +552,6 @@ class Engine:
               "positions": dict(s["positions"]), "unlockers": dict(unlockers)}
         if stranded:
             ev["stranded"] = stranded
-        if fin.get("device_triggers"):
-            ev["device_triggers"] = fin["device_triggers"]
         if "winner" in fin:
             ev["winner"] = fin["winner"]
             ev["win_reason"] = fin["win_reason"]
@@ -603,18 +644,12 @@ class Engine:
                     f"{invitee} 接受了你的邀请，进入了{room}——即使房间黑暗，你也知道 TA 来了。"
         s["positions"] = positions
         s["night_assigned"] = current_period(s)
-        device_events = murder_mod.trigger_devices(s)
-        for dev_ev in device_events:
-            for name, msg in dev_ev["private"].items():
-                private[name] = (private.get(name, "") + "；" if name in private else "") + msg
         for name, msg in discover_bodies(s).items():  # v3.30：晚间休息是凶案发现的唯一真实窗口（发现白天自由活动的谋杀）
             private[name] = (private.get(name, "") + "；" if name in private else "") + msg
         ev = {"ok": True, "type": "night_assign", "public": {"announcements": []},
               "private": private, "positions": dict(positions), "unlockers": dict(unlockers)}
         if host:
             ev["host"] = host
-        if device_events:
-            ev["device_triggers"] = [e["case"]["victim"] for e in device_events]
         if check_winner(s):
             ev["winner"] = s["winner"]
             ev["win_reason"] = s["win_reason"]

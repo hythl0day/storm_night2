@@ -51,8 +51,10 @@ def fmt_action(a: dict) -> str:
         return f"看破伪装 → {a.get('target', '?')}"
     if t == "view_monitoring":
         return "查看监控"
-    if t == "tamper":
-        return f"篡改监控（{a.get('op', '?')}：{a.get('period', '?')}/{a.get('room', '?')}）"
+    if t == "remote_view_monitoring":
+        return "远程查看监控"
+    if t == "remote_tamper_monitoring":
+        return f"远程抹除监控（{a.get('period', '?')}）"
     if t == "open_safe":
         return "打开保险箱"
     if t == "unlock":
@@ -66,14 +68,12 @@ def fmt_action(a: dict) -> str:
     if t == "seal_room":
         allowed = "、".join(a.get("allowed") or []) or "无"
         return f"封闭当前房间（许可留下：{allowed}）"
-    if t == "set_passage":
-        return f"建造密道：{a.get('room', '?')}"
     if t == "place_bug":
         return f"放置窃听器：{a.get('room', '?')}"
-    if t == "use_passage":
-        return "使用密道"
     if t == "set_device":
-        return f"设置延时装置：{a.get('room', '?')}"
+        return f"预设延时装置：{a.get('room', '?')}"
+    if t == "device_fire":
+        return "远程启动延时装置"
     if t == "declare_blackout":
         return "声明今天停电"
     if t == "murder":
@@ -81,14 +81,19 @@ def fmt_action(a: dict) -> str:
         return f"谋杀 {a.get('target', '?')}" + (f"（凶器：{w}）" if w else "")
     if t == "stage_magic":
         return f"舞台魔术 → {a.get('target', '?')}"
-    if t == "falsify":
-        return f"{a.get('kind', '伪造')}（{_case_label(a)}）"
-    if t == "move_body":
-        return f"转移尸体（{_case_label(a)} → {a.get('to_room', '?')}）"
+    if t == "strong_attack":
+        return f"强袭 → {a.get('target', '?')}"
+    if t == "slow_poison":
+        return f"缓释毒剂 → {a.get('target', '?')}"
+    if t == "pharmacology_kill":
+        return f"药理学毒杀 → {a.get('target', '?')}"
+    if t == "passage_kill":
+        w = a.get("weapon")
+        return f"密道谋杀 → {a.get('target', '?')}" + (f"（凶器：{w}）" if w else "")
+    if t == "tamper_investigation":
+        return f"篡改案件调查（{_case_label(a)}）"
     if t == "investigate":
-        return f"现场调查（{_case_label(a)}：{a.get('choice', '?')}）"
-    if t == "profile":
-        return f"犯罪侧写（{_case_label(a)}：{a.get('aspect', '?')}）"
+        return f"现场调查（{_case_label(a)}）"
     if t == "declare":
         return "宣告参选侦探" if a.get("run") else "宣告不参选"
     if t == "elect_stay":
@@ -101,8 +106,8 @@ def fmt_action(a: dict) -> str:
         return f"投票 → {a.get('target', '?')}"
     if t == "abstain":
         return "弃权"
-    if t == "memory_implant":
-        return f"记忆植入：{a.get('voter', '?')} → {a.get('target', '?')}"
+    if t == "tamper_vote":
+        return f"篡改投票：{a.get('voter', '?')} → {a.get('target', '?')}"
     if t == "bequeath":
         return f"立遗嘱：{a.get('mapping', {})}"
     if t == "bequest_reply":

@@ -33,13 +33,18 @@ ROOT = Path(__file__).resolve().parent.parent
 ACTION_RE = re.compile(r"- \S+ 声明 (\{.*?\}) → (成功|驳回)")
 
 ACTION_LABELS = {
-    "see_through": "看破伪装/测谎仪", "investigate": "现场调查/鲁米诺", "profile": "犯罪侧写",
+    "see_through": "看破伪装/测谎仪", "investigate": "现场调查/鲁米诺/粉末",
+    "tamper_investigation": "篡改案件调查",
     "open_safe": "开保险箱", "unlock": "开锁", "declare_blackout": "拉电闸停电", "fix_generator": "修发电机",
-    "view_monitoring": "查监控", "tamper": "篡改监控", "falsify": "毁证", "move_body": "转移尸体",
-    "seal_room": "封闭空间", "set_passage": "密道确认", "use_passage": "密道使用", "place_bug": "窃听器放置",
+    "view_monitoring": "查监控", "remote_view_monitoring": "远程查看监控",
+    "remote_tamper_monitoring": "远程抹除监控",
+    "seal_room": "封闭空间", "place_bug": "窃听器放置",
     "bug_listen": "窃听器收听", "use_flashlight": "手电筒", "take_table": "取桌上物品",
-    "set_device": "延时装置", "stage_magic": "舞台魔术", "murder": "谋杀行动", "memory_implant": "记忆植入",
-    "transfer": "赠送道具", "night_raid": "夜袭声明",
+    "set_device": "延时装置预设", "device_fire": "延时装置启动",
+    "stage_magic": "舞台魔术", "strong_attack": "强袭", "slow_poison": "缓释毒剂",
+    "pharmacology_kill": "药理学毒杀", "passage_kill": "密道谋杀",
+    "murder": "谋杀行动", "tamper_vote": "篡改投票",
+    "transfer": "赠送道具",
 }
 
 
@@ -114,11 +119,13 @@ def roster_professions(script: str) -> dict[str, str]:
 # script.md 行动回执（"◆ X｜动作描述 → 成功/驳回"）：机制利用率的补充数据源
 RECEIPT_RE = re.compile(r"◆ \S+｜(.+?) → (成功|驳回)")
 RECEIPT_KEYS = [
-    ("声明今晚停电", "拉电闸停电"), ("修复发电机", "修发电机"), ("查看监控", "查监控"), ("篡改", "篡改监控"),
-    ("犯罪侧写", "犯罪侧写"), ("现场调查", "现场调查"), ("鲁米诺", "鲁米诺试剂"), ("看破伪装", "看破伪装/测谎"),
-    ("打开保险箱", "开保险箱"), ("延时装置", "延时装置"), ("舞台魔术", "舞台魔术"), ("记忆植入", "记忆植入"),
-    ("转移尸体", "转移尸体"), ("封闭空间", "封闭空间"), ("密道", "密道"), ("窃听器", "窃听器"),
-    ("手电筒", "手电筒"), ("取桌上物品", "取桌上物品"), ("夜袭", "夜袭声明"), ("谋杀", "谋杀行动"),
+    ("声明今晚停电", "拉电闸停电"), ("修复发电机", "修发电机"), ("查看监控", "查监控"),
+    ("远程抹除监控", "远程抹除监控"), ("篡改案件调查", "篡改案件调查"),
+    ("现场调查", "现场调查"), ("鲁米诺", "鲁米诺试剂"), ("看破伪装", "看破伪装/测谎"),
+    ("打开保险箱", "开保险箱"), ("延时装置", "延时装置"), ("舞台魔术", "舞台魔术"), ("篡改投票", "篡改投票"),
+    ("强袭", "强袭"), ("缓释毒剂", "缓释毒剂"), ("药理学", "药理学毒杀"), ("密道谋杀", "密道谋杀"),
+    ("封闭空间", "封闭空间"), ("窃听器", "窃听器"),
+    ("手电筒", "手电筒"), ("取桌上物品", "取桌上物品"), ("谋杀", "谋杀行动"),
     ("赠送", "赠送道具"),
 ]
 
@@ -201,9 +208,10 @@ def analyze(g: dict) -> dict:
     retry_after_fail = any(
         any(c["day"] > a2["day"] for c in cases) or any(b["day"] > a2["day"] for b in attempts)
         for a2 in attempts)
-    # 反派功能技能使用率（破抱团/破票仓：舞台魔术/延时装置/记忆植入/信号干扰）：阵容表出场 vs state 台账消耗
+    # 反派功能技能使用率（v4.0：八种反派职业技能全部计入）：阵容表出场 vs state 台账消耗
     profs = roster_professions(script)
-    valve = {"魔术师": "舞台魔术", "机械师": "延时装置", "心理医生": "记忆植入", "黑客": "信号干扰"}
+    valve = {"魔术师": "舞台魔术", "机械师": "延时装置", "心理医生": "篡改投票", "黑客": "篡改投票",
+             "医师": "药理学", "化学家": "缓释毒剂", "运动员": "强袭", "建筑师": "建造密道"}
     su = st.get("skill_uses", {})
     villain_valve = sum(1 for n, i in ids.items() if i in ("帮凶", "杀手") and profs.get(n) in valve)
     valve_used = sum(1 for n, i in ids.items()

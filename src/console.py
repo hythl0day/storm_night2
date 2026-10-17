@@ -333,7 +333,7 @@ def make_hooks(ctx: Ctx) -> dict:
             emit_receipt(line)
 
     def on_private(name: str, msg: str) -> None:
-        """私密回执（host 侧全剧透）：调查/侧写结果、继任通知、记忆植入明细等。
+        """私密回执（host 侧全剧透）：调查/篡改结果、篡改投票明细、密谋频道发言等。
         回执原文是发给 AI 的第二人称，展示时转第三人称；席位调用之外归拢进行动回执块。"""
         line = f"\x1b[90m  [{name}] {third_person(name, msg)}\x1b[0m"
         if ctx.current_seat:

@@ -7,28 +7,31 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - table_items: [{name,uses_left}]       会客室桌上物品（v3.5：开局为桌上凶器「左轮手枪」；遗嘱未指定/拒收的道具放回桌上）
 - table_events: [str]                   待清晨公告的桌上物品变动（夜间被取走等）
 - positions: {名字: 房间}               当前阶段所在房间；白天会议阶段为 "会客室"
-- monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被【信号干扰】/「病毒U盘」篡改；v3.5 起覆盖会客室）
+- monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被反派以【远程入侵】/「木马程序U盘」整段抹除；v3.5 起覆盖会客室）
 - monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
 - skill_uses: {名字: {技能: 剩余}}      技能台账（反派技能仅反派登记；使用时仍校验身份与次数）
-- cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/伪造/封存/announced（清晨已公告）/discovered_by（发现者，host 侧）/reported_by（报案人，公告刊出）
+- cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/杀手线索（clue_trait）/篡改（falsified={调查项: 假值}）/封存/
+                                        announced（清晨已公告）/investigated（已定型：调查或篡改一次即定型）/discovered_by（发现者，host 侧）/reported_by（报案人，公告刊出）
 - attempts: [未遂]                      谋杀未遂记录；供公告与无杀倒计时
-- last_murder_day: int|None             最近一次谋杀行为（含未遂）的日期；None=倒计时未启动
+- poisoned: [{name,day,by}]             缓释毒剂延迟死亡队列（v4.0）：下毒当夜翻页时结算（死于自己卧室，伤痕毒或药物）
+- last_murder_day: int|None             最近一次谋杀行为（含未遂与下毒）的日期；None=尚无行为
+- day_kill_capped: bool                 本日已有一起成功谋杀（含下毒/装置触发）——置位后一切谋杀/技能杀驳回（v4.0 每日封顶）
 - winner / win_reason                   胜负结果（"平民"/"反派"/"主神"）
 - detective: 名字|None                  侦探（第 1 天竞选产生；出局时警徽按遗嘱传承或销毁，不补选，见 rules-6 §7.4）
 - detective_election_done: bool         第 1 天侦探竞选是否已结算（防重复竞选）
-- stage_murder_used: bool               杀手本阶段谋杀机会是否已用
+- stage_murder_used: bool               本谋杀窗口全队尝试是否已用（v4.0：每窗口一次尝试，仅放弃/无目标顺延）
 - power_out: bool                       停电中（修复发电机后恢复）
 - blackout_days: [int]                  拉闸声明日（停电次数统计）
-- blackout_periods: [时段]              实际发生监控缺失的时段（含跨日延续与修复当日）
+- blackout_periods: [时段]              实际发生监控缺失的时段（含跨日延续、修复当日与远程抹除时段）
 - power_restored: 时段|None             最近一次发电机修复时点
 - flashlight_lit: [房间]                本阶段被「手电筒」照亮的房间
 - bedroom_relock: [房间]                被他人开锁的卧室，进入下一时间阶段时恢复上锁
 - sealed_room: dict|None                【封闭空间】临时锁死（至下一个自由活动时间失效）
-- passage: dict|None                    反派建筑师密道 {used}（夜间使用，出口三功能房任选）
-- passage_stealth: [名字]               本阶段经密道行动者（监控不留记录）
+- passage: dict|None                    反派建筑师密道 {used}（v4.0：密道谋杀成功一次后损毁）
+- passage_stealth: [名字]               本阶段经密道行动者（监控不留记录、不上夜宿名单）
 - bug_room: 房间|None                   「窃听器」放置位置
 - bug_placed: {day,stage}|None          「窃听器」放置时点（此前交谈不追溯；旧档 None 兼容原口径）
-- devices: {房间: {setter, active}}     机械师【延时装置】
+- devices: {房间: {setter, active}}     机械师【延时装置】（v4.0：预设后由设置者在谋杀窗口手动启动）
 - sealed_items: [{name,uses_left,from}] 尸体/出局者封存的未使用道具，待投票分配
 - profession_public: [名字]             职业已公开的人
 - last_vote: {day, out}|None            最近一次投票结果（武装指认的前提判断）
@@ -37,8 +40,10 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 
 玩家道具从 deal 的 item/item_uses_left 扩展为列表：
   player["items"] = [{"name", "uses_left", "available_day"}]
-  deal 还可用 extra_items 额外配发（如杀手固定持有的「万能钥匙」，rules-6 §2），ensure 时并入。
+  deal 还可用 extra_items 额外配发（如一名杀手固定持有的「万能钥匙」，rules-6 §2），ensure 时并入。
   杀手可缴获多件道具；available_day 之前不可用（v3.5：遗嘱分配当天即可用）；转手不改变剩余次数。
+
+v4.0：身份取值只余 平民/杀手（双杀手制，删除帮凶与继任）；与 v3.x 存档不兼容，旧档仅供查看。
 """
 from __future__ import annotations
 
@@ -62,6 +67,9 @@ WOUND_LABEL = {
     "刀": "利器",
     "棒球棍": "钝器",
     "不明药剂": "毒或药物",
+    "药理学": "毒或药物",
+    "缓释毒剂": "毒或药物",
+    "强袭": "空手",
     "雕像": "雕像",
     "电线": "电线",
     "延时装置": "机关",
@@ -72,20 +80,18 @@ GENERAL_SKILLS = {
     "医师": {"现场调查": 2},
     "化学家": {"现场调查": 2},
     "运动员": {"敏捷闪避": 1},
-    "黑客": {"暴力破解": 1},
-    "犯罪侧写师": {"犯罪侧写": 1},
+    "黑客": {"远程入侵": 1},
     "心理医生": {"看破伪装": 2},
     "建筑师": {"封闭空间": 1},
-    "机械师": {"暴力破解": 1},
+    "机械师": {"暴力破解": 2},  # v4.0：机械师暴力破解升为 ×2
     "魔术师": {"看破伪装": 2},
 }
 VILLAIN_SKILLS = {
-    "医师": {"伪造痕迹": 1},
-    "化学家": {"销毁证物": 1},
-    "运动员": {"转移尸体": 1},
-    "黑客": {"信号干扰": 1},
-    "犯罪侧写师": {"伪造证物": 1},
-    "心理医生": {"记忆植入": 1},
+    "医师": {"药理学": 1},
+    "化学家": {"缓释毒剂": 1},
+    "运动员": {"强袭": 1},
+    "黑客": {"篡改投票": 1},
+    "心理医生": {"篡改投票": 1},
     "建筑师": {"建造密道": 1},
     "机械师": {"延时装置": 1},
     "魔术师": {"舞台魔术": 1},
@@ -117,7 +123,10 @@ def save_state(state: dict, path: str | Path) -> None:
 
 
 def ensure(state: dict) -> dict:
-    """幂等补齐引擎扩展字段；同时把 deal 的单道具扩展为 items 列表。"""
+    """幂等补齐引擎扩展字段；同时把 deal 的单道具扩展为 items 列表。
+
+    v4.0 起与 v3.x 存档不兼容（身份取值、技能表、案件结构均变），不再做跨版本迁移。
+    """
     s = state
     s.setdefault("safe_open", False)
     s.setdefault("table_items", [])  # v3.5 桌上物品；deal 写入初始桌上凶器
@@ -128,7 +137,9 @@ def ensure(state: dict) -> dict:
     s.setdefault("skill_uses", {})
     s.setdefault("cases", [])
     s.setdefault("attempts", [])
+    s.setdefault("poisoned", [])
     s.setdefault("last_murder_day", None)
+    s.setdefault("day_kill_capped", False)
     s.setdefault("winner", None)
     s.setdefault("win_reason", None)
     s.setdefault("detective", None)
@@ -136,18 +147,7 @@ def ensure(state: dict) -> dict:
     s.setdefault("stage_murder_used", False)
     s.setdefault("power_out", False)
     s.setdefault("blackout_days", [])  # 拉闸声明日（评分卡统计停电次数用）
-    if "blackout_periods" not in s:
-        # 旧档迁移：按原口径推断监控缺失时段；跨日修复额外补记实际修复时段。
-        periods = []
-        for day in s["blackout_days"]:
-            free = f"第{day}天自由活动"
-            periods.append(free)
-            if s.get("power_restored") != free:
-                periods.append(f"第{day}天晚间休息")
-        restored = s.get("power_restored")
-        if restored and restored not in periods:
-            periods.append(restored)
-        s["blackout_periods"] = periods
+    s.setdefault("blackout_periods", [])
     s.setdefault("power_restored", None)       # 发电机修复时点（current_period；None=未修复/无停电）
     s.setdefault("pending_out", None)          # 被 defer 的出局者（v3.21 最后平民结算前指认窗口用）
     s.setdefault("accusation_fired_day", None)  # 本轮投票已发生武装指认的天数（每次投票至多一次）
@@ -181,20 +181,11 @@ def ensure(state: dict) -> dict:
             if is_villain(p):
                 skills.update(VILLAIN_SKILLS.get(p["profession"], {}))
             s["skill_uses"][p["name"]] = skills
-        # 存档迁移：旧档给平民也登记了反派技能，统一剔除
+        # 平民不登记反派技能（使用时仍校验身份与次数）
         skills = s["skill_uses"].get(p["name"], {})
         if not is_villain(p):
             for vsk in VILLAIN_SKILLS.get(p["profession"], {}):
                 skills.pop(vsk, None)
-        # v3.5 存档迁移：旧档技能键「破门而入」统一改名「暴力破解」
-        skills = s["skill_uses"].get(p["name"], {})
-        if "破门而入" in skills:
-            skills["暴力破解"] = skills.pop("破门而入")
-    for c in s["cases"]:
-        # v3.30 旧档迁移：历史案件一律视为已公告；补发现/报案台账
-        c.setdefault("announced", True)
-        c.setdefault("discovered_by", [])
-        c.setdefault("reported_by", [])
     return s
 
 
@@ -211,7 +202,7 @@ def get_player(state: dict, name: str) -> dict | None:
 
 
 def is_villain(p: dict) -> bool:
-    return p["identity"] in ("杀手", "帮凶")
+    return p["identity"] == "杀手"  # v4.0 双杀手制：反派 = 两名杀手（帮凶已删除）
 
 
 def alive_players(state: dict) -> list[dict]:
@@ -232,16 +223,15 @@ def mark_blackout_period(state: dict, period: str | None = None) -> None:
 
 
 def countdown_text(day: int, last_murder_day: int | None) -> str:
-    """无杀倒计时公告口径（rules-6 §8）：直接给出进度与触发条件，避免玩家自行换算
-    （旧版"已连续 X 个完整天"曾让部分 AI 理解困难，v3.20 改写）。
-    倒计时固定自第 2 天起算；首日是否出手不改变起始进度，尚无后续行为时以第 1 天为基准。
+    """无杀倒计时公告口径（rules-6 §8）：直接给出进度与触发条件，避免玩家自行换算。
+    v4.0：倒计时从第 1 天起算（基准日 0）——第 1、2 天均无谋杀行为，第 3 天清晨平民直接获胜。
     quiet ≥ 2 的清晨即倒计时完成、平民当场获胜（与 core.advance 的判定一致），
     文本宣告完成而非"明早"（修复：完成当天清晨曾仍预告明天）。"""
-    last = last_murder_day if last_murder_day is not None else 1
+    last = last_murder_day if last_murder_day is not None else 0
     quiet = max(0, day - 1 - last)
     if quiet == 0:
-        return ("无杀倒计时：自第 2 天起，若连续 2 个完整天没有任何谋杀行为，"
-                "下一个清晨平民直接获胜（当前进度 0/2；首日是否出手不影响起始进度；此后的任何谋杀出手含未遂都会重置）")
+        return ("无杀倒计时：从第 1 天起算，若连续 2 个完整天没有任何谋杀行为，"
+                "下一个清晨平民直接获胜（当前进度 0/2；任何谋杀出手含未遂都会重置）")
     if quiet >= 2:
         return (f"无杀倒计时：已连续 {quiet} 个完整天无谋杀行为（{quiet}/2）——"
                 "倒计时完成，平民直接获胜")
@@ -287,7 +277,7 @@ def record_entry(state: dict, name: str, room: str) -> None:
 def discover_bodies(state: dict) -> dict[str, str]:
     """v3.30 凶案发现：未公告案件的案发房间内有存活玩家 → 该人当场私下发现（记 discovered_by，不记报案）。
 
-    在进入结算（自由活动收尾/晚间归宿）与延时装置判定之后调用；返回 {名字: 私密消息} 由调用方
+    在进入结算（自由活动收尾/晚间归宿）之后调用；返回 {名字: 私密消息} 由调用方
     并入事件 private，经编排器 tell() 送达本人简报。发现只是私人知识——是否成为报案人由本人在
     房间行动中另行选择（ledger.report）；黑暗房间同样触发（黑暗中绊到尸体）。
     """
@@ -339,7 +329,7 @@ def grant_item(p: dict, name: str, uses_left: int, available_day: int) -> None:
 
 
 def unlock_means(state: dict, name: str) -> str | None:
-    """可用开锁手段（v3.5 三种）：优先职业技能【暴力破解】，其次道具「万能钥匙」「螺丝起子」。"""
+    """可用开锁手段（三种）：优先职业技能【暴力破解】，其次道具「万能钥匙」「螺丝起子」。"""
     p = get_player(state, name)
     if p is None or not p["alive"]:
         return None
@@ -371,7 +361,7 @@ def check_winner(state: dict) -> str | None:
     vil = [p for p in state["players"] if p["alive"] and is_villain(p)]
     if not vil:
         state["winner"] = "平民"
-        state["win_reason"] = "杀手与帮凶均已出局"
+        state["win_reason"] = "两名杀手均已出局"
     elif not civ:
         state["winner"] = "反派"
         state["win_reason"] = "所有平民死亡或被投票出局"
