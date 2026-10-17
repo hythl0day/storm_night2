@@ -10,7 +10,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被【信号干扰】/「病毒U盘」篡改；v3.5 起覆盖会客室）
 - monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
 - skill_uses: {名字: {技能: 剩余}}      技能台账（反派技能仅反派登记；使用时仍校验身份与次数）
-- cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/伪造状态/证物是否可毁/是否已封存
+- cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/伪造/封存/announced（清晨已公告）/discovered_by（发现者，host 侧）/reported_by（报案人，公告刊出）
 - attempts: [未遂]                      谋杀未遂记录；供公告与无杀倒计时
 - last_murder_day: int|None             最近一次谋杀行为（含未遂）的日期；None=倒计时未启动
 - winner / win_reason                   胜负结果（"平民"/"反派"/"主神"）
@@ -30,7 +30,6 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - bug_placed: {day,stage}|None          「窃听器」放置时点（此前交谈不追溯；旧档 None 兼容原口径）
 - devices: {房间: {setter, active}}     机械师【延时装置】
 - sealed_items: [{name,uses_left,from}] 尸体/出局者封存的未使用道具，待投票分配
-- gifts_used: [名字]                    当天已发起过道具赠送的人（v3.27：房间行动中当面赠送，每天限一次）
 - profession_public: [名字]             职业已公开的人
 - last_vote: {day, out}|None            最近一次投票结果（武装指认的前提判断）
 - rooms_entered: 时段|None              本时段自由活动是否已完成选房结算（断点续跑与停电窗口用）
@@ -191,6 +190,11 @@ def ensure(state: dict) -> dict:
         skills = s["skill_uses"].get(p["name"], {})
         if "破门而入" in skills:
             skills["暴力破解"] = skills.pop("破门而入")
+    for c in s["cases"]:
+        # v3.30 旧档迁移：历史案件一律视为已公告；补发现/报案台账
+        c.setdefault("announced", True)
+        c.setdefault("discovered_by", [])
+        c.setdefault("reported_by", [])
     return s
 
 
@@ -273,6 +277,30 @@ def record_entry(state: dict, name: str, room: str) -> None:
     period = current_period(state)
     state["monitoring"].setdefault(period, {}).setdefault(room, []).append(name)
     state["monitoring_true"].setdefault(period, {}).setdefault(room, []).append(name)
+
+
+def discover_bodies(state: dict) -> dict[str, str]:
+    """v3.30 凶案发现：未公告案件的案发房间内有存活玩家 → 该人当场私下发现（记 discovered_by，不记报案）。
+
+    在进入结算（自由活动收尾/晚间归宿）与延时装置判定之后调用；返回 {名字: 私密消息} 由调用方
+    并入事件 private，经编排器 tell() 送达本人简报。发现只是私人知识——是否成为报案人由本人在
+    房间行动中另行选择（ledger.report）；黑暗房间同样触发（黑暗中绊到尸体）。
+    """
+    msgs: dict[str, str] = {}
+    for c in state["cases"]:
+        if c.get("announced"):
+            continue
+        room = c["room"]
+        for p in state["players"]:
+            if not p["alive"] or p["name"] in c["discovered_by"]:
+                continue
+            if state["positions"].get(p["name"]) != room:
+                continue
+            c["discovered_by"].append(p["name"])
+            msgs[p["name"]] = (f"你在{room}发现了{c['victim']}的尸体。你可以在本阶段房间行动"
+                               f"中选择「报案」成为报案人（将随次日清晨公告公开，同房的人各自做决定）；"
+                               f"你也可以保持沉默、照常行动。")
+    return msgs
 
 
 def skill_left(state: dict, name: str, skill: str) -> int:

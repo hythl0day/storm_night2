@@ -1,7 +1,7 @@
 """引擎主体：阶段流转、房间分配结算与行动入口（M3）。
 
 阶段流：开局准备 → 公共发言 →（第 2 天起）投票 → 自由活动 → 晚间休息 → 次日清晨案件调查 → …
-- 第 1 天没有投票，公共发言时段改为侦探竞选（rules-6 §7.4，v3.3）；v3.28 起首日自由活动与晚间均可谋杀。
+- 第 1 天没有投票，公共发言时段改为侦探竞选（rules-6 §7.4，v3.3）；v3.29 起首日自由活动与晚间均可谋杀。
 - 每天翻页时行动顺序首位移到最后。
 - 第 4 天起除卧室外所有门锁自动打开。
 - 无杀倒计时：自第 2 天起算，连续两个完整天无谋杀行为（含未遂）则下一清晨平民胜。
@@ -30,6 +30,7 @@ from .state import (
     consume_unlock_means,
     countdown_text,
     current_period,
+    discover_bodies,
     door_locked,
     ensure,
     get_player,
@@ -141,6 +142,9 @@ class Engine:
 
     def take_table_item(self, user: str, item: str) -> dict:
         return ledger.take_table_item(self.state, user, item)
+
+    def report(self, user: str) -> dict:
+        return ledger.report(self.state, user)
 
     def advance(self) -> dict:
         """推进到下一个时间阶段，返回该次推进产生的公开公告与私密通知。"""
@@ -260,7 +264,10 @@ class Engine:
         cases = [c for c in s["cases"] if c["day"] == yday]
         attempts = [a for a in s["attempts"] if a["day"] == yday and a["target"]]
         for c in cases:
-            public["announcements"].append(f"{c['victim']} 死亡，尸体发现于{c['room']}")
+            c["announced"] = True  # v3.30：案件自本清晨公告后进入公开状态（发现/报案窗口关闭）
+            reporters = c.get("reported_by") or []
+            suffix = f"（报案人：{'、'.join(reporters)}）" if reporters else ""
+            public["announcements"].append(f"{c['victim']} 死亡，尸体发现于{c['room']}{suffix}")
             if s["locks"].get(c["room"]):
                 s["locks"][c["room"]] = False
                 public["announcements"].append(f"案发房间{c['room']}当时上锁，已强制打开")
@@ -291,7 +298,7 @@ class Engine:
                 c["sealed"] = True
             rooms = {c["room"], bedroom_of(c["victim"])}
             # v3.22：宣读覆盖案发当日全天两个时段（不暴露死亡时段——死亡时间只能靠调查获知）
-            # v3.28：同日多案按时段合并房间集合，后一案不得覆盖前一案的案发房间与死者卧室
+            # v3.29：同日多案按时段合并房间集合，后一案不得覆盖前一案的案发房间与死者卧室
             for period in (f"第{yday}天自由活动", f"第{yday}天晚间休息"):
                 records = s["monitoring"].get(period, {})
                 period_rooms = monitoring_public.setdefault(period, {})
@@ -442,7 +449,7 @@ class Engine:
         return room, None
 
     def finish_room_entries(self) -> dict:
-        """选房收尾（v3.5）：落结算标记，延时装置在全员进入后统一判定。"""
+        """选房收尾（v3.5）：落结算标记，延时装置在全员进入后统一判定；v3.30 之后统一判定凶案发现。"""
         s = self.state
         if s["winner"]:
             return reject("finish_room_entries", "游戏已结束")
@@ -453,6 +460,8 @@ class Engine:
         device_events = murder_mod.trigger_devices(s)
         for dev_ev in device_events:
             private.update(dev_ev["private"])
+        for name, msg in discover_bodies(s).items():  # v3.30：发现只私下告知（当前阶段顺序下此处恒为空操作）
+            private[name] = (private.get(name, "") + "；" if name in private else "") + msg
         ev: dict = {"ok": True, "type": "finish_room_entries", "public": None, "private": private}
         if device_events:
             ev["device_triggers"] = [e["case"]["victim"] for e in device_events]
@@ -598,6 +607,8 @@ class Engine:
         for dev_ev in device_events:
             for name, msg in dev_ev["private"].items():
                 private[name] = (private.get(name, "") + "；" if name in private else "") + msg
+        for name, msg in discover_bodies(s).items():  # v3.30：晚间休息是凶案发现的唯一真实窗口（发现白天自由活动的谋杀）
+            private[name] = (private.get(name, "") + "；" if name in private else "") + msg
         ev = {"ok": True, "type": "night_assign", "public": {"announcements": []},
               "private": private, "positions": dict(positions), "unlockers": dict(unlockers)}
         if host:

@@ -562,8 +562,9 @@ class Orchestrator:
             return ["按行动顺序各发言一次，后发言者能看到先发言者的话。",
                     "黑暗房间内无法交谈——除非同入邀请成立的伙伴互知在场，可摸黑低语：低语会被房间内所有在场者听到（包括你们看不见的潜伏者），而你们不会知道是否有人旁听。"]
         if "房间行动" in title:
-            return ["非黑暗时，房间行动（查监控/开箱/修发电机/赠送道具）会被同房者看见；黑暗中无人知晓是谁做的。",
-                    "当面赠送：限同房者，对方可拒绝；赠送算你的本阶段房间行动（谋杀不在此环节，见谋杀窗口）。"]
+            return ["非黑暗时，房间行动（查监控/开箱/修发电机/赠送道具/报案）会被同房者看见；黑暗中无人知晓是谁做的。",
+                    "当面赠送：限同房者，对方可拒绝；赠送算你的本阶段房间行动（谋杀不在此环节，见谋杀窗口）。",
+                    "报案也算你的本阶段房间行动；不报案则无人知道你发现了尸体（除非你亲口说出）。"]
         if "谋杀窗口" in title:
             return ["每阶段独立一次谋杀机会（自由活动与晚间休息各一次），放弃不消耗——没有目标也不消耗。",
                     "谋杀不占房间行动，房间行动也不占谋杀机会（v3.27 拆为两个独立环节）。",
@@ -573,7 +574,8 @@ class Orchestrator:
         if "晚间休息" in title:
             return ["去向选择互不可见；他人卧室上锁（需开锁手段或受邀）；卧室夜间黑暗。",
                     "平民不敢非受邀进入已有他人的书房/监控室/地下室（被邀请者与反派不受此限）。",
-                    "夜宿会客室：始终明亮、人数不限，但夜宿者名单次日清晨公开。"]
+                    "夜宿会客室：始终明亮、人数不限，但夜宿者名单次日清晨公开。",
+                    "若你进入的房间有尚未公告的尸体，你会当场私下发现（见私密事件）；是否报案见房间行动菜单。"]
         if "秘密布置" in title:
             return ["反派建筑师只需确认密道网存在，无需选定出口；之后可在晚间休息时使用。"]
         if "毁证机会" in title:
@@ -909,6 +911,8 @@ class Orchestrator:
             ev = self.eng.murder(name, str(act.get("target", "")), act.get("weapon"), act.get("savior"))
         elif at == "stage_magic":
             ev = self.eng.stage_magic(name, str(act.get("target", "")))
+        elif at == "report":
+            ev = self.eng.report(name)
         elif at == "declare_blackout":
             ev = self.eng.declare_blackout(name)
         elif at in ("falsify", "move_body", "investigate", "profile"):
@@ -1620,6 +1624,10 @@ class Orchestrator:
             menu.append('- 设置延时装置（本阶段不触发，后续进入结算时检查）：{"type": "set_device", "room": "当前房间名"}')
         if room in FREE_ROOMS and s["bug_room"] is None and held_item(p, "窃听器", day) is not None:
             menu.append('- 在当前房间放置窃听器（只记录放置后发生的交谈）：{"type": "place_bug", "room": "当前房间名"}')
+        if any(not c.get("announced") and c["room"] == room for c in s["cases"]):
+            # v3.30 报案：进入结算已私下发现尸体者可选择报案（消耗本阶段房间行动；同房各自决定）
+            menu.append('- 报案（你发现本房间有尚未公告的尸体）：成为报案人，随次日清晨公告公开'
+                        '；同房的人各自决定是否报案，本动作消耗你本阶段唯一的房间行动名额：{"type": "report"}')
         # 当面赠送（v3.27）：限同房者、不限每日次数；谋杀/舞台魔术已拆至独立谋杀窗口，不在本环节
         mates = [q["name"] for q in self.alive()
                  if q["name"] != name and s["positions"].get(q["name"]) == room]

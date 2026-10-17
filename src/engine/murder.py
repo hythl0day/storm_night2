@@ -3,6 +3,9 @@
 裁定要点：
 - 仅杀手可发动谋杀；每阶段一次机会（v3.22：自由活动与晚间休息各自独立一次），
   未遂同样消耗机会并计入无杀倒计时。
+- v3.29：首日开放谋杀（移除原 day<2 禁杀守卫），延时装置与舞台魔术同日起放开。
+- v3.30：旁观者口径统一——黑暗目击者/未遂在场者/舞台魔术在场者当场只知"些许奇怪的动静"，
+  不知死亡发生；死亡随"再进现场发现"或"次日清晨公告"公开（发现/报案见 state.discover_bodies 与 ledger.report）。
 - 在场非反派角色数：正常 ≤1，黑暗房间 ≤2。
 - 空手附加条件（满足其一）：①帮凶在场 ②本人体格≥目标 ③本人男且目标女。
   黑暗房间中的空手谋杀无任何附加条件（v3.22：卧室夜间黑暗由 is_dark 统一裁定）。
@@ -107,6 +110,9 @@ def _apply_kill(state: dict, victim: str, method: str, room: str, culprit: str) 
         "looted": looted,
         "evidence_vulnerable": not others_nv,
         "sealed": False,
+        "announced": False,       # v3.30：是否已随清晨公告公开（未公开前可被发现/报案）
+        "discovered_by": [],      # v3.30：私下发现者（host 侧台账，不公开放送）
+        "reported_by": [],        # v3.30：报案人（清晨公告并列刊出）
     }
     state["cases"].append(case)
     state["last_murder_day"] = day
@@ -125,7 +131,8 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
 
     savior：同房持有「急救箱」或「不明药剂」（药用）者可选择救治目标（§4 急救箱/不明药剂"也可用于同在现场的其他人"，
     属主动选择而非自动触发，故由编排器询问后传入）。
-    失败时杀手只得知"失败"，无法分辨原因；目标与在场者得知"有人遇袭"。
+    失败时杀手只得知"失败"，无法分辨原因；目标得知自己遇袭幸存，在场的其他人只听到些许奇怪的动静、
+    不知发生了什么（v3.30 口径，与黑暗旁观者/舞台魔术在场者统一）。
     """
     s = state
     ph = s["phase"]
@@ -185,7 +192,7 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
         })
         private = {killer: f"谋杀失败（{spent}你无法分辨是武器、药品还是技能所致）", target: "你遭遇了袭击，但侥幸幸存"}
         for w in witnesses:
-            private[w] = "有人遇袭，但你不知道袭击者是谁"
+            private[w] = "你听到些许奇怪的动静，但不知道是谁造成的。"
         ev = {"ok": True, "type": "murder_attempt", "public": None, "private": private, "defended": True}
         return _winner_tail(s, ev)
     case = _apply_kill(s, target, method, room, killer)
@@ -194,7 +201,7 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
     if case["looted"]:
         private[killer] = f"谋杀成功{suffix}；缴获道具：{'、'.join(case['looted'])}"
     for w in witnesses:
-        private[w] = "有人被谋杀，但你不知道凶手是谁"
+        private[w] = "你听到些许奇怪的动静，但不知道是谁造成的。"
     ev = {"ok": True, "type": "murder", "public": None, "private": private, "case": case}
     return _winner_tail(s, ev)
 
@@ -252,8 +259,9 @@ def trigger_devices(state: dict) -> list[dict]:
 def stage_magic(state: dict, user: str, target: str) -> dict:
     """魔术师反派【舞台魔术】：任意人数非反派在场时可空手谋杀，不可防御。
 
-    目击者结论固定为"这是谋杀，凶手就在当时在场的人之中"（不指向任何人，魔术师不被排除）。
-    裁定解释：舞台魔术本身是谋杀行为，同时消耗当阶段谋杀机会（技能整局本就限一次）。
+    v3.30：在场者当场只察觉些许奇怪动静、不知是谋杀（与黑暗旁观者同口径，并非真的表演）；
+    死讯随"再进现场发现"或"次日清晨公告"公开。裁定解释：舞台魔术本身是谋杀行为，
+    同时消耗当阶段谋杀机会（技能整局本就限一次）。
     """
     s = state
     ph = s["phase"]
@@ -283,6 +291,6 @@ def stage_magic(state: dict, user: str, target: str) -> dict:
     private = {user: "舞台魔术成功", target: "你被杀害了"}
     for w in _present(s, room):
         if w["name"] not in (user, target):
-            private[w["name"]] = "这是谋杀，凶手就在当时在场的人之中"
+            private[w["name"]] = "你听到些许奇怪的动静，但不知道是谁造成的。"
     ev = {"ok": True, "type": "stage_magic", "public": None, "private": private, "case": case}
     return _winner_tail(s, ev)

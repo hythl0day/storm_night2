@@ -78,7 +78,7 @@ class TestCivilianStacking(unittest.TestCase):
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["type"], "murder")
         self.assertEqual(ev["case"]["victim"], "E")
-        self.assertIn("有人被谋杀", ev["private"]["C"])  # 同房平民只知有人遇害，不知凶手
+        self.assertIn("奇怪的动静", ev["private"]["C"])  # v3.30：黑暗旁观者当场只知奇怪动静，不知遇害
 
     def test_a4_counter_stage_magic(self):
         """反制·舞台魔术：亮房、多名非反派在场也能强杀，且不可防御。"""
@@ -88,7 +88,7 @@ class TestCivilianStacking(unittest.TestCase):
         ev = eng.stage_magic("A", "E")
         self.assertTrue(ev["ok"], ev)
         self.assertFalse(player(eng, "E")["alive"])
-        self.assertIn("凶手就在当时在场的人之中", ev["private"]["C"])
+        self.assertIn("奇怪的动静", ev["private"]["C"])  # v3.30：在场者当场只觉奇怪动静、不知是谋杀
 
     def test_a5_stack_cannot_survive_the_night(self):
         """扎堆只能维持白天：卧室上限 2，夜里必然有人落单 → 反制·开锁夜袭收尾。"""
@@ -211,7 +211,7 @@ class TestDealVillainGuarantees(unittest.TestCase):
         self.assertEqual(full["ruleset"], "rules-6.md")
         self.assertTrue(lite["is_lite_rule"])
         self.assertEqual(lite["ruleset"], "rules-6-lite.md")
-        self.assertEqual(lite["rules_version"], "v3.29")
+        self.assertEqual(lite["rules_version"], "v3.30")
         self.assertEqual(full["players"], lite["players"])
         self.assertEqual(full["order"], lite["order"])
         self.assertFalse(validate(lite))  # lite 局同样过分配校验

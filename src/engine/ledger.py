@@ -429,6 +429,32 @@ def move_body(state: dict, user: str, case_id: int, to_room: str) -> dict:
             "private": {user: f"{case['victim']} 的尸体已转移到{to_room}"}}
 
 
+def report(state: dict, user: str) -> dict:
+    """【报案】（v3.30，rules-6 §7.6）：房间行动——宣布发现本房间的未公告凶案，成为报案人。
+
+    仅限身处未公开案件案发房间者（进入结算时已私下发现，见 state.discover_bodies）；
+    同房多人可各自报案、清晨并列刊出；已报过者不重复记录。公开时机 = 次日清晨公告
+    （死者 + 房间 + 报案人）；不报案则无人知道你知情（除非亲口说出）。
+    """
+    s = state
+    if s["winner"]:
+        return reject("report", "游戏已结束")
+    if s["phase"]["stage"] not in ACTION_STAGES:
+        return reject("report", "只能在自由活动或晚间休息的房间行动中报案")
+    p = get_player(s, user)
+    if p is None or not p["alive"]:
+        return reject("report", "玩家不存在或已死亡")
+    case = next((c for c in s["cases"]
+                 if not c.get("announced") and c["room"] == s["positions"].get(user)), None)
+    if case is None:
+        return reject("report", "你所在房间没有尚未公告的尸体")
+    if user not in case["reported_by"]:
+        case["reported_by"].append(user)
+    return {"ok": True, "type": "report", "public": None,
+            "private": {user: f"你已报案：{case['victim']} 死于{case['room']}。"
+                             f"你将被列为报案人，随次日清晨公告公开。"}}
+
+
 def profile(state: dict, user: str, case_id: int, aspect: str) -> dict:
     """【犯罪侧写】：获知杀手本人的一项特征（性别/国籍/体格）；装置与魔术案件指向设置者/表演者。"""
     s = state

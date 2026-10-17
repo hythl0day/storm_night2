@@ -518,7 +518,7 @@ class TestDeviceAndMagic(unittest.TestCase):
         self.assertFalse(player(eng, "D")["alive"])
         self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 1)
         self.assertEqual(ev["case"]["wound"], "空手")
-        self.assertIn("凶手就在当时在场的人之中", ev["private"]["C"])
+        self.assertIn("奇怪的动静", ev["private"]["C"])  # v3.30：在场者当场只觉奇怪动静、不知是谋杀
         self.assertFalse(ev["case"]["evidence_vulnerable"])
         self.assertFalse(eng.murder("A", "C")["ok"])
         self.assertEqual(eng.state["skill_uses"]["A"]["舞台魔术"], 0)
@@ -2228,6 +2228,121 @@ class TestNightBedroomAccess(unittest.TestCase):
         ev = eng.murder("A", "F", "刀")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["case"]["room"], "F的卧室")  # 尸体在房主卧室——自曝制衡
+
+
+class TestDiscovery(unittest.TestCase):
+    """v3.30 凶案发现与报案人：进入私下发现（≠自动报案）、报案为独立房间动作、
+    同房多人各自决定、凶手可回现场自我报案、旁观者统一"奇怪动静"口径、旧档迁移。"""
+
+    def test_discovery_private_and_report_action(self):
+        """晚间进入案发房间 → 私下发现（discovered_by）但 reported_by 为空；
+        报案是独立动作：report() 后才成为报案人，重复报案去重，清晨公告刊出。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        case = eng.murder("A", "E", weapon="刀")["case"]
+        self.assertEqual(case["reported_by"], [])
+        goto(eng, "晚间休息", day=2)
+        ev2 = eng.night_assign({"C": "书房"})
+        self.assertIn("发现了E的尸体", ev2["private"]["C"])
+        self.assertEqual(case["discovered_by"], ["C"])
+        self.assertEqual(case["reported_by"], [])  # 发现 ≠ 报案
+        ev3 = eng.report("C")
+        self.assertTrue(ev3["ok"], ev3)
+        self.assertEqual(case["reported_by"], ["C"])
+        self.assertTrue(eng.report("C")["ok"])      # 重复报案去重不报错
+        self.assertEqual(case["reported_by"], ["C"])
+        ev4 = eng.advance()                          # 晚间休息 → 次日清晨公告
+        anns = "\n".join(ev4["public"]["announcements"])
+        self.assertIn("E 死亡，尸体发现于书房（报案人：C）", anns)
+
+    def test_discovery_multiple_independent_report(self):
+        """同房多人各自发现、各自决定：C 报案 D 沉默 → 公告仅列 C；D 的知情无公开痕迹。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        case = eng.murder("A", "E", weapon="刀")["case"]
+        goto(eng, "晚间休息", day=2)
+        ev2 = eng.night_assign({"C": "书房", "D": "书房"}, invited={"D": "C"})
+        self.assertIn("发现了E的尸体", ev2["private"]["C"])
+        self.assertIn("发现了E的尸体", ev2["private"]["D"])
+        self.assertEqual(set(case["discovered_by"]), {"C", "D"})
+        self.assertTrue(eng.report("C")["ok"])
+        self.assertEqual(case["reported_by"], ["C"])  # D 沉默
+        ev4 = eng.advance()
+        anns = "\n".join(ev4["public"]["announcements"])
+        self.assertIn("（报案人：C）", anns)
+        self.assertNotIn("（报案人：C、D）", anns)
+
+    def test_killer_self_report(self):
+        """凶手当晚回到案发现场 → 同样私下发现 → 可报案成为报案人（公告刊出）。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        case = eng.murder("A", "E", weapon="刀")["case"]
+        goto(eng, "晚间休息", day=2)
+        ev2 = eng.night_assign({"A": "书房"})
+        self.assertIn("发现了E的尸体", ev2["private"]["A"])
+        self.assertEqual(case["discovered_by"], ["A"])
+        self.assertTrue(eng.report("A")["ok"])
+        ev4 = eng.advance()
+        self.assertIn("E 死亡，尸体发现于书房（报案人：A）", "\n".join(ev4["public"]["announcements"]))
+
+    def test_dark_bystander_noise_and_no_discovery(self):
+        """黑暗房间谋杀的旁观者只得统一"奇怪动静"文案；未"进入"不算发现者，清晨无报案人。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "地下室", "E": "地下室", "C": "地下室", "B": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("奇怪的动静", ev["private"]["C"])
+        case = ev["case"]
+        self.assertEqual(case["discovered_by"], [])
+        eng.advance()  # 自由活动 → 晚间休息（无人再进地下室）
+        ev4 = eng.advance()
+        anns = "\n".join(ev4["public"]["announcements"])
+        self.assertIn("E 死亡，尸体发现于地下室", anns)
+        self.assertNotIn("报案人", anns)
+
+    def test_stage_magic_discovered_later(self):
+        """舞台魔术：目击者当场只知奇怪动静（不知是谋杀）；目击者当夜回到现场 → 发现并可报案。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "C": "书房", "D": "书房", "B": "监控室", "E": "会客室", "F": "会客室"})
+        ev = eng.stage_magic("A", "D")
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("奇怪的动静", ev["private"]["C"])
+        self.assertNotIn("这是谋杀", ev["private"]["C"])
+        self.assertEqual(ev["case"]["wound"], "空手")
+        case = ev["case"]
+        goto(eng, "晚间休息", day=2)
+        ev2 = eng.night_assign({"C": "书房"})
+        self.assertIn("发现了D的尸体", ev2["private"]["C"])
+        self.assertEqual(case["discovered_by"], ["C"])
+        self.assertTrue(eng.report("C")["ok"])
+        ev4 = eng.advance()
+        self.assertIn("D 死亡，尸体发现于书房（报案人：C）", "\n".join(ev4["public"]["announcements"]))
+
+    def test_report_rejects(self):
+        """报案校验：非行动阶段/无尸房间/不在现场 → 驳回。"""
+        eng = Engine(mk_state())
+        self.assertFalse(eng.report("C")["ok"])  # 开局准备：非行动阶段
+        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        self.assertFalse(eng.report("C")["ok"])  # 会客室无尸体
+        eng.murder("A", "E", weapon="刀")
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({"A": "书房"})          # A 回现场发现
+        ev = eng.report("C")                     # C 在自己卧室
+        self.assertFalse(ev["ok"])
+        self.assertIn("尚未公告的尸体", ev["error"])
+
+    def test_old_case_migration(self):
+        """v3.30 旧档迁移：无 announced/discovered_by/reported_by 的历史案件 → ensure 补齐且视为已公告。"""
+        st = mk_state()
+        st["cases"] = [{"id": 1, "victim": "E", "room": "书房", "crime_room": "书房", "day": 1,
+                        "stage": "自由活动", "period": "第1天自由活动", "method": "刀", "wound": "利器",
+                        "culprit": "A", "body_moved": False, "falsified": None, "looted": [],
+                        "evidence_vulnerable": False, "sealed": True}]
+        eng = Engine(st)  # __init__ 调 ensure
+        case = eng.state["cases"][0]
+        self.assertTrue(case["announced"])  # 历史案件一律视为已公告（发现/报案窗口不再对其开放）
+        self.assertEqual(case["discovered_by"], [])
+        self.assertEqual(case["reported_by"], [])
 
 
 if __name__ == "__main__":

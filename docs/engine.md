@@ -7,7 +7,7 @@
 | 模块 | 职责 |
 | ---- | ---- |
 | `state.py` | 状态装载与扩展字段（`ensure()` 幂等初始化，含旧档技能键迁移）、房间/黑暗/门锁/监控/台账等共享助手、`load_state`/`save_state` |
-| `murder.py` | 谋杀判定（§7.6/§7.7）：条件校验、自卫矩阵、延时装置设置与触发、舞台魔术 |
+| `murder.py` | 谋杀判定（§7.6/§7.7）：条件校验、自卫矩阵、延时装置设置与触发、舞台魔术；凶案发现者台账落账（v3.30） |
 | `vote.py` | 投票结算、记忆植入、帮凶继任、武装指认（v3.5 侦探垄断）、侦探竞选与佩枪授予、遗嘱落账（v3.5 当天可用/未指定拒收回桌） |
 | `ledger.py` | 开锁/保险箱/赠送/停电/发电机/监控/调查/伪造/移尸/侧写/看破伪装/封闭空间/密道/窃听器/取桌上物品（v3.5） |
 | `core.py` | `Engine` 类：阶段流转（翻日轮转、清晨公告、倒计时与主神判定）、`unlock_for_entry` 独立开锁轮、昼夜统一进入与开锁者优先（v3.26）、`finish_room_entries` 收尾 |
@@ -27,7 +27,7 @@
 ## 3. 公共 API（Engine 方法）
 
 阶段与流转：
-- `advance()` — 推进到下一阶段；翻日轮转行动顺序、清晨公告（昨日死亡与未遂——**v3.22 起死亡/未遂不再阶段末即时公告，公告不含事发时段**/职业/监控宣读——**v3.22 覆盖案发当日全天两个时段**/封存道具 + 状态行：存活数/无杀倒计时/封存数 + v3.5 桌上物品变动 + 已永久开启台账；存活侦探列名提醒）、第 4 天门锁全开、无杀倒计时与主神胜利判定
+- `advance()` — 推进到下一阶段；翻日轮转行动顺序、清晨公告（昨日死亡与未遂——**v3.22 起死亡/未遂不再阶段末即时公告，公告不含事发时段；v3.30 起有报案人时一并刊出（案件置 announced）**/职业/监控宣读——**v3.22 覆盖案发当日全天两个时段**/封存道具 + 状态行：存活数/无杀倒计时/封存数 + v3.5 桌上物品变动 + 已永久开启台账；存活侦探列名提醒）、第 4 天门锁全开、无杀倒计时与主神胜利判定
 - `engine.winner` — `None` / `"平民"` / `"反派"` / `"主神"`
 - `unlock_for_entry(user, room, assignments)` — v3.26 独立开锁轮：只为本人已声明的目标房间消耗一次手段并开门，不移动玩家；随后由进入轮统一结算
 - `choose_room_one(name, room)` / `finish_room_entries()` — 自由活动单人进入的低层入口与收尾；进入时不再自动开锁，满员/无人开门/被封闭空间挡住者滞留会客室；`finish` 落结算标记并统一判定延时装置
@@ -37,7 +37,7 @@
 谋杀：
 - `murder(killer, target, weapon=None, savior=None)` — 空手/凶器/环境凶器裁决；`savior` = 同房用急救箱/不明药剂（药用）施救者
 - `set_device(user, room)` — 机械师【延时装置】设置（第 1 天禁止）
-- `stage_magic(user, target)` — 魔术师【舞台魔术】（占用当阶段谋杀机会）
+- `stage_magic(user, target)` — 魔术师【舞台魔术】（占用当阶段谋杀机会；v3.30：在场者当场只知奇怪动静、不知是谋杀）
 
 投票：
 - `resolve_vote(votes, implant=None)` — `votes={投票人: 目标|None(弃权)}`；侦探一票计 1.5（v3.3）；`implant={"by":..,"voter":..,"target":..}` 为记忆植入改票
@@ -65,7 +65,7 @@
 
 引擎在 deal.py 产出的 state 上扩展（完整注释见 `state.py` 模块 docstring）：
 
-`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存）、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_days`（拉闸声明日，停电次数统计）/`blackout_periods`（实际监控缺失时段，含跨日延续与修复当日）/`power_restored`（最近修复时点）、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`profession_public`、`last_vote`。
+`locks`（门锁，卧室键 `"<名字>的卧室"`）、`safe_open`、`table_items`（v3.5 会客室桌上物品 `[{name, uses_left}]`，deal 写入初始桌上凶器）/`table_events`（待清晨公告的桌上变动）、`positions`、`monitoring`（公开口径）/ `monitoring_true`（真实记录，仅宿主）、`skill_uses`、`cases`（案件：伤痕/死亡时间/移尸/伪造状态/封存 + v3.30 `announced`（清晨已公告）/`discovered_by`（发现者，host 侧）/`reported_by`（报案人，清晨刊出））、`attempts`（未遂记录）、`last_murder_day`、`winner`/`win_reason`、`detective`、`stage_murder_used`、`power_out`、`blackout_days`（拉闸声明日，停电次数统计）/`blackout_periods`（实际监控缺失时段，含跨日延续与修复当日）/`power_restored`（最近修复时点）、`blackout_news`（待公告的停电时段）/`selection_begun`（选房已开始标记，关闭停电声明窗口）、`flashlight_lit`、`bedroom_relock`（被他人开锁的卧室下一阶段复锁）、`sealed_room`、`passage`/`passage_stealth`（密道使用者不留监控记录）、`bug_room`、`devices`（延时装置）、`sealed_items`、`profession_public`、`last_vote`。
 
 玩家道具栏从 `item` 扩展为列表：`player["items"] = [{"name", "uses_left", "available_day"}]`——支持杀手缴获多件、遗嘱/桌上取用当天即可用（v3.5）、转手不改变次数；deal 可用 `extra_items` 额外配发（杀手的固定万能钥匙、帮凶的固定反派道具），ensure 时并入。
 
@@ -96,7 +96,7 @@
 python -m unittest discover -s tests -v   # 测试用例（引擎 + 平衡回归 + 编排集成）
 ```
 
-覆盖：第 1 天禁杀、明暗人数条件、空手三条件与黑暗豁免（v3.22 卧室夜间黑暗由 `is_dark` 统一裁定）、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改（含会客室监控覆盖）、锁规则、赠送次数保留、遗嘱当天可用与回桌、桌上凶器生命周期（侦探佩枪/夜间取用/停电无痕/临时指认消耗/缴获）、昼夜统一开锁与进入（后续开锁者救回先前声明者、开锁者优先、拒绝开锁、平民慎入/卧室黑暗/容量）、密道四房间、指认消耗武器、清晨死亡公告与全天监控宣读、驳回不改状态（deepcopy 对比）。
+覆盖：第 1 天禁杀、明暗人数条件、空手三条件与黑暗豁免（v3.22 卧室夜间黑暗由 `is_dark` 统一裁定）、自卫全矩阵、未遂后果、缴获与毁证条件、装置触发、舞台魔术、投票全分支、无杀倒计时、主神结局、监控篡改（含会客室监控覆盖）、锁规则、赠送次数保留、遗嘱当天可用与回桌、桌上凶器生命周期（侦探佩枪/夜间取用/停电无痕/临时指认消耗/缴获）、昼夜统一开锁与进入（后续开锁者救回先前声明者、开锁者优先、拒绝开锁、平民慎入/卧室黑暗/容量）、密道四房间、指认消耗武器、清晨死亡公告（v3.30 含报案人刊出）与全天监控宣读、凶案发现与报案（进入私下发现/独立报案动作/多人并列/沉默无痕迹/凶手自我报案）、旁观者统一奇怪动静口径（含舞台魔术与黑暗在场者）、驳回不改状态（deepcopy 对比）。
 
 ## 7. 编排器侧职责（已在 orchestrator.py 实现）
 
