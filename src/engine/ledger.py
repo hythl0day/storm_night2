@@ -643,7 +643,7 @@ def set_passage(state: dict, user: str) -> dict:
 def use_passage(state: dict, user: str, room: str) -> dict:
     """使用密道（v3.22）：晚间休息时从自己卧室经密道前往会客室/书房/监控室/地下室之一。
 
-    - 进入条件与谋杀人数条件相同：出口房间在场非反派 ≤1（黑暗房间 ≤2）；
+    - 进入条件与谋杀人数条件相同：出口房间在场非反派 ≤1（v3.31 起黑暗房间不设人数限制——容量仍是硬约束）；
       不满足则当晚无法使用——密道保留、不暴露（返回 ok=True, failed=True）；
     - 成功：监控不留记录（当晚记录上你一直在卧室），密道损毁（整局至多成功一次）；
       经密道进入会客室者不上次日清晨的夜宿名单（隐身，见 core._morning_report）；
@@ -668,8 +668,8 @@ def use_passage(state: dict, user: str, room: str) -> dict:
         q for q in s["players"]
         if q["alive"] and not is_villain(q) and s["positions"].get(q["name"]) == room
     ]
-    limit = 2 if is_dark(s, room) else 1
-    if len(non_villains) > limit:
+    # v3.31：进入条件与谋杀人数条件同步——黑暗出口不设人数限制（容量上限天然约束）
+    if not is_dark(s, room) and len(non_villains) > 1:
         return {"ok": True, "type": "use_passage", "public": None,
                 "private": {user: f"密道出口（{room}）今晚人多眼杂，无法使用——密道保留，未被任何人察觉"},
                 "failed": True}

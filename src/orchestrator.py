@@ -1207,6 +1207,13 @@ class Orchestrator:
         menu = []
         if p["identity"] == "杀手":
             menu.append(f'- 谋杀（每阶段一次）：{{"type": "murder", "target": "{"|".join(targets)}"}}（可加 "weapon": "凶器名"；{self._weapon_hint(p, room)}）')
+            if room == HALL:
+                # v3.31：会客室桌上凶器视同环境凶器临时取用（无需持有，用后消耗）
+                table_weapons = [e["name"] for e in s["table_items"] if e["name"] in WEAPONS]
+                if table_weapons:
+                    menu.append('- 使用会客室桌上凶器（视同环境凶器临时取用，无需持有，用后消耗，'
+                                f'次日清晨公告桌上变动）：{{"type": "murder", "target": "{"|".join(targets)}", '
+                                f'"weapon": "{"|".join(table_weapons)}"}}')
         if is_villain(p) and p["profession"] == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
             menu.append(f'- 舞台魔术（任意人数在场也可空手强杀，不可防御；占用当阶段谋杀机会）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
         return menu

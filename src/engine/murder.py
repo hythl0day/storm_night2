@@ -6,7 +6,8 @@
 - v3.29：首日开放谋杀（移除原 day<2 禁杀守卫），延时装置与舞台魔术同日起放开。
 - v3.30：旁观者口径统一——黑暗目击者/未遂在场者/舞台魔术在场者当场只知"些许奇怪的动静"，
   不知死亡发生；死亡随"再进现场发现"或"次日清晨公告"公开（发现/报案见 state.discover_bodies 与 ledger.report）。
-- 在场非反派角色数：正常 ≤1，黑暗房间 ≤2。
+- 在场非反派角色数：亮房 ≤1；v3.31 起黑暗房间不设人数限制（容量仍是硬约束——密道进场不受容量限制，可破满员黑暗扎堆）。
+- v3.31：会客室桌上凶器视同环境凶器供反派临时取用（无需持有，用后消耗，桌上变动次日清晨公告）。
 - 空手附加条件（满足其一）：①帮凶在场 ②本人体格≥目标 ③本人男且目标女。
   黑暗房间中的空手谋杀无任何附加条件（v3.22：卧室夜间黑暗由 is_dark 统一裁定）。
 - 凶器谋杀无条件（用一次即消耗，无论成败）；环境凶器（雕像/电线）无条件且不限次数。
@@ -21,6 +22,7 @@ from .state import (
     ACTION_STAGES,
     ENV_WEAPON,
     FREE_ROOMS,
+    HALL,
     WOUND_LABEL,
     check_winner,
     consume_item_entry,
@@ -133,6 +135,7 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
     属主动选择而非自动触发，故由编排器询问后传入）。
     失败时杀手只得知"失败"，无法分辨原因；目标得知自己遇袭幸存，在场的其他人只听到些许奇怪的动静、
     不知发生了什么（v3.30 口径，与黑暗旁观者/舞台魔术在场者统一）。
+    v3.31：身处会客室的反派可把桌上凶器视同环境凶器临时取用（无需持有，用后消耗，桌上变动次日清晨公告）。
     """
     s = state
     ph = s["phase"]
@@ -163,11 +166,15 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
     elif weapon is not None:
         entry = held_item(kp, weapon, day)
         if entry is None:
-            return reject("murder", "未持有可用凶器")
+            # v3.31：会客室桌上凶器视同环境凶器临时取用（反派 + 身处会客室；用后消耗，见下）
+            if not (is_villain(kp) and room == HALL
+                    and any(e["name"] == weapon for e in s["table_items"])):
+                return reject("murder", "未持有可用凶器")
     present = _present(s, room)
     non_villain = [p for p in present if not is_villain(p)]
     dark = is_dark(s, room)
-    if len(non_villain) > (2 if dark else 1):
+    # v3.31：黑暗房间不设非反派人数限制（容量上限天然约束；密道进场不受容量限制——破满员黑暗扎堆）
+    if not dark and len(non_villain) > 1:
         return reject("murder", "在场非反派角色过多")
     # 黑暗房间空手无任何附加条件（v3.22：卧室夜间黑暗由 is_dark 统一裁定，原"夜间卧室特权"删除）
     if method == "空手" and not dark:
@@ -179,7 +186,12 @@ def murder(state: dict, killer: str, target: str, weapon: str | None = None, sav
         if not ok:
             return reject("murder", "空手谋杀条件不满足")
     if weapon is not None and weapon not in ("雕像", "电线"):
-        consume_item_entry(kp, entry)
+        if entry is not None:
+            consume_item_entry(kp, entry)
+        else:  # v3.31 桌上凶器：消耗桌上份额，变动记入次日清晨公告
+            tentry = next(e for e in s["table_items"] if e["name"] == weapon)
+            s["table_items"].remove(tentry)
+            s["table_events"].append(f"会客室桌上的「{weapon}」已消耗")
     spent = f"{weapon}已消耗；" if weapon is not None and weapon not in ("雕像", "电线") else ""
     s["stage_murder_used"] = True
     s["last_murder_day"] = day

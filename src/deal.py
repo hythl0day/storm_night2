@@ -57,15 +57,17 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_VERSION = "v3.30"
+RULES_VERSION = "v3.31"
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "帮凶", "杀手"]
 
-# 反派平衡保证（见 docs/v3.2-plan.md §2.9）：
-# ① 反派队至少一人持功能性主动技能（舞台魔术/延时装置/记忆植入/信号干扰——破抱团或破票仓；
-#    host 侧保密，不写入规则书）；② 杀手固定持有「万能钥匙」（公开规则）。
+# 反派平衡保证（见 docs/v3.2-plan.md §2.9；v3.31 起更名为 VILLAIN_PROFESSIONS 并纳入建筑师）：
+# ① 反派队至少一人持功能性主动技能（host 侧保密，不写入规则书）——舞台魔术/延时装置/记忆植入/
+#    信号干扰（破抱团或破票仓）+ 建筑师密道（v3.31：黑暗房间取消人数限制后，密道是全队唯一
+#    不受容量限制的进场手段，负责破满员黑暗扎堆）；② 杀手固定持有「万能钥匙」（公开规则）。
 # 停电源已由万能钥匙保底（v3.2 拉电闸），不再依赖宽域职业。
-VALVE_PROFESSIONS = ("魔术师", "机械师", "心理医生", "黑客")
+# 注意：职业互换是确定性后处理，本集合的增减会改变同 seed 的职业分配（seed 语义的一部分）。
+VILLAIN_PROFESSIONS = ("魔术师", "机械师", "心理医生", "黑客", "建筑师")
 
 IDENTITY_BRIEF = {
     "平民": "你是平民。找出杀手与帮凶，把他们送上投票席；活下去。",
@@ -222,8 +224,8 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
     killer_idx = identities.index("杀手")
     accom_idx = identities.index("帮凶")
     # 反派保证（无随机后处理）：反派队均无功能性主动技能时，杀手与首位持 valve 职业者互换职业
-    if professions[killer_idx] not in VALVE_PROFESSIONS and professions[accom_idx] not in VALVE_PROFESSIONS:
-        donor = next(i for i, pr in enumerate(professions) if pr in VALVE_PROFESSIONS)
+    if professions[killer_idx] not in VILLAIN_PROFESSIONS and professions[accom_idx] not in VILLAIN_PROFESSIONS:
+        donor = next(i for i, pr in enumerate(professions) if pr in VILLAIN_PROFESSIONS)
         professions[donor], professions[killer_idx] = professions[killer_idx], professions[donor]
     villain_weapons = rng.sample(VILLAIN_WEAPON_POOL, 2)
     accom_gear = rng.choice(VILLAIN_ITEMS)  # 帮凶固定配发的反派道具（v3.2：裹尸袋/可疑的粉末/病毒U盘 3 选 1）
@@ -305,8 +307,8 @@ def validate(state: dict) -> list[str]:
         if p["identity"] in ("杀手", "帮凶") and p["item"] == TABLE_WEAPON:
             problems.append(f"{p['name']}（{p['identity']}）持有桌上凶器「{TABLE_WEAPON}」（v3.5 不进反派车道）")
     villain_profs = [p["profession"] for p in players if p["identity"] in ("杀手", "帮凶")]
-    if not any(pr in VALVE_PROFESSIONS for pr in villain_profs):
-        problems.append("反派队无功能性主动技能（舞台魔术/延时装置/记忆植入/信号干扰）")
+    if not any(pr in VILLAIN_PROFESSIONS for pr in villain_profs):
+        problems.append("反派队无功能性主动技能（舞台魔术/延时装置/记忆植入/信号干扰/建造密道）")
     kp = next(p for p in players if p["identity"] == "杀手")
     if "万能钥匙" not in kp.get("extra_items", []):
         problems.append("杀手未固定持有「万能钥匙」")

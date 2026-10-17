@@ -2345,5 +2345,77 @@ class TestDiscovery(unittest.TestCase):
         self.assertEqual(case["reported_by"], [])
 
 
+class TestV331Buffs(unittest.TestCase):
+    """v3.31：会客室桌上凶器临时取用（反派/用后消耗）；黑暗房间不设非反派人数限制（密道破满员扎堆）。"""
+
+    def test_hall_table_weapon_murder(self):
+        """杀手与目标独处会客室 → 桌上凶器视同环境凶器临时取用，成功后桌上消耗并入清晨公告。"""
+        eng = Engine(mk_state())
+        eng.state["table_items"] = [{"name": "左轮手枪", "uses_left": 1}]
+        free2(eng, {"A": "会客室", "E": "会客室", "B": "书房", "C": "书房", "D": "书房", "F": "地下室"})
+        ev = eng.murder("A", "E", weapon="左轮手枪")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["case"]["wound"], "枪")
+        self.assertEqual(eng.state["table_items"], [])
+        self.assertIn("已消耗", eng.state["table_events"][0])
+        eng.advance()  # 自由活动 → 晚间休息
+        ev4 = eng.advance()  # → 次日清晨公告
+        anns = "\n".join(ev4["public"]["announcements"])
+        self.assertIn("E 死亡", anns)
+        self.assertIn("会客室桌上的「左轮手枪」已消耗", anns)
+
+    def test_hall_table_weapon_requires_hall_and_table(self):
+        """桌上凶器校验：人不在会客室、或桌上没有该武器 → 驳回。"""
+        eng = Engine(mk_state())
+        eng.state["table_items"] = [{"name": "左轮手枪", "uses_left": 1}]
+        free2(eng, {"A": "书房", "E": "书房", "B": "会客室", "C": "会客室", "D": "地下室", "F": "地下室"})
+        ev = eng.murder("A", "E", weapon="左轮手枪")  # A 不在会客室
+        self.assertFalse(ev["ok"])
+        self.assertIn("未持有", ev["error"])
+        eng2 = Engine(mk_state())
+        free2(eng2, {"A": "会客室", "E": "会客室", "B": "书房", "C": "书房", "D": "书房", "F": "地下室"})
+        ev2 = eng2.murder("A", "E", weapon="左轮手枪")  # 桌上没有枪
+        self.assertFalse(ev2["ok"])
+        self.assertEqual(eng2.state["table_items"], [])
+
+    def test_hall_table_weapon_consumed_on_failed_murder(self):
+        """桌上凶器谋杀被防御（急救箱）→ 未遂但凶器照样消耗（同普通凶器：无论成败）。"""
+        eng = Engine(mk_state())
+        eng.state["table_items"] = [{"name": "左轮手枪", "uses_left": 1}]
+        free2(eng, {"A": "会客室", "C": "会客室", "B": "书房", "D": "书房", "E": "书房", "F": "地下室"})
+        ev = eng.murder("A", "C", weapon="左轮手枪")  # C 有急救箱 → 防御成功
+        self.assertTrue(ev["ok"], ev)
+        self.assertTrue(ev["defended"])
+        self.assertTrue(player(eng, "C")["alive"])
+        self.assertEqual(eng.state["table_items"], [])
+
+    def test_dark_room_no_crowd_limit(self):
+        """v3.31：黑暗房间不设非反派人数限制（白盒构造满员地下室 3 名非反派在场，旧规则会驳回）。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "会客室", "B": "会客室", "C": "会客室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        eng.state["positions"] = {"A": "地下室", "C": "地下室", "D": "地下室", "E": "地下室",
+                                  "B": "B的卧室", "F": "F的卧室"}
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["case"]["room"], "地下室")
+
+    def test_passage_into_full_dark_room(self):
+        """v3.31：密道可进满员黑暗房间（地下室 3 名平民受邀同入）并动手——破满员黑暗扎堆。"""
+        players = default_players()
+        players[0] = P("A", "杀手", "建筑师", "刀", gender="男", physique=4)
+        eng = Engine(mk_state(players=players))
+        eng.set_passage("A")
+        goto(eng, "晚间休息", day=2)
+        ev0 = eng.night_assign({"C": "地下室", "D": "地下室", "E": "地下室"}, invited={"D": "C", "E": "D"})
+        self.assertTrue(ev0["ok"], ev0)
+        self.assertEqual([ev0["positions"][n] for n in ("C", "D", "E")], ["地下室"] * 3)
+        ev = eng.use_passage("A", "地下室")
+        self.assertTrue(ev["ok"], ev)
+        self.assertFalse(ev.get("failed", False))  # 旧规则：3 名非反派 → failed
+        self.assertEqual(eng.state["positions"]["A"], "地下室")
+        ev2 = eng.murder("A", "E", weapon="刀")
+        self.assertTrue(ev2["ok"], ev2)
+
+
 if __name__ == "__main__":
     unittest.main()

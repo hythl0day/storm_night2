@@ -15,7 +15,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import unittest
 
-from src.deal import ROOT, VALVE_PROFESSIONS, deal, load_personas, validate, write_card
+from src.deal import ROOT, VILLAIN_PROFESSIONS, deal, load_personas, validate, write_card
 from src.engine import Engine
 from src.gamedata import (
     ITEM_DESC,
@@ -201,7 +201,13 @@ class TestDealVillainGuarantees(unittest.TestCase):
             weapons_in_play.append(TABLE_WEAPON)
             self.assertEqual(sorted(weapons_in_play), sorted(WEAPONS), f"seed={seed} 四凶器未全部入场")
             profs = {p["profession"] for p in st["players"] if p["identity"] in ("杀手", "帮凶")}
-            self.assertTrue(profs & set(VALVE_PROFESSIONS), f"seed={seed} 反派队无功能性主动技能")
+            self.assertTrue(profs & set(VILLAIN_PROFESSIONS), f"seed={seed} 反派队无功能性主动技能")
+
+    def test_villain_professions_include_architect(self):
+        """v3.31：覆盖保证更名 VILLAIN_PROFESSIONS 并纳入建筑师——密道是全队唯一不受容量限制的进场手段，
+        配合黑暗房间取消人数限制，负责破解满员黑暗扎堆。"""
+        self.assertIn("建筑师", VILLAIN_PROFESSIONS)
+        self.assertIn("魔术师", VILLAIN_PROFESSIONS)
 
     def test_deal_lite_flag(self):
         """--lite：state 标记 is_lite_rule、ruleset 指向 lite 规则书；不消耗随机序列（同 seed 分配逐字节一致）。"""
@@ -211,7 +217,7 @@ class TestDealVillainGuarantees(unittest.TestCase):
         self.assertEqual(full["ruleset"], "rules-6.md")
         self.assertTrue(lite["is_lite_rule"])
         self.assertEqual(lite["ruleset"], "rules-6-lite.md")
-        self.assertEqual(lite["rules_version"], "v3.30")
+        self.assertEqual(lite["rules_version"], "v3.31")
         self.assertEqual(full["players"], lite["players"])
         self.assertEqual(full["order"], lite["order"])
         self.assertFalse(validate(lite))  # lite 局同样过分配校验
