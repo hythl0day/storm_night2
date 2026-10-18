@@ -1,0 +1,1 @@
+My case: I'm chemist with two investigations—strong for detective. Others can test claims. If multiple stay, non-candidates vote among us. Risk: I'm a strong candidate but others might vote... Stay seems best.

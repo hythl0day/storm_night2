@@ -1,0 +1,1 @@
+**Deciding to keep defensive item and update notes**

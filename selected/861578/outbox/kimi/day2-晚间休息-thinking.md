@@ -1,0 +1,1 @@
+I need to choose tonight's destination. I'm in 会客室 with 杰普特, 杰米尼. My bug is in 会客室 but it only records 自由活动 conversations, which I've already received. Tonight I can't listen (need to be in bedroom to listen). Options: go to my bedroom (dark, alone, risky), or stay in 会客室 (safe, bright, list public). Safety first — stay in 会客室. It's safe and list being public is fine.

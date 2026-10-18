@@ -1,0 +1,1 @@
+Gemma, wait—I should keep identity in Chinese as Chimi. Craft speech questioning Jepter's attack; Jemini asked where he was attacked. Respond in room.

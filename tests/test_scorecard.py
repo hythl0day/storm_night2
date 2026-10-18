@@ -1,4 +1,4 @@
-"""tools/scorecard.py 评分卡测试（mock 对局存档 → 单局/多局报告，不经 API）。
+"""src/scorecard.py 评分卡测试（mock 对局存档 → 单局/多局报告，不经 API）。
 
 运行：python -m unittest discover -s tests -v
 """
@@ -18,11 +18,11 @@ import src.orchestrator as orchestrator_mod
 from src.orchestrator import Orchestrator
 from test_engine import default_players
 from test_orchestrator_game import make_fake_chat, write_game_dir
-from tools.scorecard import analyze, drama, multi_report, rules_version, single_report
+from src.scorecard import analyze, drama, multi_report, rules_version, single_report
 
 
 def run_mock_game(dest: Path, killer_script: bool) -> None:
-    """用编排 mock 集成跑完整一局，存档放到 dest（模拟人工挑选进 selected_games/）。"""
+    """用编排 mock 集成跑完整一局，存档放到 dest（模拟人工挑选进 selected/）。"""
     tmp = dest.parent / "_build"
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -42,7 +42,7 @@ class TestScorecard(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.sel = Path(self.tmp.name) / "selected_games"
+        self.sel = Path(self.tmp.name) / "selected"
         self.sel.mkdir(parents=True)
 
     def test_single_report_full_game(self):
@@ -53,13 +53,13 @@ class TestScorecard(unittest.TestCase):
         self.assertIn("平民 胜", text)
         self.assertIn("—— 席位 ——", text)
         self.assertIn("—— 案件 ——", text)
-        self.assertIn("—— 流程简报 ——", text)
+        self.assertIn("—— 流程简报", text)
         self.assertIn("—— 戏剧性评分：", text)
         self.assertIn("主角弧线候选", text)
         self.assertIn("—— 成本 ——", text)
         # 指标包字段核对：mock 剧本为 A/B 两名杀手依次作案（E、F 遇害），C 当选侦探
         import json as _json
-        from tools.scorecard import load_game
+        from src.scorecard import load_game
         a = analyze(load_game(self.sel / "1001"))
         self.assertEqual(a["murders"], 2)
         self.assertTrue(a["elected"])
@@ -92,7 +92,7 @@ class TestScorecard(unittest.TestCase):
         self.assertIn("投票淘汰", text)
         self.assertIn("无杀倒计时", text)
         # 消极局戏剧性含"零出手消极局"扣分项；有未遂的活跃对局不扣这项
-        from tools.scorecard import load_game
+        from src.scorecard import load_game
         a2 = analyze(load_game(self.sel / "1002"))
         _, parts2 = drama(a2)
         self.assertTrue(any("零出手消极局" in p for p in parts2))
@@ -100,24 +100,40 @@ class TestScorecard(unittest.TestCase):
         _, active_parts = drama(a2)
         self.assertFalse(any("零出手消极局" in p for p in active_parts))
 
-    def test_flow_briefing_skips_multiline_speech(self):
-        from tools.scorecard import flow_briefing
-        log = """## 第3天 · 公共发言
-**狄西**：第一段发言
+    def test_script_briefing_strips_preamble_and_status_tables(self):
+        """流程简报基于 script.md 化简：剥掉开局 preamble 与每日状态一览快照表，
+        其余逐行保留（含多行发言与行动回执——这是它取代 log.md 版的原因）。"""
+        from src.scorecard import script_briefing
+        script = """# 《暴风夜》对局全记录 · seed 1
 
-第二段不应进入简报
-第三段也不应进入简报
-〔第3天·公共发言〕奇米 把一件道具交给了 狄西
+## 阵容与分配（全剧透）
 
-## 第3天 · 投票
-- 〔第3天·投票〕投票结果：奇米 出局
+| 角色 | 性别 |
+| --- | --- |
+| A | 男 |
+
+## 第1天 · 公共发言
+
+**A**：第一段发言
+
+第二段也在简报里
+
+### 第2天清晨 · 状态一览（全剧透）
+
+| 角色 | 状态 |
+| --- | --- |
+| A | 存活 |
+
+  ◆ A｜谋杀 E（凶器：刀） → 成功
 """
-        text = "\n".join(flow_briefing(log))
-        self.assertIn("奇米 把一件道具交给了 狄西", text)
-        self.assertIn("投票结果：奇米 出局", text)
-        self.assertNotIn("第一段发言", text)
-        self.assertNotIn("第二段不应进入简报", text)
-        self.assertNotIn("第三段也不应进入简报", text)
+        text = "\n".join(script_briefing(script))
+        self.assertNotIn("阵容与分配", text)
+        self.assertNotIn("状态一览", text)
+        self.assertNotIn("| A | 存活 |", text)
+        self.assertIn("## 第1天 · 公共发言", text)
+        self.assertIn("第一段发言", text)
+        self.assertIn("第二段也在简报里", text)
+        self.assertIn("◆ A｜谋杀 E（凶器：刀）", text)
 
     def test_empty_dir_and_non_archive(self):
         """空目录与非存档目录的友好提示。"""
@@ -135,7 +151,7 @@ class TestScorecard(unittest.TestCase):
     def test_rules_group_pooling(self):
         """平衡统计分组：完全按（版本 × 规则集）分组、不合并——迭代期每次更新几乎都改规则；
         lite 按版本单列（lite·vX.Y）且永不与同名版本的全规则组同池；旧档缺 is_lite_rule 字段视为高级规则。"""
-        from tools.scorecard import is_lite, rules_group
+        from src.scorecard import is_lite, rules_group
         self.assertEqual(rules_group({"rules_version": "v3.8"}), "v3.8")
         self.assertEqual(rules_group({"rules_version": "v3.9"}), "v3.9")
         self.assertEqual(rules_group({"rules_version": "v3.10"}), "v3.10")
@@ -201,6 +217,41 @@ class TestScorecard(unittest.TestCase):
 
         self.assertEqual(aggression("v3.27"), 0.5)   # 旧版：第 2 天两个阶段
         self.assertEqual(aggression("v3.28"), 0.25)  # 新版：首日两个阶段也计入
+
+
+    def test_win_path_armed_accusation(self):
+        """胜负路径：武装指认获胜——引擎 win_reason 统一写"杀手均已出局"（不含"武装指认"字样），
+        由 feed 事件流判定：最后一条杀手出局公告前紧邻指认正确公告即指认获胜；中途指认成功
+        但最终靠投票淘汰另一名杀手的局仍归"投票淘汰"。"""
+        from src.scorecard import win_path
+        st = {"winner": "平民", "win_reason": "两名杀手均已出局"}
+        accuse_win = ["〔第3天·投票〕X 武装指认 Y 为杀手——指认正确（刀已消耗）",
+                      "〔第3天·投票〕Y 出局。身份：杀手；职业：医师"]
+        self.assertEqual(win_path(st, accuse_win), "武装指认")
+        vote_after_accuse = accuse_win + ["〔第5天·投票〕Z 出局。身份：杀手；职业：化学家"]
+        self.assertEqual(win_path(st, vote_after_accuse), "投票淘汰")
+        self.assertEqual(win_path(st, []), "投票淘汰")  # 旧档无 feed 时兜底
+        countdown = {"winner": "平民", "win_reason": "无杀倒计时完成（连续两个完整天无任何谋杀行为）"}
+        self.assertEqual(win_path(countdown, accuse_win), "无杀倒计时")
+
+
+    def test_game_arg_accepts_full_path(self):
+        """--game 接受完整目录路径（与 console/view 等脚本统一）；仅目录名时仍按 --dir 下子目录解析。"""
+        import contextlib
+        import io
+        from src.scorecard import main
+        run_mock_game(self.sel / "1001", killer_script=True)
+        old_argv = sys.argv
+        try:
+            for argv in (["scorecard", "--game", str(self.sel / "1001")],
+                         ["scorecard", "--dir", str(self.sel), "--game", "1001"]):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    sys.argv = argv
+                    main()
+                self.assertIn("===== 单局报告：1001 =====", buf.getvalue())
+        finally:
+            sys.argv = old_argv
 
 
 if __name__ == "__main__":

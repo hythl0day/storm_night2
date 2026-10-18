@@ -283,6 +283,25 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", script)
         self.assertIn("游戏结束：平民获胜", script)
 
+    def test_murder_receipts_in_own_section(self):
+        """谋杀窗口回执归入独立的 ### 谋杀窗口 小节，不再落在最后一个房间行动小节下
+        （861578 复盘：书房的未遂曾被记到"监控室 · 房间行动"段，案发房间被记错）。"""
+        d = write_game_dir(self.root, self.players())
+        self.run_game(d, killer_script=True)
+        script = (d / "script.md").read_text(encoding="utf-8")
+        self.assertIn("### 谋杀窗口", script)
+        sec = script.index("### 谋杀窗口")
+        rec = script.index("◆ A｜谋杀 E（凶器：刀）")
+        self.assertLess(sec, rec)
+        self.assertNotIn("房间行动（", script[sec:rec])  # 回执确实归属谋杀窗口小节
+
+    def test_receipt_verdict_gift_declined(self):
+        """赠送被对方拒绝：回执定性"→ 未达成（对方拒绝）"，不再写"→ 成功"。"""
+        from src.orchestrator import _receipt_verdict
+        self.assertEqual(_receipt_verdict({"ok": True, "accepted": False}), "→ 未达成（对方拒绝）")
+        self.assertEqual(_receipt_verdict({"ok": True, "accepted": True}), "→ 成功")
+        self.assertEqual(_receipt_verdict({"ok": True}), "→ 成功")
+
     def test_lone_bedroom_skips_room_action(self):
         """v3.22：夜间独居自己卧室且无可用行动者，房间行动环节整体跳过——不发简报、不调 AI。
         （自己卧室的门锁项无意义不列入；封闭空间仅自由活动，装置与窃听器限非卧室，夜间卧室不列这些噪音项。）"""
@@ -421,6 +440,38 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("**A 的遗言**", log)                  # 处决流程与投票出局一致
         self.assertIn("A 出局。身份：杀手", log)
         self.assertTrue((d / "inbox" / "D" / "day4-武装指认.md").exists())
+
+    def test_last_civilian_no_window_when_detective_monopoly(self):
+        """侦探垄断武装指认时，最后一名平民出局前不再公告"仍可行使武装指认"（主持人公告必须全真）——
+        142650 复盘：侦探是杀手时仍公告背水一战窗口，但规则上该平民（非侦探）本就无此机会。"""
+        players = [p for p in self.players() if p["name"] in ("A", "B", "D")]  # 1 平民 D + 2 杀手
+        d = write_game_dir(self.root, players)
+        sj = d / "state.json"
+        st = json.loads(sj.read_text(encoding="utf-8"))
+        st["phase"] = {"day": 4, "stage": "投票"}
+        st["detective"] = "A"  # 侦探是杀手：本局无人可指认
+        st["table_items"] = [{"name": "左轮手枪", "uses_left": 1}]
+        sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        base = make_fake_chat(False)
+
+        def chat_vote(player, messages, *, on_token=None, reasoning_effort=None):
+            title = messages[-1]["content"].splitlines()[0]
+            if "遗言" in title:
+                return ChatResult(player.name, ok=True, content=payload(speech="我无话可说。"),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "投票" in title:
+                tgt = "D" if player.name in ("A", "B") else "A"
+                return ChatResult(player.name, ok=True,
+                                  content=payload(actions=[{"type": "vote", "target": tgt}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_vote)
+        s = orch.state
+        self.assertEqual(s["winner"], "反派")  # 最后平民 D 被票出，直接结算
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertNotIn("仍可行使武装指认", log)  # 侦探垄断：D 本无机会，不得虚假公告
+        self.assertFalse((d / "inbox" / "D" / "day4-武装指认.md").exists())
 
     def test_briefing_key_records(self):
         """简报含"截至目前的关键记录"：公共事实流水 + 该席私密历史；不含发言与内心独白。"""

@@ -1,0 +1,5 @@
+Now: 4 alive (奇米, 克劳德, 杰普特, 杰米尼). One killer remains. 杰米尼 got the powder — suspicious gift from a killer. My 窃听器×1 remains; it was placed in 会客室 day1, and I listened day2. Actually窃听器 was placed day1 自由活动 in 会客室; can I listen again? Recording is "放置后的交谈" — I listened day2 evening, got day2's. It may still record? I think each listen consumes... spec: 窃听器×2 uses remaining 1. Hmm, one placement, remaining 1 use — maybe re-listen or re-place. I'll place it in a room to track remaining killer.
+
+Where to go? 监控室 is open; others may go there to watch. Killer could kill in 自由活动. Choosing 监控室 could give info. Also I should invite someone to talk. Actually invite only same room. Let me choose 监控室, invite nobody (inviting risks). Or 会客室 to gather everyone? Others choose after me.
+
+Choose 监控室 — potential to learn entries.

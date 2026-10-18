@@ -1,0 +1,1 @@
+**Choosing to view monitoring records**

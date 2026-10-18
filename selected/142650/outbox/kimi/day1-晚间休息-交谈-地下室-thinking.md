@@ -1,0 +1,1 @@
+Low thinking effort—act as killer. Speech to Jamie... wait, my private record said no attack opportunity in daytime window, but evening window — menu now says actions []. So I cannot poison now? The legal actions say actions: []. So just speech in the dark. Speak to Jamie.

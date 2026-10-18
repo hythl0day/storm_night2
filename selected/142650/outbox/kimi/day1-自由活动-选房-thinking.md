@@ -1,0 +1,1 @@
+Plan: choose room. As detective with knife and poison, day 1 no murder. Go to monitoring room? It's locked; I can force? Force option exists only before free activity via key — I have 万能钥匙? I have 暴力破解 as killer with 万能钥匙? "持有「万能钥匙」的杀手" — I don't have it. Go to basement or monitoring. Simple: choose 监控室 to open it (needs break-in means — I have U盘 but that's remote). Just go 地下室.

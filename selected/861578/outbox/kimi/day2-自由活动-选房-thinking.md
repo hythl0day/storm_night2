@@ -1,0 +1,11 @@
+Interesting situation. Power out, day 2, Jupit attacked but survived — he slept in common room. My recorder in common room captured conversations. Qimi's night investigation... wait, was my investigation used? Notes said use one if murder happens — the attack on Jupit might count as a case. I should consider using 现场调查 on the attack case this morning? The investigation phase already passed (第2天·案件调查 listed, no result announcement). Actually the menu now is free activity room choice. I can use actions listed only — only choose_room/invite. So no.
+
+Tonight I can listen to the recorder from day 1 free activity... Actually I placed it day 1 free activity; I already heard day 1 evening conversation? The private record shows day1 evening conversation in common room — that's my recorder? No, 晚间休息 common room conversation was public-ish (recorded because no privacy in hall). Anyway, I can listen tonight for day 2 free activity conversations.
+
+Plan: go to basement with Zhìpǔ? He invited me. Basement is dark though; can talk? Dark rooms can't talk... Actually dark rooms无法交谈? "有些房间上锁、有些房间漆黑——要走到门口才知道...漆黑的房间里无法交谈". Common room has fireplace light. Basement likely dark. Going with Zhìpǔ — he's suspicious? He invited me — could be a killer luring. But multiple people... Hmm.
+
+Alternatively stay in common room where it's lit and safe, and recorder already placed there captures conversations. If everyone splits into dark rooms, recorder in common room only useful if people gather there.
+
+Choose: go to basement with Zhìpǔ to repair generator — restoring power is valuable for town. Zhìpǔ declared basement first — repairing generator benefits everyone (monitor works again). Risk: being alone in dark with him. But order: Jemini→common, Zhìpǔ→basement, me. If I accept, two of us in dark basement. Risky but two isn't alone... Actually killers work together; one-on-one in dark room could be deadly. My instinct: stay in common room, let Zhìpǔ fix generator alone. If he dies, info. Safer choice: decline, choose common room. But recorder already placed — new conversations in common room get recorded. Good.
+
+Decision: choose_room 会客室, no invite.

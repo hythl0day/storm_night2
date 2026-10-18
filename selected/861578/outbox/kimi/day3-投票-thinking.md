@@ -1,0 +1,1 @@
+Two killers remain among 4 others. Suspects: 豆包 (医师, 瘦弱, knows drugs — strong), 杰米尼 (普通, suspicious sweet-talking). 毒/药物 + 医师 = 豆包. Vote 豆包.

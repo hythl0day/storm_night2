@@ -61,6 +61,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from . import resolve_game_dir
 from .engine import Engine
 from .engine.murder import poisoned_names
 from .engine.state import (
@@ -177,12 +178,20 @@ class SoftStop(Exception):
 
 def _receipt_verdict(ev: dict) -> str:
     """动作裁决的回执定性：ok 不等于达成——谋杀被防御是失败（仍消耗本窗口尝试），
-    条件不满足的未发动不消耗。此前一律写"→ 成功"，谋杀未遂回执出现成功字样。"""
+    条件不满足的未发动不消耗，赠送被对方拒绝是未达成。此前一律写"→ 成功"，
+    谋杀未遂与赠送被拒的回执出现成功字样。"""
     if ev.get("defended"):
         return "→ 失败（袭击被防御，仍消耗本窗口谋杀尝试）"
     if ev.get("failed"):
         return "→ 未发动（条件不满足，不消耗）"
+    if ev.get("accepted") is False:
+        return "→ 未达成（对方拒绝）"
     return "→ 成功"
+
+
+# 谋杀窗口内可声明的攻击动作（回执归小节用）
+MURDER_ACTIONS = {"murder", "stage_magic", "strong_attack", "slow_poison",
+                  "pharmacology_kill", "passage_kill", "device_fire"}
 
 
 class Orchestrator:
@@ -1330,6 +1339,9 @@ class Orchestrator:
                      f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · {stage}（谋杀窗口）", menu, extra)
             payload = self.call_ai(p, f"{stage}-谋杀窗口", briefing)
+            # 谋杀回执归入独立小节——否则落在最后一个房间行动小节下，案发房间会被记错
+            if any(isinstance(a, dict) and a.get("type") in MURDER_ACTIONS for a in payload["actions"]):
+                self.script_sub("谋杀窗口")
             self.apply_actions(p, payload["actions"], retry={
                 "label": f"{stage}-谋杀窗口", "title": f"第{day}天 · {stage}（谋杀窗口）",
                 "menu": menu, "extra": extra}, max_actions=1)
@@ -1994,7 +2006,10 @@ class Orchestrator:
         # 该平民可行使武装指认（背水一战）；指认结算（宣言/遗言/公布/遗嘱）由 run_armed_accusation 接管
         if out and self.state.get("pending_out") and not w.get("pre_exec_done"):
             civilians = [q["name"] for q in self.alive() if q["identity"] == "平民"]
-            if len(civilians) == 1 and civilians[0] == out:
+            op = self.player(out)
+            if len(civilians) == 1 and civilians[0] == out and op \
+                    and self._accusation_eligible(op, self.state["phase"]["day"]):
+                # 有资格才公布"仍可行使武装指认"——主持人公告必须全真（如侦探垄断时最后平民本无此机会）
                 detail = "、".join(f"{t} {_fmt_votes(c)}票" for t, c in sorted(tally.items(), key=lambda kv: -kv[1]))
                 voters = w.get("voters") or len(self.alive())
                 self.log_line(f"投票结果：{detail}——{out} 过半数（存活 {voters} 人，需 >{voters / 2:g} 票）"
@@ -2136,6 +2151,17 @@ class Orchestrator:
         w["settled"] = True
         self.save_state()
 
+    def _accusation_eligible(self, p: dict, day: int) -> bool:
+        """武装指认资格（rules-6 §7.3）：仅限存活平民；有侦探时仅侦探本人且须持有武器
+        （侦探若为反派则本局无人可指认）；无侦探时须持有武器，或桌上凶器仍在可临时取用。"""
+        if not p["alive"] or p["identity"] != "平民":
+            return False
+        armed = bool(held_item_names(p, day) & set(ARMED_WEAPONS))
+        det = self.state.get("detective")
+        if det is not None:
+            return p["name"] == det and armed
+        return armed or any(e["name"] in ARMED_WEAPONS for e in self.state.get("table_items", []))
+
     def run_armed_accusation(self) -> None:
         """武装指认（rules-6 §7.3）：v4.0 两名杀手都是正确目标——指认任一杀手→其出局（另一名仍在则
         游戏继续，全部出局→平民胜），指错（所指为平民）→指认者出局。
@@ -2148,23 +2174,17 @@ class Orchestrator:
             return
         det = self.state.get("detective")
         pending = self.state.get("pending_out")
-        table_armed = any(e["name"] in ARMED_WEAPONS for e in self.state.get("table_items", []))
         for name in self.state["order"]:
             if self.state["winner"]:
                 return
             if name in w["done"]:
                 continue
             p = self.player(name)
-            if not p or not p["alive"] or p["identity"] != "平民":
+            if not p or not self._accusation_eligible(p, day):
                 continue
             if pending is not None and name != pending:
                 continue  # 触发②：仅即将出局的最后一名平民
             armed = bool(held_item_names(p, day) & set(ARMED_WEAPONS))
-            if det is not None:
-                if name != det or not armed:
-                    continue  # 有侦探：仅侦探本人且须持有武器（侦探为反派时无人可指认）
-            elif not armed and not table_armed:
-                continue  # 无侦探：持武器平民，或桌上凶器仍在时的任意平民（临时取用）
             others = [q["name"] for q in self.alive() if q["name"] != name]
             payoff = "指对 → 该杀手出局（两名杀手全部出局平民才获胜）；指错 → 你出局；无论对错武器都消耗"
             if armed:
@@ -2281,6 +2301,8 @@ class Orchestrator:
                      + "\n".join(case_lines) + f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · 毁证机会", menu, extra)
             payload = self.call_ai(p, "毁证机会", briefing)
+            if any(isinstance(a, dict) and a.get("type") == "tamper_investigation" for a in payload["actions"]):
+                self.script_sub("毁证窗口")  # 与谋杀窗口同理：回执归入独立小节
             self.apply_actions(p, payload["actions"], retry={
                 "label": "毁证机会", "title": f"第{day}天 · 毁证机会", "menu": menu, "extra": extra},
                 max_actions=1)
@@ -2346,11 +2368,11 @@ class Orchestrator:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--game", required=True, help="对局目录（deal.py 产物，如 game/012345）")
+    ap.add_argument("--game", required=True, help="对局目录（deal.py 产物，如 game/012345 或仅 id 012345）")
     ap.add_argument("--resume", action="store_true", help="从 state.json 断点续跑（席位行动粒度）")
     args = ap.parse_args()
 
-    game_dir = Path(args.game)
+    game_dir = resolve_game_dir(args.game)
     if not (game_dir / "state.json").exists():
         raise SystemExit(f"找不到 {game_dir / 'state.json'}（先用 python -m src.deal 生成对局）")
     orch = Orchestrator(game_dir)

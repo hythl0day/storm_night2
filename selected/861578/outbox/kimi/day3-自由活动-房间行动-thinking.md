@@ -1,0 +1,1 @@
+In dark monitoring room, I can view monitoring but it's stopped recording due to blackout — may return existing records. Only action available listed. Check monitoring.

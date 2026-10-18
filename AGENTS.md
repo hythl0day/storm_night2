@@ -20,12 +20,13 @@ src/          Python 代码（跑局管线）
   smoke.py        连通性测试（席位选择/随机/真人席位）
   ping.py         单席位连通性诊断
   prompts.py      prompt 模板加载器（__file__ 锚定项目根）
+  scorecard.py    评分卡（M6）：默认扫描 game/，--dir selected 扫精选池；单局/多局报告
+  bench.py        API 速度诊断（流式 TTFT/吞吐）
 players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key 只填环境变量名）
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
 screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md
 docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + usage.md（脚本用法）/ engine.md（引擎参考）
-tools/        bench.py（API 速度诊断：流式 TTFT/吞吐）
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
 ```
@@ -63,4 +64,4 @@ python -m unittest discover -s tests   # 运行测试用例
 
 里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成；**v4.0 规则重做已落地**（规格书 `docs/v4.0-plan.md`，里程碑 M5.1）：双杀手制（删帮凶/继任，4 平民 + 2 杀手）、职业 9→8、道具 14→12、反派密谋频道（每天两次：自由活动前先于停电声明轮、晚间休息选房前）、谋杀窗口每窗全队一次尝试 + 每日成功封顶一起、现场调查四项全给且全员公告 + 清晨调查队列（平民自动/反派篡改抢先）、延时装置手动化、密道改谋杀窗口动作、舞台魔术可防御、无杀倒计时从第 1 天起算。**v4.0 与 v3.x 存档不兼容：旧档仅供查看，不可续跑。**
 
-当前回到**试玩调优期**（v4.0 规则面）：反复手动跑局（`python -m src.console --game game/<seed>`，必要时 `--resume` 断点续跑），重点观察 plan §11 的平衡风险点（杀手线索公开化后的反派胜率、双向 buff 净效果、未遂不当场封顶的防御道具贬值、技能杀利用率）。每局跑完后分析存档（`python -m src.view status --game ...` / `python -m tools.scorecard --game <seed>`），挑合格的完整局入 `selected_games/`。
+当前回到**试玩调优期**（v4.0 规则面）：反复手动跑局（`python -m src.console --game game/<seed>`，必要时 `--resume` 断点续跑），重点观察 plan §11 的平衡风险点（杀手线索公开化后的反派胜率、双向 buff 净效果、未遂不当场封顶的防御道具贬值、技能杀利用率）。每局跑完后分析存档（`python -m src.view status --game ...` / `python -m src.scorecard --game game/<seed>`），挑合格的完整局入 `selected/`。

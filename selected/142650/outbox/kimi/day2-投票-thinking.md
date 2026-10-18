@@ -1,0 +1,1 @@
+I'm the detective with 1.5 votes. Voting for Dixi with my 1.5 + someone else could oust her... but risk: if she's actually civilian and my accusation was wrong, I push her out. She's a strong suspect. My vote 1.5, need 3. Best to vote Dixi; others may follow. Killing a civilian via vote helps killers.

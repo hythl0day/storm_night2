@@ -1,0 +1,1 @@
+Vote 3 on Claude, others scattered. I have no gun—"桌上凶器仍在会客室桌上" — what凶器? Baseball bat probably. Evidence is weak against Claude; accusing wrong means I die. Two killers; even if right, one remains. Too risky. Pass.

@@ -1,0 +1,1 @@
+Night in living room. Talk briefly, record notes. Actions empty.

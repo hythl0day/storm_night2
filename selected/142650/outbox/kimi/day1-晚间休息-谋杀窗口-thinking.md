@@ -1,0 +1,1 @@
+Kill in dark room, no limits except capacity. 杰米尼 present. Use slow poison? It's undetectable-ish, death announced in morning, counts as successful murder today. That blocks future windows today but resets countdown anyway. Slow poison avoids defensive items. But poison death might implicate chemist? Announcement just says death. Use slow poison on 杰米尼.

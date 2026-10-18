@@ -1,0 +1,1 @@
+**Planning response with guarded stance**

@@ -1,0 +1,1 @@
+**Planning response to Gemini suspicion**

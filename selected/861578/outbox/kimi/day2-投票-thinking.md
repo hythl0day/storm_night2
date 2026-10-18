@@ -1,0 +1,1 @@
+Claude and Doubao admit being in the study where the attack happened. Vote Claude — strongest suspect. But 3.5 needed; with 6 votes, likely no one out. Still vote Claude.

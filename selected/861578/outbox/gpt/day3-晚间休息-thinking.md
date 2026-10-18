@@ -1,0 +1,1 @@
+**Choosing 会客室 to invite Gemini**

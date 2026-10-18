@@ -1,0 +1,5 @@
+Need to choose a room. Note: I have lockpicking tool? No — that was 智谱. I can invite 克劳德 or 杰普特. Good play: go to 监控室? It's locked, requires 暴力破解 — I don't have that. 书房 has safe with baseball bat. 豆包 went to 书房. Options: 会客室 to place bug? Bug placement is a room action, but choose_room is the only action now. I'll choose 书房 to contest the safe — opening safe might require lockpicking which I may lack. Actually 地下室 unknown. 会客室: could place bug next phase, but no one talks there during free activity necessarily.
+
+Best: invite 杰普特 to 地下室? Or go 会客室 to plant bug — only records conversations after placement, 会客室 free activity people may gather. 杰米尼 is going 会客室. Planting bug in 会客室 where 杰米尼 chats could be informative. But bug only records 放置后 conversations; I need to be in same room as listener... bug records, I listen at night. Reasonable.
+
+Alternatively 地下室 unexplored. But info value lower. I'll choose 会客室, and maybe invite 克劳德 to keep her close? Inviting could leak my intent. Just choose 会客室.

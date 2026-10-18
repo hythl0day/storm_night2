@@ -1,0 +1,1 @@
+Three candidates: me, 狄西, 杰普特. Voters: 杰米尼, 克劳德, 豆包. I risk losing. If only one stays, they win automatically. If two stay, voters decide. 豆包 will vote for me, 杰米尼 likely me, 克劳德 unknown. Should I stay? If I stay and others withdraw, I win. Risk: 狄西 and 杰普特 also stay. Stay seems favorable—豆包 votes me, 杰米尼 indicated support. Stay.

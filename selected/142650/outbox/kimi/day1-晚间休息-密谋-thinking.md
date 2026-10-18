@@ -1,0 +1,3 @@
+Coordinate: no murders yet, countdown 0/2. Tonight dark, all rooms dark. Plan: one of us murders tonight, ideally with poison (undefendable) — but poison kills next morning, counts as murder behavior. I have poison, can use tonight in bedroom? Poison applies "谋杀窗口对同房一名非反派下毒" — needs same room. I need to invite someone to my room or know where they go. I can't see others' night locations. I can invite someone (order matters — I need know order). Alternatively 豆包 uses knife in dark room.
+
+Suggest: 豆包 invites someone to her room (knife murder in dark, no limits), or I use poison. Also discuss sabotage generator.

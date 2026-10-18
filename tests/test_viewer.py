@@ -101,5 +101,18 @@ class ViewerTest(unittest.TestCase):
         self.assertIn("公开事件 0 条", viewer.render_status(empty))
 
 
+class TestResolveGameDir(unittest.TestCase):
+    """--game 参数解析：完整路径直接用；仅 id 时自动到 game/ 下找；都不存在时原样返回（下游报错）。"""
+
+    def test_resolve(self):
+        from src import resolve_game_dir
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "game"
+            (base / "42").mkdir(parents=True)
+            self.assertEqual(resolve_game_dir("42", base), base / "42")
+            self.assertEqual(resolve_game_dir(str(base / "42"), base), base / "42")
+            self.assertEqual(resolve_game_dir("99999", base), Path("99999"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,1 @@
+**Assigning bat role to Doubao for defense**

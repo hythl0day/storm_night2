@@ -39,7 +39,7 @@ try:
 except ImportError:  # 非 Windows 无 msvcrt；本项目环境为 Windows
     msvcrt = None
 
-from . import viewer
+from . import resolve_game_dir, viewer
 from .fmt import fmt_action, third_person
 from .orchestrator import OPENING, AbortRun, Orchestrator, morning_roster_rows
 
@@ -506,11 +506,11 @@ def input_loop(ctx: Ctx) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="console", description="《暴风夜》交互驾驶舱")
-    ap.add_argument("--game", required=True, help="对局目录（deal.py 产物，如 game/012345）")
-    ap.add_argument("--resume", action="store_true", help="从 state.json 断点续跑（阶段粒度）")
+    ap.add_argument("--game", required=True, help="对局目录（deal.py 产物，如 game/012345 或仅 id 012345）")
+    ap.add_argument("--resume", action="store_true", help="从 state.json 断点续跑（席位行动粒度）")
     args = ap.parse_args()
 
-    game_dir = Path(args.game)
+    game_dir = resolve_game_dir(args.game)
     if not (game_dir / "state.json").exists():
         raise SystemExit(f"找不到 {game_dir / 'state.json'}（先用 python -m src.deal 生成对局）")
 

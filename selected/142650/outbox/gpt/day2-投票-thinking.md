@@ -1,0 +1,1 @@
+**Preparing vote summary in JSON**

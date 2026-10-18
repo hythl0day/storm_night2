@@ -1,0 +1,1 @@
+I am a civilian; must decide an action. Night: use closed space to lock the reception hall? Skill available during free activity — now is evening rest, not free activity. Legal actions only: unlock or gift. Keep螺丝起子. No action.

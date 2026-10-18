@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import viewer
+from . import resolve_game_dir, viewer
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,12 +26,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="view", description="《暴风夜》对局只读查看器")
     ap.add_argument("command", choices=["status", "log", "peek", "inner", "host", "follow"])
     ap.add_argument("seat", nargs="?", default="", help="席位 id 或角色名（peek/inner 用）")
-    ap.add_argument("--game", required=True, help="对局目录，如 game/012345")
+    ap.add_argument("--game", required=True, help="对局目录，如 game/012345 或仅 id 012345（自动解析 game/<id>）")
     ap.add_argument("-n", type=int, default=20, help="log/host 显示条数")
     ap.add_argument("--interval", type=float, default=5.0, help="follow 轮询间隔秒数")
     args = ap.parse_args()
 
-    game_dir = Path(args.game)
+    game_dir = resolve_game_dir(args.game)
     if not (game_dir / "state.json").exists():
         raise SystemExit(f"找不到 {game_dir / 'state.json'}")
 

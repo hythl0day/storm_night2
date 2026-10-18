@@ -1,0 +1,119 @@
+{
+  "seed": 861578,
+  "ruleset": "rules-6-lite.md",
+  "rules_version": "v4.0",
+  "is_lite_rule": true,
+  "excluded_seats": [
+    "grok"
+  ],
+  "pinned_identities": {},
+  "mode": "6人局",
+  "phase": {
+    "day": 1,
+    "stage": "开局准备"
+  },
+  "order": [
+    "豆包",
+    "杰米尼",
+    "智谱",
+    "奇米",
+    "克劳德",
+    "杰普特"
+  ],
+  "safe_item": "棒球棍",
+  "table_items": [
+    {
+      "name": "左轮手枪",
+      "uses_left": 1
+    }
+  ],
+  "unused_professions": [
+    "心理医生",
+    "魔术师"
+  ],
+  "unused_items": [
+    "急救箱",
+    "手电筒",
+    "木马程序U盘"
+  ],
+  "players": [
+    {
+      "id": "glm",
+      "name": "智谱",
+      "gender": "男",
+      "physique": 3,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "建筑师",
+      "item": "螺丝起子",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "doubao",
+      "name": "豆包",
+      "gender": "女",
+      "physique": 1,
+      "nationality": "中国",
+      "identity": "杀手",
+      "profession": "医师",
+      "item": "不明药剂",
+      "item_uses_left": 1,
+      "alive": true,
+      "extra_items": [
+        "可疑的粉末"
+      ]
+    },
+    {
+      "id": "gpt",
+      "name": "杰普特",
+      "gender": "男",
+      "physique": 4,
+      "nationality": "美国",
+      "identity": "平民",
+      "profession": "运动员",
+      "item": "测谎仪",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "claude",
+      "name": "克劳德",
+      "gender": "女",
+      "physique": 3,
+      "nationality": "美国",
+      "identity": "杀手",
+      "profession": "机械师",
+      "item": "刀",
+      "item_uses_left": 1,
+      "alive": true,
+      "extra_items": [
+        "万能钥匙"
+      ]
+    },
+    {
+      "id": "kimi",
+      "name": "奇米",
+      "gender": "女",
+      "physique": 2,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "化学家",
+      "item": "窃听器",
+      "item_uses_left": 2,
+      "alive": true
+    },
+    {
+      "id": "gemini",
+      "name": "杰米尼",
+      "gender": "女",
+      "physique": 2,
+      "nationality": "美国",
+      "identity": "平民",
+      "profession": "黑客",
+      "item": "鲁米诺试剂",
+      "item_uses_left": 1,
+      "alive": true
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+All three went to 监控室. Light room, multiple people → no kill. Monitor room has监控查看? I could go with 豆包. Better: go 书房 to get 可疑的粉末? Already opened? "已永久开启：书房保险箱" — gift may have been taken. Go to 监控室 with others is safe for me (avoid suspicion). But I need to talk to 豆包 privately — 监控室 with 4 people, can talk? 同房可私谈 only private with...规则：同房的人可私下交谈. But with everyone there, no privacy. Still fine.
+
+Actually maybe go 书房 to check 保险箱粉末. But if it's taken... 未开启过? "已永久开启" means the lock is permanently open now. I could check. But going 监控室 aligns with豆包 invite, keeps low profile. I'll go 监控室.

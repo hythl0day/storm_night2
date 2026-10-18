@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from . import resolve_game_dir
 from .deal import (
     RULES_VERSION,
     announcement,
@@ -264,13 +265,13 @@ def prepare_replay(source: Path, out: Path, point: ReplayPoint) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="在指定席位的 AI 调用前，将对局分叉另存为")
-    ap.add_argument("--game", required=True, help="源对局目录（只读）")
+    ap.add_argument("--game", required=True, help="源对局目录（只读；如 game/43501 或仅 id 43501）")
     ap.add_argument("--day", required=True, type=int, help="分叉节点所在天数")
     ap.add_argument("--seat", required=True, help="分叉席位 id 或角色名")
     ap.add_argument("--label", required=True, help="调用标签，如 自由活动-房间行动")
     ap.add_argument("--out", required=True, help="新分支目录（必须不存在）")
     args = ap.parse_args()
-    source, out = Path(args.game), Path(args.out)
+    source, out = resolve_game_dir(args.game), Path(args.out)
     try:
         metadata = prepare_replay(source, out, ReplayPoint(args.day, args.seat, args.label))
     except ReplayError as e:

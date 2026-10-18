@@ -1,0 +1,1 @@
+Decide: Jamie invited me to 会客室. Staying in 会客室 is lit and safe; but killers know? Staying in 会客室 keeps me safe (always bright, no kills there presumably). Also lets me listen? Listener needs to be in own bedroom at night to listen. If I stay in 会客室 I can't listen. But safety first: bedroom is dark, danger. Accept invitation to 会客室.

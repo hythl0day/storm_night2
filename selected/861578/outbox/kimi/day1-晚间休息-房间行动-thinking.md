@@ -1,0 +1,1 @@
+I'm in the parlor with three others during evening rest. Legal actions: unlock door (pointless), gift. Best action: nothing much. Maybe place... I already placed the bug. Just pass with empty actions.

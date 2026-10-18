@@ -36,6 +36,7 @@ python -m src.deal --seed 42 --lite    # 失忆版规则集（生存须知 + 临
                                        # state 记 is_lite_rule，评分卡独立分池不混算胜率）
 
 # 跑局（二选一），跑到对局结束；中断后加 --resume 按席位断点续跑
+# （所有脚本的 --game 都可只给 id，如 --game 42 自动解析为 game/42）
 python -m src.console --game game/42        # 交互驾驶舱：流式输出 + 随时命令（输入 help 查看）
 python -m src.orchestrator --game game/42   # 无头模式（供批量跑局）
 
@@ -46,10 +47,11 @@ python -m src.console --game game/42-r1 --resume  # 从分叉点实时生成并�
 # 查看存档（只读，与跑局解耦）
 python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/peek/inner/host/follow
 
-# 评分卡（M6）：把跑完整的存档挑入 selected_games/ 后扫描
-python -m tools.scorecard                   # 多局报告：版本分组胜率/机制利用率/多样性/成本
-python -m tools.scorecard --game 42         # 单局报告：台账/流程简报/戏剧性评分/主角弧线候选
-python -m tools.scorecard --min-version v3.8  # 只统计指定版本及以后的存档
+# 评分卡（M6）：默认扫描 game/ 全部存档；跑完整的合格局可挑入 selected/ 作精选池
+python -m src.scorecard                        # 多局报告：版本分组胜率/机制利用率/多样性/成本
+python -m src.scorecard --dir selected         # 只看精选池
+python -m src.scorecard --game game/42         # 单局报告：台账/流程简报（含密谋与秘密行动）/戏剧性评分/主角弧线候选
+python -m src.scorecard --min-version v4.0     # 只统计指定版本及以后的存档
 
 # 测试（引擎 + 平衡回归 + 编排 mock 集成）
 python -m unittest discover -s tests

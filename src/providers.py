@@ -327,7 +327,7 @@ def chat(
 
     reasoning_effort（"low"/"medium"/"high"）：思考强度，默认 None = 不发该参数（走渠道默认）。
     OpenAI 协议发 reasoning_effort；Anthropic 协议映射为 thinking.budget_tokens。
-    注意：部分上游不识别该参数会报 400——正式启用前应先用 tools/bench.py --effort 验证渠道兼容性。
+    注意：部分上游不识别该参数会报 400——正式启用前应先用 src.bench --effort 验证渠道兼容性。
     """
     if not player.api_key:
         return ChatResult(player.name, ok=False, error=f"环境变量 {player.api_key_env} 未设置")
