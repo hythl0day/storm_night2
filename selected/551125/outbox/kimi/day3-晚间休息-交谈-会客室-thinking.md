@@ -1,0 +1,3 @@
+Situation: 4 alive, one killer left (Claude was killer; the other killer unknown among Doubao/Jemini/Jupit). No-kill countdown at 0/2. If tonight no murder attempt happens, tomorrow... wait, countdown: from day 1, if 2 full days with no murder, next dawn civilians win. Current progress 0/2 because murders happened day1/2. If day3 has no murder, progress 1/2; day4 none → day5 dawn win.
+
+Killer is among Doubao, Jemini, Jupit. Tonight if no one killed, killer loses ground. Doubao invited me to basement — maybe killer trying to lure. Three of us in lit parlor safe. Speak: agree to stay, push verification of Jemini's attack claim.

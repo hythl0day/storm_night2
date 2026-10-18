@@ -1,0 +1,1 @@
+I'm weighing my options with limited leverage. Jepet could be a strong candidate, but I'm concerned about creating a power vacuum if I back him. For now, I'm leaning toward Dece as my next move.

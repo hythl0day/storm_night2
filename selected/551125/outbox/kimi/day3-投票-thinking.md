@@ -1,0 +1,1 @@
+Vote 杰米尼 as planned.

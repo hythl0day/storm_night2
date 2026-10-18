@@ -1,0 +1,1 @@
+Need to speak in 会客室. Clarify my vote on 杰米尼, counter豆包 suspicion, point out contradictions. Keep under 150 chars mostly.

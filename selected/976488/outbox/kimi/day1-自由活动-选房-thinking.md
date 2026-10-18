@@ -1,0 +1,1 @@
+Monitor room locked, need my lockpick. Grock invited me. Accept, go monitor room.

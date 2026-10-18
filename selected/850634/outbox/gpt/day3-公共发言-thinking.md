@@ -1,0 +1,1 @@
+**Formulating accusation and vote strategy**

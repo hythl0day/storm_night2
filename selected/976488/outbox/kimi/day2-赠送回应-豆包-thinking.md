@@ -1,0 +1,1 @@
+Accept the Luminol reagent (blood detection). Useful for investigations.

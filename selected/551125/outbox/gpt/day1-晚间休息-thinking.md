@@ -1,0 +1,1 @@
+**Assessing safe location options**

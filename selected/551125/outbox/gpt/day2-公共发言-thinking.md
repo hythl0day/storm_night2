@@ -1,0 +1,1 @@
+**Formulating suspect voting stance**

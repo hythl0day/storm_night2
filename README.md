@@ -44,6 +44,14 @@ python -m src.orchestrator --game game/42   # 无头模式（供批量跑局）
 python -m src.replay --game game/42 --day 3 --seat claude --label "自由活动-房间行动" --out game/42-r1
 python -m src.console --game game/42-r1 --resume  # 从分叉点实时生成并观战
 
+# 采访录制器：把某席位拉出古堡自由问答（记忆=他收到的全部发言+自己的发言/内心全文，从存档复原）
+# 采访以精选池为默认目录（先入选再采访）；--selected 接受 selected/ 下的 id 或显式路径
+python -m src.interview --selected 551125 --seat doubao                  # 赛后采访（死者记忆自动截于出局时点）
+python -m src.interview --selected 551125 --seat doubao --at 1:晚间休息  # 局中冻结采访（只知到该阶段为止）
+python -m src.interview --selected 551125 --seat doubao --dump-memory m.md  # 导出记忆档案供人工剪裁，
+                                                          # 剪裁后加 --memory m.md 注入（明线设定）
+# 问答记录与当次记忆档案归档到 selected/<id>/interview/（宿主侧素材，含剧透）
+
 # 查看存档（只读，与跑局解耦）
 python -m src.view status --game game/42    # 阶段/存活/台账；另有 log/peek/inner/host/follow
 

@@ -1,0 +1,1 @@
+**Planning deceptive speech and evidence strategy**

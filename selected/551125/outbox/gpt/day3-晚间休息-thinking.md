@@ -1,0 +1,1 @@
+**Choosing safest common room**

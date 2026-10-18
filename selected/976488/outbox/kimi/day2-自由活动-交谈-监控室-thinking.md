@@ -1,0 +1,1 @@
+Notes say I invited 豆包 to monitor room, but I'm in monitor room with 克劳德 instead. 豆包 accepted invite and went to 会客室? Odd. Talk to 克劳德.

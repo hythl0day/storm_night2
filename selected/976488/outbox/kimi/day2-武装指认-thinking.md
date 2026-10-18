@@ -1,0 +1,1 @@
+Odd situation: player wrote "idle" actions—invalid. Also conflict: their notes claim they accused Jamini, but brief doesn't mention armed accusation. Brief says current stage is free activity. I should reject the idle action privately and let them redeclare.

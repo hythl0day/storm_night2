@@ -14,6 +14,7 @@ src/          Python 代码（跑局管线）
   engine/         规则裁决引擎（M3）：state / murder / vote / ledger / core
   orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
   replay.py       存档分叉：目标前复用原 outbox 重建到指定席位前并另存为，console/orchestrator --resume 接续
+  interview.py    采访录制器：把席位拉出古堡自由问答（--selected 只认精选池；记忆=他收到的全部发言与事件+自己的发言/内心全文，从存档复原；默认截于出局时点，--at 局中冻结，--dump-memory/--memory 剪裁注入；归档 <对局>/interview/）
   viewer.py       视图层（M4.5）：读存档渲染 status/log/peek/inner/host，与跑局解耦
   view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host/follow 子命令
   console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；跑局时即实时观战（M8 已取消），M7 的载体

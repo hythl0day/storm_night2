@@ -1,0 +1,1 @@
+I was voted out. Deliver a遗言， lie strategically, bequeath the窃听器. Give it to狄西 perhaps, or to格罗克 to sow distrust among Americans? Giving to狄西 (likely villager) helps. Actually my suspicion:杰普特 and杰米尼 are killers. Give窃听器 to狄西, telling him to plant in会客室. Speech under 400 chars.

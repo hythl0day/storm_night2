@@ -1,0 +1,1 @@
+3 survivors: me, 豆包, 杰米尼. One killer among 豆包/杰米尼 (I'm civilian). Today no murder → civilians win tomorrow. Safe play: stay with 杰米尼 in lit room. But if killer attacks and I have dodge... actually if we stay together and one of us is killed, the other is the killer — locked. Speech: agree but stay wary.

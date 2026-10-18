@@ -1,0 +1,1 @@
+All going to study. Accept invite to study, use violence crack to open safe. First room declaration: study.

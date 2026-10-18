@@ -263,7 +263,7 @@ class TestCivilianWinEnding(MockGameTestBase):
         self.assertIn("遗嘱：「万能钥匙」（A 遗留）→ D", log)
         self.assertIn("游戏结束：平民获胜", log)
         # v4.0 清晨调查队列：平民 C（医师）自动结算，结果全员公告（不调 API）
-        self.assertIn("C 调查了 E 的案件", log)
+        self.assertIn("C 当众宣读了自己的调查结论（E 案", log)
         self.assertIn("杀手线索", log)
         self.assertFalse((d / "inbox" / "C" / "day3-案件调查.md").exists())  # 自动结算不调 API
         # v3.3 侦探竞选：C/D 参选、未参选者投票，C 当选（末置发言 + 1.5 票权）
@@ -1828,7 +1828,7 @@ class TestFirstDayMurderAndFeedback(MockGameTestBase):
         self.assertIn("监控公开宣读", log)
         # v4.0 清晨调查队列：平民 C（医师）自动结算、结果全员公告，不调 API
         self.assertFalse((d / "inbox" / "C" / "day2-案件调查.md").exists())
-        self.assertIn("C 调查了 E 的案件", log)
+        self.assertIn("C 当众宣读了自己的调查结论（E 案", log)
         self.assertIn("死亡时间 = 第1天自由活动", log)
         self.assertIn("杀手线索", log)
 
@@ -2090,7 +2090,7 @@ class TestInvestigationQueueV4(MockGameTestBase):
         self.assertTrue(case["investigated"])            # 随后调查定型
         self.assertTrue(any("改动两项" in m for m in s["orch"]["hist"]["A"]))  # 私下告知明细
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
-        self.assertIn("A 调查了 E 的案件", log)          # 假结论由篡改者亲自公告
+        self.assertIn("A 当众宣读了自己的调查结论（E 案", log)  # 假结论由篡改者亲自宣读
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn("篡改案件调查（E案）", script)
 

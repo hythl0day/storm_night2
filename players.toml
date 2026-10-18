@@ -47,7 +47,7 @@ api_key_env = "RELAY_API_KEY_GROK"
 [[player]]
 id = 'deepseek'
 name = "狄西"       # DeepSeek
-model = "deepseek-v4.1-flash"
+model = "deepseek-v4-1-flash-261017"
 base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
 api_key_env = "RELAY_API_KEY_CN"
 

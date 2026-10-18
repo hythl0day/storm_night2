@@ -1,0 +1,3 @@
+Need to choose a room. Detective election: 2-2-2 tie? No detective. Now free activity. I should go to 监控室? It's locked, needs 暴力破解. 豆包 claims lockpicking. 书房 has safe with U盘. I could go to 书房 to try safe. But if 豆包 can unlock... I don't have lock tools. Basement unknown. Safest: maybe invite someone? I'll go to 书房 (safe gift) and hope to open it? I can't open without tools. Monitoring room is locked. Going to 书房 alone is fine—search action may exist in room.
+
+Choose 书房, no invite.

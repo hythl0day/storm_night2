@@ -149,8 +149,9 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_version({}), "≤v3.4")
 
     def test_rules_group_pooling(self):
-        """平衡统计分组：完全按（版本 × 规则集）分组、不合并——迭代期每次更新几乎都改规则；
-        lite 按版本单列（lite·vX.Y）且永不与同名版本的全规则组同池；旧档缺 is_lite_rule 字段视为高级规则。"""
+        """平衡统计分组：按（主.次版本 × 规则集）分组——补丁号（第三位）不参与分组、合并统计
+        （补丁变化只改措辞/呈现、不改规则）；lite 按版本单列（lite·vX.Y）且永不与同名版本的
+        全规则组同池；旧档缺 is_lite_rule 字段视为高级规则。"""
         from src.scorecard import is_lite, rules_group
         self.assertEqual(rules_group({"rules_version": "v3.8"}), "v3.8")
         self.assertEqual(rules_group({"rules_version": "v3.9"}), "v3.9")
@@ -158,8 +159,13 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_group({"rules_version": "v3.30"}), "v3.30")
         self.assertEqual(rules_group({"rules_version": "v3.5"}), "v3.5")
         self.assertEqual(rules_group({}), "≤v3.4")
+        # 补丁号合并：v4.0 与 v4.0.1 同池（补丁只改措辞不改规则）
+        self.assertEqual(rules_group({"rules_version": "v4.0.1"}), "v4.0")
+        self.assertEqual(rules_group({"rules_version": "v4.0.1"}), rules_group({"rules_version": "v4.0"}))
+        self.assertNotEqual(rules_group({"rules_version": "v4.0.1"}), rules_group({"rules_version": "v4.1"}))
         # lite 规则集：按版本单列（同版本 lite 与 full 不同池，跨版本 lite 也不合并）
         self.assertEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}), "lite·v3.12")
+        self.assertEqual(rules_group({"rules_version": "v4.0.1", "is_lite_rule": True}), "lite·v4.0")
         self.assertNotEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}),
                             rules_group({"rules_version": "v3.13", "is_lite_rule": True}))
         self.assertNotEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}),

@@ -1,0 +1,1 @@
+Stay in parlor with 杰米尼. Note: 豆包 is the killer; if she stays in parlor we can see her, can't attack in light. Fine.

@@ -386,7 +386,7 @@ def remote_tamper_monitoring(state: dict, user: str, period: str) -> dict:
 
 def investigate(state: dict, user: str, case_id: int) -> dict:
     """【现场调查】/「鲁米诺试剂」/「可疑的粉末」（v4.0）：清晨案件调查阶段一次获知全部四项结论——
-    死亡时间 / 尸体是否被移动过 / 武器伤痕 / 杀手线索；结果由事件 public 字段向全员公告（含调查者姓名）。
+    死亡时间 / 尸体是否被移动过 / 武器伤痕 / 杀手线索；结果以调查者本人当众宣读的口径全员公开（含调查者姓名）。
 
     每起案件只被调查一次：首个完成的调查即定型（investigated），此后任何人不能再查本案。
     被篡改过的案件按篡改值公告（announce 的内容即结算结果，调用方无需区分真假）。
@@ -409,9 +409,9 @@ def investigate(state: dict, user: str, case_id: int) -> dict:
     case["investigated"] = True
     res = _case_results(s, case)
     trait = lock_clue_trait(s, case)
-    ann = (f"{user} 调查了 {case['victim']} 的案件（{case['room']}），结论："
-           f"死亡时间 = {res['死亡时间']}；尸体{'被移动过' if res['尸体转移'] else '未被移动'}；"
-           f"武器伤痕 = {res['武器伤痕']}；杀手线索：{trait} = {res['杀手线索']}")
+    ann = (f"{user} 当众宣读了自己的调查结论（{case['victim']} 案 · {case['room']}）："
+           f"「死亡时间 = {res['死亡时间']}；尸体{'被移动过' if res['尸体转移'] else '未被移动'}；"
+           f"武器伤痕 = {res['武器伤痕']}；杀手线索：{trait} = {res['杀手线索']}」")
     return {
         "ok": True,
         "type": "investigate",

@@ -84,10 +84,12 @@ def is_lite(st: dict) -> bool:
     return bool(st.get("is_lite_rule"))
 
 
-def _ver_tuple(v: str) -> tuple[int, int] | None:
-    """解析 "v3.8" 为 (3, 8)；无法解析（如 "≤v3.4"）返回 None（--min-version 过滤时被排除）。"""
-    m = re.fullmatch(r"v(\d+)\.(\d+)", v)
-    return (int(m.group(1)), int(m.group(2))) if m else None
+def _ver_tuple(v: str) -> tuple[int, int, int] | None:
+    """解析 "v4.0" / "v4.0.1" 为 (4, 0, 0) / (4, 0, 1)；第三位补丁号缺省为 0。
+    补丁号变化意味着规则未变（仅措辞/呈现修订）；无法解析（如 "≤v3.4"）返回 None
+    （--min-version 过滤时被排除）。"""
+    m = re.fullmatch(r"v(\d+)\.(\d+)(?:\.(\d+))?", v)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
 
 
 def roster_identities(script: str) -> dict[str, str]:
@@ -101,10 +103,13 @@ def roster_identities(script: str) -> dict[str, str]:
 
 
 def rules_group(st: dict) -> str:
-    """平衡统计分组：完全按（版本 × 规则集）分组，不做任何合并——快速迭代期每次更新几乎都改规则，
-    合并必然混池。lite 规则面不同，永不与高级规则同池：同版本的两池以 lite· 前缀区分。"""
+    """平衡统计分组：按（主.次版本 × 规则集）分组——第三位补丁号不参与分组：补丁变化只改
+    措辞/呈现、不改规则，合并统计；无法解析版本的旧档按原字符串成组。
+    lite 规则面不同，永不与高级规则同池：同版本的两池以 lite· 前缀区分。"""
     v = rules_version(st)
-    return f"lite·{v}" if is_lite(st) else v
+    t = _ver_tuple(v)
+    base = f"v{t[0]}.{t[1]}" if t else v
+    return f"lite·{base}" if is_lite(st) else base
 
 
 def roster_professions(script: str) -> dict[str, str]:
@@ -212,7 +217,7 @@ def analyze(g: dict) -> dict:
     # 反派主动性：旧版窗口从第 2 天起；v3.28 起首日自由活动/晚间也有两个独立窗口
     days = st.get("phase", {}).get("day", 1)
     version = _ver_tuple(rules_version(st))
-    first_day_windows = 2 if version and version >= (3, 28) else 0
+    first_day_windows = 2 if version and version >= (3, 28, 0) else 0
     windows = max(1, 2 * (days - 2) + first_day_windows)
     behavior = len(cases) + len(attempts)
     retry_after_fail = any(
@@ -406,8 +411,8 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
     if min_version:
         lo = _ver_tuple(min_version)
         if lo is None:
-            return f"--min-version 格式无法识别：{min_version!r}（应为 v3.8 形式）"
-        kept = [a for a in games if (_ver_tuple(a["version"]) or (-1, -1)) >= lo]
+            return f"--min-version 格式无法识别：{min_version!r}（应为 v4.0 或 v4.0.1 形式）"
+        kept = [a for a in games if (_ver_tuple(a["version"]) or (-1, -1, -1)) >= lo]
         filtered = f"（--min-version {min_version} 过滤掉 {len(games) - len(kept)} 局）"
         games = kept
         if not games:
@@ -424,7 +429,7 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
                  f"{a['path'] or '-':<10}{a['days']:<5}{a['murders']:<5}{sc:<6}")
 
     L.append("")
-    L.append("—— 胜率平衡（按 版本×规则集 分组、不合并；中断局不计入） ——")
+    L.append("—— 胜率平衡（按 主.次版本×规则集 分组，补丁号合并；中断局不计入） ——")
     versions = sorted({a["group"] for a in done})
     for v in versions:
         grp = [a for a in done if a["group"] == v]

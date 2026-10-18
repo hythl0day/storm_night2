@@ -1,0 +1,1 @@
+Need vote. Evidence: 豆包 says she saw 狄西 alive in dark study during free activity. So death at free activity contradicts unless killed in bedroom later. 杰米尼 visited at night. Strong suspect.

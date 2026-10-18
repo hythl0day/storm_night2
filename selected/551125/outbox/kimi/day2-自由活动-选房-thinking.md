@@ -1,0 +1,1 @@
+All three went to监控室. I can go地下室 or书房. I have刀 from克劳德. Declaration: choose basement to search? Nothing specified about investigating. I'll choose监控室 to watch them? Better choose书房 since safe box opened. Actually with three in监控室, I could join to listen. But killer may target me again tonight. Day action: choose书房 alone to stay safe and maybe find clues. I'll declare书房.

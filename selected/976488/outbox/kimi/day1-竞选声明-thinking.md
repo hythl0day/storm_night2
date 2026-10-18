@@ -1,0 +1,3 @@
+Need declare candidacy. Strategy: gun in civilian hands valuable. As mechanic with lockpicking, could claim? Competitors: 豆包, 狄西(claims medic+screwdriver—could be lying), 格罗克. 杰米尼 not running. If I run, 4 candidates, 克劳德 and 杰米尼 vote. Better run—Chinese competitive. Claim mechanic truthfully? Declaring profession risks verification. Could declare running without profession.
+
+Then sealed withdraw possible. Three candidates vs my four — withdraw if crowded might be wiser; but can't coordinate. I'll run.

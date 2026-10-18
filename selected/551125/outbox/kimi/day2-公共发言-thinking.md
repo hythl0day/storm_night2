@@ -1,0 +1,7 @@
+Need to speak. I'm 奇米, was attacked in dark study and survived. Evidence: knife, American killer per 医师调查. Also I have info: attack happened during 自由活动 in study. There are 3 Americans; 杰普特 has alibi in parlor at night, but murder was at night rest. Wait attack on me was 自由活动 (afternoon). Two killers know each other. Attack in study while dark—who else in study? Not revealed.
+
+Key: the murder happened at night; my attack was during 自由活动 earlier. 杰普特 slept in parlor, night alibi, so he couldn't kill 智谱 at night. Killers: one attacked me (day), one killed 智谱 (night). Could be same or different. If 杰普特 attacked me in study (he's American, strong), then he's killer, and the other killer is 克劳德. That fits "killers know each other" and both American. Claude claims slept in bedroom at night—no alibi, night murder fits her. So 克劳德 killed 智谱 at night; 杰普特 attacked me in study (or vice versa). Either way, both Americans 克劳德+杰普特 are the two killers, and 杰米尼 is civilian 医师. But wait — 杰普特's night parlor alibi is public... confirmed by 夜宿会客室公告. So he can't be night killer, but could be the study attacker. And 克劳德 night kill. Both American, two killers. Strong deduction! But knife clue is per 杰米尼's investigation — could be fake. Yet pattern fits.
+
+Also dark rooms can't talk but killer knows who is in dark room. I was in study alone? Attack in study — who knew I was there? Hmm.
+
+Speech: ≤150字. Present: 我白天在书房黑暗中被袭击幸存；夜间谋杀发生。杰普特夜宿会客室有公开证明，排除夜间；但袭击我的是白天书房的人。两个美国人动手机会互补：克劳德夜间无不在场，杰普特白天行踪不明。建议先投克劳德，同时追问杰普特白天去向。

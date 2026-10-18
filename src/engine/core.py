@@ -138,7 +138,7 @@ class Engine:
         return ledger.remote_tamper_monitoring(self.state, user, period)
 
     def investigate(self, user: str, case_id: int) -> dict:
-        """现场调查（v4.0）：一次获知全部四项结论，结果经事件 public 字段全员公告；每案一次。"""
+        """现场调查（v4.0）：一次获知全部四项结论，结果以调查者当众宣读口径全员公开；每案一次。"""
         return ledger.investigate(self.state, user, case_id)
 
     def tamper_investigation(self, user: str, case_id: int) -> dict:

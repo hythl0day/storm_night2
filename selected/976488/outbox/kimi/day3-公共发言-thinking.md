@@ -1,0 +1,3 @@
+Day 3: no kill yesterday; if no murder today, civilians win tomorrow. So the remaining killer (Grock likely) must act today—free activity or tonight. Key: Grock's investigation claim was false; he's American, matches blunt weapon. Note 豆包 gave me luminol—豆包's allegiance? Both killers? 杰米尼 had partner; who? 格罗克 is prime suspect. 4 alive: Grock, Claude, 奇米, 豆包. If Grock is killer, 豆包 and Claude innocent. Killers win condition: kill all civilians. One killer left vs 3 civilians—must kill 2. Grock will try today; note monitors: 监控室门 permanent open now, 书房保险箱 open.
+
+Speech: pressure Grock to account; point out his fake report. Also warn: today is the killer's last chance—suspicious behavior. Maybe declare I keep baseball bat (defense). Keep under 150字.

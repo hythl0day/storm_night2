@@ -1,0 +1,1 @@
+No useful action. Sit tight in living room.

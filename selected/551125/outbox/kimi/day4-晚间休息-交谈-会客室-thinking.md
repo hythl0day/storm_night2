@@ -1,0 +1,1 @@
+Situation: 3 alive — me, 豆包, 杰米尼. 杰米尼's identity? 杰普特 accused 杰米尼 wrong → 杰米尼 is civilian. So 豆包 is the killer. Tonight if no murder, civilians win. Just stay in bright parlor with 杰米尼 and talk, actions []. Warn 杰米尼 not to invite anyone.

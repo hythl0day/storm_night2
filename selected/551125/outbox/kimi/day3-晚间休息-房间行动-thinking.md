@@ -1,0 +1,1 @@
+No murder window listed. Only unlock/gift. Nothing useful; do nothing.

@@ -1,0 +1,1 @@
+Claude's will leaves me a knife. Accepting gives me a weapon (defense/武装指认 requires weapon). I'm a civilian, 武装指认 needs a weapon — the knife could allow me to指认. Accept it.

@@ -1,0 +1,1 @@
+Accept the luminol reagent. Reason: useful investigative tool, accepting shows good faith. Downside: suspicion minor.

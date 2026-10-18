@@ -1,0 +1,1 @@
+I was attacked in free activity but survived — that likely consumed my dodge, though the status says dodge still ×1. Actually the dodge triggers on murder target; attack failed but dodge might still be available. Better stay in 书房 (dark, capacity 3), or invite someone. I'll stay in 书房.

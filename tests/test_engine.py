@@ -1242,7 +1242,7 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         ev = eng.investigate("C", 1)
         self.assertTrue(ev["ok"], ev)
         ann = ev["public"]["announcements"][0]
-        self.assertIn("C 调查了 E 的案件", ann)                 # 结果公开（含调查者姓名）
+        self.assertIn("C 当众宣读了自己的调查结论（E 案", ann)  # 结果公开（含调查者姓名，宣读口径）
         self.assertIn("死亡时间 = 第1天自由活动", ann)
         self.assertIn("武器伤痕 = 利器", ann)
         self.assertIn("杀手线索", ann)

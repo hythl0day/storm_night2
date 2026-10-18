@@ -1,0 +1,1 @@
+Power out, dark. Killer remains among 豆包/杰米尼/杰普特. I'm in 书房 now? Actually I'm in 书房 from free activity; now choose night destination. Safer: 会客室 (bright, safe-ish, names public). If I go home, could be attacked — but I have 敏捷闪避. Still, going to 会客室 keeps public record, limits suspicion.

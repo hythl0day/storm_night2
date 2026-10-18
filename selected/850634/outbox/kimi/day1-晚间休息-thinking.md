@@ -1,0 +1,1 @@
+Evening rest: no speech. I should go to my bedroom to listen to the wiretap? Wiretap listening is "任意一天晚间休息，你身处自己卧室时可收听当天自由活动时段该房间内、放置后发生的交谈记录". So I should go to my bedroom. But狄西 invited me to 会客室. However, in bedroom I can listen to tap. Listening requires 身处自己卧室 during evening rest. So choose my bedroom.

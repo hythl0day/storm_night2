@@ -1,0 +1,1 @@
+Armed accusation: I know I was attacked by 杰米尼's claim... Actually I survived with 敏捷闪避. Two killers, one is Claude (dead), other among 豆包/杰米尼/杰普特. 杰米尼 claims attacked but unverifiable. Claude was American; remaining Americans: 杰米尼, 杰普特. Yesterday 智谱 killed by American. If I accuse 杰米尼 and she's innocent, I die. Risky. Without stronger evidence, skip.

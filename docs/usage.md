@@ -196,6 +196,21 @@ python -m src.bench --skip-long
 
 逐席位输出 TTFT / 总时长 / 生成速度（字/s）/ token 用量。注意：会产生真实 API 调用（每席位至多 2 次，长请求约 500 字输出）。
 
+### 3.8 采访录制器：interview.py
+
+把某席位 AI 拉出古堡进行自由问答采访（show-bible §1 的采访装置 / §5 采访录制器）。记忆载荷从存档逐字节复原：他收到过的所有发言与事件（orch.feed 公共流 + orch.hist 私密流 + private/<席位>/log.md 的密谋节）+ 他自己的发言与内心全文（outbox payloads + 最终 notes）。
+
+```bash
+python -m src.interview --selected 976488 --seat deepseek                     # 赛后采访（死者记忆自动截于出局时点）
+python -m src.interview --selected 976488 --seat deepseek --full              # 赛后复盘式：记忆不截断
+python -m src.interview --selected 976488 --seat deepseek --at 1:晚间休息      # 局中冻结采访（只知到该阶段为止）
+python -m src.interview --selected 976488 --seat deepseek --no-inner          # 记忆不含内心独白
+python -m src.interview --selected 976488 --seat deepseek --dump-memory m.md  # 只导出记忆档案
+python -m src.interview --selected 976488 --seat deepseek --memory m.md       # 用剪裁后的档案采访（明线注入）
+```
+
+采访以**精选池为默认目录**：`--selected` 接受 `selected/` 下的对局 id 或显式路径（先入选，再采访）。采访为终端多轮自由问答（制作人 = 你自己输入），流式输出，`exit` 结束。问答记录与当次实际使用的记忆档案归档到 `selected/<id>/interview/`（宿主侧素材，含剧透，不进 public/）。`--dump-memory` + 人工剪裁 + `--memory` 对应剧中"制作人筛选改写后注入记忆"的明线设定。
+
 ## 4. 配置字段参考
 
 `[settings]` 段：

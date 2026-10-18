@@ -1,0 +1,1 @@
+Dark room. Place bug in study—recordings can be collected later. Good move.

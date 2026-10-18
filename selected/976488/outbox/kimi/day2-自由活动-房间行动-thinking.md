@@ -1,0 +1,1 @@
+Monitor room only offers view monitoring or gift. I want to check monitoring records to verify Claude's claim.

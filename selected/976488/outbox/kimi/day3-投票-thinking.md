@@ -1,0 +1,1 @@
+Vote for 格罗克. Everyone's aligned; 2 votes from Claude+QiMi = 2, not enough... need 3. 豆包 also said she'd vote 格罗克 → 3 votes, exceeds 2.5. Good.
