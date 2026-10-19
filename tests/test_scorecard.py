@@ -159,12 +159,13 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(rules_group({"rules_version": "v3.30"}), "v3.30")
         self.assertEqual(rules_group({"rules_version": "v3.5"}), "v3.5")
         self.assertEqual(rules_group({}), "≤v3.4")
-        # 补丁号合并：v4.0 / v4.0.1 / v4.0.2 / v4.0.3 同池（含小范围裁决修补）
+        # 补丁号合并：v4.0 / v4.0.1 / v4.0.2 / v4.0.3 / v4.0.4 同池（含小范围裁决修补）
         self.assertEqual(rules_group({"rules_version": "v4.0.1"}), "v4.0")
         self.assertEqual(rules_group({"rules_version": "v4.0.2"}), "v4.0")
         self.assertEqual(rules_group({"rules_version": "v4.0.3"}), "v4.0")
-        self.assertEqual(rules_group({"rules_version": "v4.0.3"}), rules_group({"rules_version": "v4.0"}))
-        self.assertNotEqual(rules_group({"rules_version": "v4.0.3"}), rules_group({"rules_version": "v4.1"}))
+        self.assertEqual(rules_group({"rules_version": "v4.0.4"}), "v4.0")
+        self.assertEqual(rules_group({"rules_version": "v4.0.4"}), rules_group({"rules_version": "v4.0"}))
+        self.assertNotEqual(rules_group({"rules_version": "v4.0.4"}), rules_group({"rules_version": "v4.1"}))
         # lite 规则集：按版本单列（同版本 lite 与 full 不同池，跨版本 lite 也不合并）
         self.assertEqual(rules_group({"rules_version": "v3.12", "is_lite_rule": True}), "lite·v3.12")
         self.assertEqual(rules_group({"rules_version": "v4.0.1", "is_lite_rule": True}), "lite·v4.0")

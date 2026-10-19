@@ -326,7 +326,7 @@ class TestSelfDefense(unittest.TestCase):
         self.assertIn("幸存", ev["private"]["E"])
 
     def test_attempt_records_defense_via(self):
-        """未遂台账记录防御途径（host 侧分析用，不下发给任何玩家；scorecard 未遂防御分布的数据源）。"""
+        """未遂台账记录防御途径；目标私密获知实际来源，杀手仍只能得知无法分辨。"""
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
@@ -334,8 +334,21 @@ class TestSelfDefense(unittest.TestCase):
         ev = eng.murder("A", "E", weapon="刀")
         self.assertEqual(ev["type"], "murder_attempt")
         self.assertEqual(eng.state["attempts"][0]["defense"], "武器自卫")
-        # 防御途径不进玩家私信（杀手只知"无法分辨"）
         self.assertNotIn("武器自卫", ev["private"]["A"])
+        self.assertIn("「棒球棍」", ev["private"]["E"])
+
+    def test_weapon_defense_precedes_dodge_and_receipt(self):
+        """武器优先于消耗型防御：左轮挡刀后敏捷闪避保留，目标回执明确实际来源。"""
+        players = default_players()
+        players[4] = P("E", "平民", "运动员", "左轮手枪", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="不明药剂"))
+        self.rooms_for(eng)
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertEqual(ev["type"], "murder_attempt", ev)
+        self.assertEqual(eng.state["attempts"][0]["defense"], "武器自卫")
+        self.assertEqual(eng.state["skill_uses"]["E"]["敏捷闪避"], 1)
+        self.assertIn("「左轮手枪」", ev["private"]["E"])
+        self.assertNotIn("敏捷闪避", ev["private"]["E"])
 
     def test_club_vs_knife_and_gun_defended(self):
         for weapon, defender in [("棒球棍", "刀"), ("棒球棍", "左轮手枪"), ("刀", "左轮手枪")]:
@@ -1828,6 +1841,12 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         v = ev["private"]["F"]["verdicts"]
         self.assertTrue(v["道具声明「一把刀」"].startswith("无法验证"))
         self.assertIn("去过书房", v)
+        self.assertEqual(eng.state["skill_uses"]["F"]["看破伪装"], 1)
+        # 混合合法字段与未知字段也整体驳回，不能静默忽略 items 后照常消耗
+        ev = eng.see_through("F", "C", {"profession": "医师", "items": ["左轮手枪"]})
+        self.assertFalse(ev["ok"], ev)
+        self.assertIn("items", ev["error"])
+        self.assertIn("不消耗次数", ev["error"])
         self.assertEqual(eng.state["skill_uses"]["F"]["看破伪装"], 1)
 
     def test_detective_skips_dead_and_order_filtered(self):

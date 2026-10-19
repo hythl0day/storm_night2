@@ -13,7 +13,8 @@
   v3.31：会客室桌上凶器视同环境凶器供反派临时取用（无需持有，用后消耗，桌上变动次日清晨公告）。
 - 自卫自动触发：武器克制仅覆盖 刀↔棍 与 枪防刀棍；急救箱/不明药剂（药用）/敏捷闪避/药理学防一切
   （含不明药剂、环境凶器、空手、舞台魔术）；延时装置、缓释毒剂、强袭不可被任何方式防御。
-- 自卫用的武器不消耗；急救箱/不明药剂（药用）/【敏捷闪避】/【药理学】触发即消耗（优先消耗急救箱）。
+- 多种防御并存时按 武器自卫 → 急救箱 → 药用药剂 → 敏捷闪避 → 药理学 的顺序自动触发；
+  武器不消耗，其余按实际触发消耗；目标私密回执会说明实际防御来源（v4.0.4）。
 - 现场无其他非反派角色时杀手缴获尸体全部未使用道具，且案件可在毁证窗口被篡改（v3.18 须身处现场；v3.19 仅限案发当天）。
 - v3.30：旁观者口径统一——黑暗目击者/未遂在场者/舞台魔术在场者当场只知"些许奇怪的动静"，
   不知死亡发生；死亡随"再进现场发现"或"次日清晨公告"公开（发现/报案见 state.discover_bodies 与 ledger.report）。
@@ -108,6 +109,25 @@ def _defense(state: dict, target: dict, method: str, room: str, day: int, savior
                 consume_skill(state, savior, "药理学")
                 return True, "药理学(他人)"
     return False, None
+
+
+def _defense_receipt(state: dict, target: dict, method: str, via: str, day: int) -> str:
+    """目标可见的实际防御来源；不进杀手或旁观者的信息。"""
+    if via == "武器自卫":
+        for weapon in ("左轮手枪", "刀", "棒球棍"):
+            if weapon in WEAPON_DEFENSE.get(method, set()) and held_item(target, weapon, day) is not None:
+                return f"你的「{weapon}」挡住了这次袭击"
+        return "你持有的武器挡住了这次袭击"
+    messages = {
+        "急救箱": "你的「急救箱」自动触发，抵消了这次袭击",
+        "不明药剂（药用）": "你的「不明药剂」被当作救命药使用，抵消了这次袭击",
+        "敏捷闪避": "你的【敏捷闪避】自动触发，躲过了这次袭击",
+        "药理学": "你的【药理学】自动触发，抵消了这次袭击",
+        "急救箱(他人)": "同在现场的救援者用「急救箱」抵消了这次袭击",
+        "不明药剂（药用·他人）": "同在现场的救援者用「不明药剂」抵消了这次袭击",
+        "药理学(他人)": "同在现场的救援者用【药理学】抵消了这次袭击",
+    }
+    return messages.get(via, "你的防御手段抵消了这次袭击")
 
 
 def _apply_kill(state: dict, victim: str, method: str, room: str, culprit: str) -> dict:
@@ -220,10 +240,10 @@ def _fire(s: dict, killer: str, target: str, method: str, room: str, savior: str
     if defended:
         s["attempts"].append({
             "target": target, "day": day, "stage": stage, "room": room, "period": current_period(s),
-            "defense": via,  # 防御途径（host 侧台账用，不下发给任何玩家）
+            "defense": via,  # 防御途径（host 侧统计用；目标另收不含攻击者信息的私密回执）
         })
         private = {killer: f"谋杀失败（{spent_note}你无法分辨是武器、药品还是技能所致）",
-                   target: "你遭遇了袭击，但侥幸幸存"}
+                   target: f"你遭遇了袭击，但侥幸幸存——{_defense_receipt(s, tp, method, via, day)}"}
         for w in witnesses:
             private[w] = "你听到些许奇怪的动静，但不知道是谁造成的。"
         ev = {"ok": True, "type": "murder_attempt", "public": None, "private": private, "defended": True}

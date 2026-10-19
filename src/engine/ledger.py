@@ -541,6 +541,12 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
         return reject("see_through", "没有【看破伪装】或「测谎仪」")
     if not isinstance(claims, dict) or not any(v for v in claims.values()):
         return reject("see_through", "没有可验证的声明（请在 claims 中引用对方实际声称过的内容）")
+    allowed = {"profession", "item", "skill", "visited_rooms", "denied_rooms"}
+    unknown = sorted(set(claims) - allowed)
+    if unknown:
+        return reject("see_through",
+                      f"无法识别的 claims 字段：{'、'.join(unknown)}；仅允许 profession/item/skill/"
+                      "visited_rooms/denied_rooms——本次不消耗次数，请重新声明")
 
     def entered(room: str) -> bool:
         return any(target in rooms.get(room, []) for rooms in s["monitoring_true"].values())

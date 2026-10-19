@@ -797,6 +797,11 @@ class StageHintsTest(MockGameTestBase):
         self.assertTrue(any("两名杀手全部出局平民才获胜" in h for h in hints), hints)
         self.assertFalse(any("继任" in h or "平民立即获胜" in h for h in hints), hints)
 
+    def test_murder_hint_cap_is_conditional(self):
+        hints = self.orch._stage_hints("第2天 · 自由活动（谋杀窗口）")
+        self.assertTrue(any("若今天已有人得手" in h for h in hints), hints)
+        self.assertFalse(any("今天已有人得手" in h and "若今天" not in h for h in hints), hints)
+
     def test_night_hint(self):
         hints = self.orch._stage_hints("第2天 · 晚间休息")
         self.assertTrue(any("互不可见" in h for h in hints), hints)
