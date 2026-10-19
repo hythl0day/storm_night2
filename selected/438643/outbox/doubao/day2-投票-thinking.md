@@ -1,0 +1,5 @@
+Let me analyze the situation.  I'm a detective and a killer, and I've already secured 1.5 votes for the vote-out of JEPTE. The current voting threshold is strictly more than half of 6 survivors, which is 3.5. With my partner Dexi likely to vote for JEPTE as well, we need at least one more vote to meet the threshold. I’ve confirmed 3.5 is the valid minimum vote threshold. I’ve decided to vote for JEPTE, which will help us as killers by removing a civilian, but I’m concerned this may reflect poorly on me if JEPTE is revealed as a civilian after being voted out.
+
+I’ve built a strong case against JEPTE, and there’s a need to eliminate a civilian to gain momentum. I’ve confirmed I’ll stick to my original plan and vote for JEPTE.
+
+I’ve confirmed I won’t use the armed identification feature, as misusing it would get me eliminated. I’ll leave its trigger rule unconsidered for now and stick to voting for JEPTE.

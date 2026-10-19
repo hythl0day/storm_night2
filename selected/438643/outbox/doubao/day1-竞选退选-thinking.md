@@ -1,0 +1,3 @@
+We need answer JSON.  A decision on whether to stay or withdraw as the killer is required. After analysis, staying is the better option, as we can reason with voters, have a guaranteed voter support, and only need one more supporter from eligible candidates to win.
+
+Withdrawing would let the opponent win the detective position automatically, which is unfavorable for us. I will officially stay, give a reasoned speech, update candidate information, lobby votes, and output the final result as a single JSON block.

@@ -1,0 +1,1 @@
+Use 看破伪装 on 杰普特: profession 黑客, item 螺丝起子, skill 远程入侵. Note: downtime means行踪无法验证. Also 克劳德's claims? Priority: 杰普特. Speech: respond.

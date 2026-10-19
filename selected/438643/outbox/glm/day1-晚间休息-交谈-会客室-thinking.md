@@ -1,0 +1,1 @@
+Odd: 杰普特 claims 克劳德白亮照监控室? Actually he said "克劳德，你白天照亮监控室" — wait, he asked 智谱 where he went. Note 杰普特 was suspected of monitoring room. He now accuses 克劳德. I'm in bright room, speak normally. Also note my药剂 given to 杰米尼 already. Actions empty.

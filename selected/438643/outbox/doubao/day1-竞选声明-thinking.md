@@ -1,0 +1,13 @@
+We need answer in Chinese, This is a political election themed game. We have already got public statements from two candidates: 杰米尼 will not run, claiming he can't handle guns; 杰普特 will run, claiming he can hack into the monitoring room with his tools. We need to decide whether to run for detective or not. We have no gun, only a key and a knife, and 杰普特's claim of being able to access the monitoring room makes us very wary. As the current host is 杰普特, we will announce our candidacy next. To secure victory, I need to get support from at least one non-candidate besides my accomplice. I can claim to be a chemist or physician to gain credibility, and I will run for detective next.
+
+I've confirmed that lying about my identity is allowed, and I've sorted out the advantages and potential risks of the two identity options. I can also choose not to disclose my identity, and being elected detective will give me more control over the game process.
+
+Monopolizing the指认 right as detective is a huge advantage, so we should run for detective if possible. If we run and lose, there's no harm done. We can give a short speech without disclosing our occupation, claiming to be an architect who can lock suspicious rooms, and hide our道具 until necessary.
+
+I've confirmed that only false statements can be detected, and bluffing as a physician with a first aid kit is feasible. As there are no duplicate professions, we need to avoid overly detailed false claims to prevent contradictions from other players. We've decided not to let 杰普特 win, so we'll run for detective.
+
+We've finalized the speech for our candidacy: we'll claim to be an architect who can lock rooms to separate suspicious parties, and won't mention any specific props. Our campaign goal is to stop 杰普特 from abusing his power as a civilian, and we'll secretly plan to cut the power later if needed. We're still unsure about the stance of other non-candidate players.
+
+We've confirmed we need to coordinate with 狄西 in the subsequent密谋. We've also finalized the content of our public candidacy speech, which will claim to be an architect capable of locking rooms to separate suspicious parties, and outlined our core campaign goals.
+
+I've sorted out the detailed first-day game rules and our candidate plan, including how to gain support and handle different election scenarios. I'll keep the notes concise, and will mention the USB drive for breaking into the study's safe during密谋. I've confirmed the output format is correct.
