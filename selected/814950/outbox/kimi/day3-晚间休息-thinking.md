@@ -1,0 +1,1 @@
+Need to decide night destination. Remaining suspects: 杰普特 (high), 杰米尼 (medium). I'm not a killer; killers know each other — 狄西's partner is among 杰普特/杰米尼/豆包. 豆包 weak/low. Stay in parlor? Parlor is bright and list published — safe but killers can also come. Bedroom is dark, dangerous. Parlor night list public gives info. Choose 会客室, no invite.

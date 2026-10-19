@@ -1,0 +1,1 @@
+Two full days no murder = civilians win tomorrow morning. Killers must strike tonight. Best survival: spend night in 会客室 — always bright, unlimited, no attacks? Attacks could still occur but bright room... Safer choice: 会客室夜宿, public list but alive. Yes.

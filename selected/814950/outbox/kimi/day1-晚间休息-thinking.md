@@ -1,0 +1,3 @@
+I'll settle in the reception hall where it's safe and bright, staying with others since I'm alone in the monitoring room tonight with no detection tools available.
+
+Actually, I'm reconsidering my approach. I could invite Doubao to join me in the reception hall so we can chat openly, but that's risky if we're alone together with a potential killer among us. The problem is I'm out of screwdrivers, so I can't reopen the monitoring room to check the footage—it would've been useful for verification. Instead, I'll move to the reception area for conversation and send an invitation to Doubao.

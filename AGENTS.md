@@ -15,8 +15,9 @@ src/          Python 代码（跑局管线）
   orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
   replay.py       存档分叉：目标前复用原 outbox 重建到指定席位前并另存为，console/orchestrator --resume 接续
   interview.py    采访录制器：把席位拉出古堡自由问答（--selected 只认精选池；记忆=他收到的全部发言与事件+自己的发言/内心全文，从存档复原；默认截于出局时点，--at 局中冻结，--dump-memory/--memory 剪裁注入；归档 <对局>/interview/）
+  scene.py        补拍演出器：让存档角色在某冻结时点重聚补演一场戏（预设场景/自由描述，多角色多轮对话可见彼此台词；台词只展现人设不涉及规则推理；归档 <对局>/scene/，与采访同族、不进游戏流程）
   viewer.py       视图层（M4.5）：读存档渲染 status/log/peek/inner/host，与跑局解耦
-  view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host/follow 子命令
+  view.py         只读查看器薄壳（M4.5）：status/log/peek/inner/host 子命令（实时追局用 console）
   console.py      交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令；跑局时即实时观战（M8 已取消），M7 的载体
   smoke.py        连通性测试（席位选择/随机/真人席位）
   ping.py         单席位连通性诊断
@@ -27,7 +28,7 @@ players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key �
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
 screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md
-docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 + usage.md（脚本用法）/ engine.md（引擎参考）
+docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 / engine.md（引擎参考）；脚本用法已并入 README.md
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
 ```
@@ -51,6 +52,7 @@ tests/        unittest（python -m unittest discover -s tests）
 - 随机选席为**中美 3+3 对称**（两家 API 渠道均衡）；手动 `--seats` 不对称仅提示。
 - deal.py 的随机调用顺序固定（见其 docstring），改顺序 = 改变 seed 语义。
 - 文件协议：`game/<id>/` 下 `seed.txt / deal.json（初始快照）/ state.json / rules.md / players.toml / personas.toml（人设快照，旧档缺则回退项目根）/ script.md（主持人侧全记录，含剧透，不含内心独白）/ public/ / private|inbox|outbox/<席位id>/`；分叉存档另有 `replay.json`（源存档与分叉节点，普通旧档可无）。
+- **措辞分时代**（v4.0.6）：full 规则书与 full 局的 AI 可见文案中主持人称「**主神**」（真人秀层设定，与采访间同一角色）；lite 时代（失忆版规则集及其简报）保留匿名克制的「主持人」；采访间（interview）一律「主神」，补拍现场（scene）不出现该角色。代码侧统一走 `Orchestrator.host_term`（按 `is_lite_rule` 分支）与 `game_system.md` 的 `{host}` 占位符，不要再写死称呼。
 - 规则书（`docs/rules-6.md` / `rules-6-lite.md` / `rules-8.md` 及开局快照 `game/<id>/rules.md`）是 AI 的**唯一规则输入**：书内禁止修订记录、版本变更叙述（如"v3.27 起…""原…取消"）、对外部文件或其他版本规则书的引用——"见 §X"式内部章节互引可以。修订历史一律写在引擎代码注释（vX.Y 前缀）与 git 提交信息里。改规则时同步改：规则书 + `src/engine/` + `src/orchestrator.py`（菜单/简报/提示）+ 测试，并把 `deal.py` 的 `RULES_VERSION` +0.01。
 
 ## 测试与自检
@@ -63,6 +65,6 @@ python -m unittest discover -s tests   # 运行测试用例
 
 ## 当前进度与待办
 
-里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成；**v4.0 规则重做已落地**（规格书 `docs/v4.0-plan.md`，里程碑 M5.1）：双杀手制（删帮凶/继任，4 平民 + 2 杀手）、职业 9→8、道具 14→12、反派密谋频道（每天两次：自由活动前先于停电声明轮、晚间休息选房前）、谋杀窗口每窗全队一次尝试 + 每日成功封顶一起、现场调查四项全给且全员公告 + 清晨调查队列（平民自动/反派篡改抢先）、延时装置手动化、密道改谋杀窗口动作、舞台魔术可防御、无杀倒计时从第 1 天起算。**v4.0 与 v3.x 存档不兼容：旧档仅供查看，不可续跑。**
+里程碑总表在 `docs/dev-plan.md` §4。M4/M4.5/M5 已完成；**v4.0 规则重做已落地**（里程碑 M5.1）：双杀手制（删帮凶/继任，4 平民 + 2 杀手）、职业 9→8、道具 14→12、反派密谋频道（每天两次：自由活动前先于停电声明轮、晚间休息选房前）、谋杀窗口每窗全队一次尝试 + 每日成功封顶一起、现场调查四项全给且全员公告 + 清晨调查队列（平民自动/反派篡改抢先）、延时装置手动化、密道改谋杀窗口动作、舞台魔术可防御、无杀倒计时从第 1 天起算。**v4.0 与 v3.x 存档不兼容：旧档仅供查看，不可续跑。**
 
 当前回到**试玩调优期**（v4.0 规则面）：反复手动跑局（`python -m src.console --game game/<seed>`，必要时 `--resume` 断点续跑），重点观察 plan §11 的平衡风险点（杀手线索公开化后的反派胜率、双向 buff 净效果、未遂不当场封顶的防御道具贬值、技能杀利用率）。每局跑完后分析存档（`python -m src.view status --game ...` / `python -m src.scorecard --game game/<seed>`），挑合格的完整局入 `selected/`。

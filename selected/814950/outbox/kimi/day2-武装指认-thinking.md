@@ -1,0 +1,1 @@
+No evidence yet; accusing blindly = suicide. Decline. Also countdown: if no murder tonight, civilians win tomorrow. Killing only matters... actually if no murder happens tonight, game ends. But killers will surely act tonight.

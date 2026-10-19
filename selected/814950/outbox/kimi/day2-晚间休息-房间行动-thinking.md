@@ -1,0 +1,1 @@
+No usable actions except unlock; in 会客室 bright. Probably stay, no action.

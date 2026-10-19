@@ -1,0 +1,1 @@
+No murder day 1. Vote — no clear target. Abstain likely safe, avoiding wrong vote. Voting someone off randomly could hit civilian. Abstain.

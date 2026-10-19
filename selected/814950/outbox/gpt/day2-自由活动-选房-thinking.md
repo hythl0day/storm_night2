@@ -1,0 +1,3 @@
+**Considering study space risks**
+
+I need to find a room in the basement where I can work alone. I have concerns about the darkness and the risks involved, especially since there are two suspicious individuals around. I think it’s best to seal off the area while I study, especially if I can't remove anyone else who might be present. Overall, a study space sounds like a good idea as long as I can ensure my safety.

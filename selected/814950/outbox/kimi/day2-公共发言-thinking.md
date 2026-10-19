@@ -1,0 +1,3 @@
+I need to speak. Consider using see_through on 杰米尼? Her claim: opened safe in dark. She hasn't stated profession. Limited value now. Maybe save skill. Speak: confirm monitoring — I was alone in 监控室, saw records; I didn't see night records. Actually I have no night info (会客室 locked at night). I can say: monitoring records I saw only daytime entries, night blank. Address 杰普特's question: monitoring shows entries only, dark room contents invisible.
+
+Short speech.
