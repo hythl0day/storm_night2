@@ -85,7 +85,7 @@ from .engine.state import (
     skill_left,
     unlock_means,
 )
-from .fmt import fmt_action, third_person
+from .fmt import fmt_action, player_status, third_person
 from .gamedata import ARMED_WEAPONS, WEAPONS, physique_desc
 from .prompts import render
 from .providers import Player, chat, find_player, load_config
@@ -135,19 +135,10 @@ def fmt_monitoring(data: dict, day: int | None = None) -> str:
 
 def morning_roster_rows(state: dict, out_day: dict) -> list[tuple[str, str, str, str, str, str]]:
     """全剧透状态行（host 侧）：script.md 每日清晨状态表与 console 天亮一览共用。"""
-    deaths = {c["victim"]: (c["day"], c["room"]) for c in state["cases"]}
     rows = []
     for p in state["players"]:
         n = p["name"]
-        if p["alive"]:
-            status = "存活"
-        elif n in deaths:
-            d, r = deaths[n]
-            status = f"死于第{d}天（{r}）"
-        elif n in out_day:
-            status = f"第{out_day[n]}天出局"
-        else:
-            status = "出局"
+        status = player_status(p, state.get("cases", []), out_day)
         skills = "、".join(f"{k}×{v}" for k, v in state.get("skill_uses", {}).get(n, {}).items() if v > 0) or "无"
         # items 键存在即以其为准（空列表=真的无道具）；仅在键缺失时回退 deal 旧字段（兼容早期存档/夹具）
         if "items" in p:
@@ -645,9 +636,9 @@ class Orchestrator:
             elif n in out_day:
                 roster.append(base + f"·第{out_day[n]}天出局：{q['identity']}/{q['profession']}）")
             elif n in announced:
-                c = announced[n]
+                c = announced[n]  # 只传已公告案件：当天未公告的死亡已在上面 pending 分支按存活显示
                 prof = f"，职业已公开：{q['profession']}" if n in prof_pub else ""
-                roster.append(base + f"·第{c['day']}天死亡（{c['room']}）{prof}）")
+                roster.append(base + f"·{player_status(q, [c], {})}{prof}）")
             else:
                 roster.append(base + "·出局）")
         lines.append("- 角色表（开局全员公布）：" + "、".join(roster))
@@ -702,7 +693,9 @@ class Orchestrator:
             parts = ["你当前未持有凶器（只能空手，空手条件见规则 §7.6）"]
         env = ENV_WEAPON.get(room or "")
         if env:
-            parts.append(f"本房间环境凶器：{env}（不限次数）")
+            env_note = ("可被刀/棒球棍/左轮手枪武器自卫" if env == "雕像"
+                        else "不可被任何手段防御")  # v4.0.5 自卫矩阵（rules-6 §7.6 表）
+            parts.append(f"本房间环境凶器：{env}（不限次数；{env_note}）")
         return "；".join(parts)
 
     @staticmethod
@@ -800,7 +793,7 @@ class Orchestrator:
         lines.append(f"## 你的私人笔记（此前留存）\n{notes}")
         if extra:
             lines.append("")
-            lines.append(extra)
+            lines.append("## 本环节说明\n" + extra)
         hints = self._stage_hints(title)
         if hints:
             lines.append("")
@@ -1052,7 +1045,14 @@ class Orchestrator:
             extra = (f"密谋频道：此刻只有你和你的同伙 {partner}。你说的内容互相可见、对其他所有人完全不可见。"
                      "每人只发一段——协调接下来的分工与口径（谁动手、何时动手、如何串供）。")
             if lines:
-                extra += "\n本频道已发生的密谋：\n" + "\n".join(lines)
+                # 后发言者：频道随即关闭，同伙无法当场再回应——避免抛出问题空等回答
+                extra += ("本次密谋由你先发言的同伙开始，你说完这一段频道即关闭——TA 无法当场再回应你。"
+                          "不要抛出问题等回答：直接给出你的结论、决定，或对 TA 上面那段话的回应。\n"
+                          "本频道已发生的密谋：\n" + "\n".join(lines))
+            else:
+                # 先发言者：同伙随后会回应一段，自己在后续简报中能看到，但本次频道内无法再开口
+                extra += ("本次密谋由你先开口：你发完这一段后，同伙会看到并回应一段；"
+                          "你会在之后的简报中看到 TA 的回应，但本次频道内你不能再发言——需要 TA 表态的事可以直接问。")
             briefing = self.build_briefing(p, f"第{day}天 · {stage}（反派密谋）", menu, extra)
             payload = self.call_ai(p, f"{stage}-密谋", briefing)
             speech = str(payload.get("speech") or "").strip()

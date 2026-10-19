@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .fmt import player_status
+
 
 def load_state(game_dir: Path) -> dict:
     return json.loads((game_dir / "state.json").read_text(encoding="utf-8"))
@@ -37,8 +39,10 @@ def render_status(game_dir: Path) -> str:
     lines = [head, safe]
     skills = s.get("skill_uses", {})
     positions = s.get("positions", {})
+    cases = s.get("cases", [])
+    out_day = s.get("orch", {}).get("out_day", {})
     for p in s["players"]:
-        mark = "活" if p["alive"] else "亡"
+        mark = player_status(p, cases, out_day)
         pos = positions.get(p["name"], "？")
         items = "、".join(f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])) or "无"
         sk = skills.get(p["name"], {})

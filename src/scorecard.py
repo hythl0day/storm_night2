@@ -26,6 +26,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import ROOT, resolve_game_dir
+from .fmt import player_status
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -370,7 +371,7 @@ def single_report(d: Path) -> str:
     L.append("—— 席位 ——")
     for p in a["players"]:
         n = p["name"]
-        st = "存活" if p["alive"] else (f"第{a['out_day'].get(n, '?')}天出局" if n in a["out_day"] else "死亡")
+        st = player_status(p, a["cases"], a["out_day"])
         idn = a["ids"].get(n, p["identity"])
         items = "、".join(f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])) or "无"
         L.append(f"  {n}｜{idn}｜{p['profession']}｜{st}｜剩余道具：{items}")
@@ -396,6 +397,11 @@ def single_report(d: Path) -> str:
     L.append("")
     L.append(f"—— 成本 ——\n  API 调用 {a['calls']} 次（失败 {a['call_failures']}）｜总 token {a['tokens']}｜平均延迟 {a['avg_latency']}s")
     return "\n".join(L)
+
+
+def _room_key(room: str) -> str:
+    """案发房间归一化：各人的卧室统一记作"卧室"（多局分布不按房主细分）。"""
+    return "卧室" if re.fullmatch(r"\S+的卧室", room or "") else room
 
 
 def multi_report(base: Path, min_version: str | None = None) -> str:
@@ -442,6 +448,32 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
                  f"｜平均 {avg_days:.1f} 天｜平均谋杀 {avg_kill:.1f}｜平均戏剧性 {avg_drama:.1f}")
     if done:
         L.append(f"  胜负路径分布：{'｜'.join(f'{k} {v}' for k, v in Counter(a['path'] for a in done).most_common())}")
+
+    L.append("")
+    L.append("—— 席位胜率（按角色汇总：参赛局数 / 分身份胜率；中断局只计参赛，主神胜局双方皆负） ——")
+    stats: dict[str, list[int]] = {}  # 角色名 → [参赛, 平民局, 平民胜, 杀手局, 杀手胜]
+    for a in games:
+        for p in a["players"]:
+            n = p["name"]
+            stt = stats.setdefault(n, [0, 0, 0, 0, 0])
+            stt[0] += 1
+            if not a["complete"]:
+                continue
+            villain = a["ids"].get(n, p["identity"]) in ("杀手", "帮凶")  # 帮凶 = v3.x 旧档的反派位
+            won = a["winner"] == ("反派" if villain else "平民")
+            if villain:
+                stt[3] += 1
+                stt[4] += won
+            else:
+                stt[1] += 1
+                stt[2] += won
+    for n, (played, cn, cw, vn, vw) in sorted(stats.items(), key=lambda kv: (-kv[1][0], kv[0])):
+        parts = [f"参赛 {played} 局"]
+        if cn:
+            parts.append(f"平民 {cn} 局 {cw} 胜（{cw / cn:.0%}）")
+        if vn:
+            parts.append(f"杀手 {vn} 局 {vw} 胜（{vw / vn:.0%}）")
+        L.append(f"  {n}：" + "｜".join(parts))
 
     L.append("")
     L.append("—— 机制利用率（规则是否如预期被使用；完整局） ——")
@@ -491,7 +523,7 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
     L.append("—— 多样性 ——")
     if done:
         methods = Counter(c["method"] for a in done for c in a["cases"])
-        rooms = Counter(c["room"] for a in done for c in a["cases"])
+        rooms = Counter(_room_key(c["room"]) for a in done for c in a["cases"])
         profs = Counter(p["profession"] for a in done for p in a["players"])
         L.append(f"  凶器/手段分布：{'｜'.join(f'{k}×{v}' for k, v in methods.most_common()) or '无'}")
         L.append(f"  案发房间分布：{'｜'.join(f'{k}×{v}' for k, v in rooms.most_common()) or '无'}")

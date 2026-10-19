@@ -59,8 +59,8 @@ class ViewerTest(unittest.TestCase):
     def test_status(self):
         text = viewer.render_status(self.dir)
         self.assertIn("第1天 · 公共发言", text)
-        self.assertIn("奇米（活）@ 会客室｜平民/医师｜道具：窃听器×1｜技能：现场调查×2", text)
-        self.assertIn("索尔（亡）", text)
+        self.assertIn("奇米（存活）@ 会客室｜平民/医师｜道具：窃听器×1｜技能：现场调查×2", text)
+        self.assertIn("索尔（出局）", text)
         self.assertIn("公开事件 2 条｜案件 1 起", text)
 
     def test_log_tail(self):

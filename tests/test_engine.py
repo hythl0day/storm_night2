@@ -419,6 +419,31 @@ class TestSelfDefense(unittest.TestCase):
         self.assertEqual(ev["type"], "murder_attempt", ev)
         self.assertNotIn("急救箱", items_of(eng, "C"))
 
+    def test_statue_defended_by_weapons(self):
+        """v4.0.5：雕像视同刀/棍类攻击——可被刀/棒球棍/左轮手枪武器自卫（自卫不消耗武器）。"""
+        for defender in ("刀", "棒球棍", "左轮手枪"):
+            players = default_players()
+            players[4] = P("E", "平民", "黑客", defender, gender="男", physique=2)
+            eng = Engine(mk_state(players=players, safe_item="不明药剂"))
+            self.rooms_for(eng)
+            ev = eng.murder("A", "E", weapon="雕像")
+            self.assertEqual(ev["type"], "murder_attempt", (defender, ev))
+            self.assertEqual(eng.state["attempts"][0]["defense"], "武器自卫")
+            self.assertIn(defender, items_of(eng, "E"))
+
+    def test_wire_undefendable(self):
+        """v4.0.5：电线不可被任何手段防御——武器、急救箱、敏捷闪避并存也全部无效。"""
+        players = default_players()
+        players[4] = P("E", "平民", "运动员", "左轮手枪", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="不明药剂"))
+        player(eng, "E")["items"].append({"name": "急救箱", "uses_left": 1, "available_day": 1})
+        free2(eng, {"A": "地下室", "E": "地下室", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E", weapon="电线")
+        self.assertEqual(ev["type"], "murder", ev)
+        self.assertEqual(eng.state["skill_uses"]["E"]["敏捷闪避"], 1)  # 未触发
+        self.assertEqual(ev["case"]["wound"], "电线")
+        self.assertIn("左轮手枪", ev["case"]["looted"])  # 防御全部无效，道具被缴获
+
     def test_dodge_defends_unarmed(self):
         eng = Engine(mk_state())
         free2(eng, {"A": "书房", "D": "书房", "B": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})

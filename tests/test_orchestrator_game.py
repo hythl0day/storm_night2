@@ -1194,7 +1194,7 @@ class TestGameStateSection(MockGameTestBase):
         self.assertIn("当前进度 0/2", b2)  # 第 2 天有谋杀行为，倒计时清零
         self.assertIn("C（女·健壮·中国·第2天出局：平民/医师）", b2)
         seg_d = next(x for x in b2.split("、") if x.startswith("D（"))
-        self.assertIn("第2天死亡（书房）", seg_d)
+        self.assertIn("第2天被杀（书房）", seg_d)
         self.assertIn("职业已公开：运动员", seg_d)
         self.assertNotIn("平民", seg_d)  # 被谋杀者身份不公开
 
@@ -1249,7 +1249,7 @@ class TestAnnouncementScope(MockGameTestBase):
         b = calls["B"]
         self.assertIn("E（男·普通·中国·存活）", b)      # 遇害者按公告口径仍显示存活
         self.assertIn("存活 6 人", b)
-        self.assertNotIn("第2天死亡", b)
+        self.assertNotIn("第2天被杀", b)
 
     def test_countdown_keeps_morning_value_on_murder_day(self):
         """第 2 天已有谋杀、第 3 天空白 → 第 4 天清晨公告 1/2；当天再次谋杀后，同天简报仍显示 1/2
@@ -1274,7 +1274,7 @@ class TestAnnouncementScope(MockGameTestBase):
         text = "\n".join(orch._game_state_lines())
         self.assertIn("存活 5 人", text)
         seg_e = next(x for x in text.split("、") if x.startswith("E（"))
-        self.assertIn("第2天死亡（书房）", seg_e)
+        self.assertIn("第2天被杀（书房）", seg_e)
         self.assertNotIn("黑客", seg_e)  # 身份不公开（§9.4）；职业未经清晨公开前也不显示
 
     def test_room_actions_stop_after_winner(self):

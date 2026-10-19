@@ -18,6 +18,20 @@ def third_person(name: str, msg: str) -> str:
     return msg
 
 
+def player_status(p: dict, cases: list[dict], out_day: dict) -> str:
+    """角色存活状态统一口径（清晨简报角色表 / script.md 清晨状态表 / view status / scorecard 席位段共用）：
+    存活 / 第X天出局（投票或武装指认）/ 第X天被杀（房间）/ 出局（旧档无天数记录）。"""
+    if p["alive"]:
+        return "存活"
+    for c in cases:
+        if c.get("victim") == p["name"]:
+            d, r = c.get("day", "?"), c.get("room", "")
+            return f"第{d}天被杀（{r}）" if r else f"第{d}天被杀"
+    if p["name"] in out_day:
+        return f"第{out_day[p['name']]}天出局"
+    return "出局"
+
+
 def _case_label(a: dict) -> str:
     """案件标签：主口径受害者名字（case/victim 字段），兼容旧式整数 case_id。"""
     name = a.get("case") or a.get("victim")

@@ -85,6 +85,10 @@ class TestScorecard(unittest.TestCase):
         self.assertIn("竞选流产率：0/2", text)  # mock 均选出 C
         self.assertIn("—— 多样性 ——", text)
         self.assertIn("—— 成本 ——", text)
+        # 席位胜率：参赛含中断局（3 局），胜率只计完整局（2 局）；两局均平民胜
+        self.assertIn("—— 席位胜率", text)
+        self.assertIn("A：参赛 3 局｜杀手 2 局 0 胜（0%）", text)
+        self.assertIn("C：参赛 3 局｜平民 2 局 2 胜（100%）", text)
         # 版本分组：mock 存档无 rules_version/table_items → 推断为旧版
         self.assertIn("≤v3.4", text)
         self.assertIn("平民 100%", text)  # 两局完整局均为平民胜
@@ -99,6 +103,14 @@ class TestScorecard(unittest.TestCase):
         a2["attempts"] = 1
         _, active_parts = drama(a2)
         self.assertFalse(any("零出手消极局" in p for p in active_parts))
+
+    def test_room_key_normalizes_bedrooms(self):
+        """多样性·案发房间分布：各人的卧室统一记作"卧室"，不按房主细分。"""
+        from src.scorecard import _room_key
+        self.assertEqual(_room_key("E的卧室"), "卧室")
+        self.assertEqual(_room_key("豆包的卧室"), "卧室")
+        self.assertEqual(_room_key("书房"), "书房")
+        self.assertEqual(_room_key("会客室"), "会客室")
 
     def test_script_briefing_strips_preamble_and_status_tables(self):
         """流程简报基于 script.md 化简：剥掉开局 preamble 与每日状态一览快照表，
