@@ -1869,11 +1869,10 @@ class Orchestrator:
             if has_will:
                 self.run_bequest(victim, mapping)
             self.check_stop()
-        # v4.0 清晨调查队列（rules-6 §7.1）：公告案件后，持调查能力者按行动顺序逐一处理每起未定型案件——
-        # 平民自动调查（不调 API，系统直接结算、以本人当众宣读口径全员公开）；反派私密菜单三选一（篡改/正常调查/跳过）。
-        # 队列由引擎 investigation_queue() 重建：案件定型（investigated）或持有者次数用尽即自动消失。
-        # 篡改不封闭调查：篡改者只记 tkey，随后仍会被再次询问（可亲自调查把假结论公告出去）；
-        # 无平民持调查能力且反派也不查 → 本案永不调查（规则书 §7.1）。
+        # v4.0.3 清晨调查队列（rules-6 §7.1）：每案由首个实际调查者定型——
+        # 平民自动正常调查（不调 API）；未污染案件的反派私密选择正常调查、篡改并宣读或跳过。
+        # 已被毁证污染的案件不再提供反派菜单：任何身份的首位持有者都自动消耗并公布假值。
+        # 清晨篡改由引擎直接公开并标记 investigated；跳过仅适用于未被污染案件的反派。
         w = self.wip(f"{day}:案件调查:调查", done=[])
         done: set[str] = set(w["done"])
         while not self.state["winner"]:
@@ -1891,8 +1890,9 @@ class Orchestrator:
             entry, h = step
             name = h["name"]
             p = self.player(name)
-            if not h["villain"]:
-                # 平民：自动调查（不消耗 API 调用）——系统直接结算，结果以本人当众宣读口径全员公开
+            case_now = next(c for c in self.state["cases"] if c["id"] == entry["case_id"])
+            if not h["villain"] or case_now["falsified"] is not None:
+                # 平民一律自动；已污染案件任何身份都自动，可能消耗提前篡改者的第二次调查手段
                 ev = self.eng.investigate(name, entry["case_id"])
                 self.script_action(name, {"type": "investigate", "case": entry["victim"]}, ev)
                 self.route(ev)
@@ -1901,33 +1901,24 @@ class Orchestrator:
                 self.save_state()
                 self.check_stop()
                 continue
-            # 反派：私密菜单——正常调查（结果公开为真）/ 篡改（随机两项，永久为假）/ 跳过
+            # 未被污染案件的反派：正常调查（公开真值）/ 篡改并宣读（公开假值并定型）/ 跳过
             victim = entry["victim"]
-            case_now = next(c for c in self.state["cases"] if c["id"] == entry["case_id"])
             menu = [
                 f'- 正常调查（一次拿全四项结论，由你当众宣读——第一个公开调查的人能攒清白度）：{{"type": "investigate", "case": "{victim}"}}',
+                f'- 篡改并宣读（随机篡改四项中的两项并私下告知你；随后由你按正常调查的同口径当众宣读假结论，本案立即定型；只消耗一次调查次数）：{{"type": "tamper_investigation", "case": "{victim}"}}',
             ]
-            if case_now["falsified"] is None:
-                menu.append(f'- 篡改（随机篡改四项中的两项，此后本案调查结果永久为假；无人会察觉篡改本身；消耗一次调查次数）：{{"type": "tamper_investigation", "case": "{victim}"}}')
             menu.append("- 跳过（不处理本案——队列中排在你之后的持有者仍可能调查它）：actions 返回 []")
             extra = (f"清晨调查队列轮到你了：案件 = {victim}（{entry['room']}）。你是反派，"
-                     + ("本案已被你方篡改——你可以亲自调查，把污染过的结论宣读出去（宣读口径与真调查无异）。"
-                        if case_now["falsified"] is not None else
-                        "本案尚未被篡改也尚未被调查。第一个公开调查的人能攒清白度；"
-                        "篡改则永久污染本案结论（你可以顺势按假结论撒谎）。")
+                     "本案尚未被篡改也尚未被调查。正常调查会公布真实结论；"
+                     "篡改并宣读则只消耗一次次数，直接公布被污染的结论并立即定型。"
                      + f"\n{NO_SPEECH_NOTE}")
             briefing = self.build_briefing(p, f"第{day}天 · 案件调查（轮到你了）", menu, extra)
             payload = self.call_ai(p, "案件调查", briefing)
-            falsified_before = case_now["falsified"]
             self.apply_actions(p, payload["actions"], retry={
                 "label": "案件调查", "title": f"第{day}天 · 案件调查（轮到你了）", "menu": menu, "extra": extra},
                 max_actions=1)
-            case_after = next(c for c in self.state["cases"] if c["id"] == entry["case_id"])
-            tampered_now = falsified_before is None and case_after["falsified"] is not None \
-                and not case_after["investigated"]
-            if not tampered_now:
-                # 调查定型 / 跳过 / 驳回 → 本案本席处理完毕；篡改不封闭调查：稍后仍会被再次询问
-                done.add(f"{entry['case_id']}:{name}")
+            # 调查或篡改并宣读会定型；跳过或驳回则本席处理完毕并顺延，不会重复询问同一席
+            done.add(f"{entry['case_id']}:{name}")
             w["done"] = sorted(done)
             self.save_state()
             self.check_stop()

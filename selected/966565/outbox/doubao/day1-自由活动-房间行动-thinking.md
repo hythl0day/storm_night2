@@ -1,0 +1,1 @@
+Let me think. After confirming the room is unlocked, there's no need to save the lie detector or perform an unlock operation, I will view the monitoring content to check for existing records before the power outage, and note Grock's suspicion and log update records.

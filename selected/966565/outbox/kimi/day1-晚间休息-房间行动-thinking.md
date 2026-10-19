@@ -1,0 +1,1 @@
+Evening rest, room action phase in 会客室 (lit). Legal actions: unlock 会客室, or gift. I shouldn't waste powder. Unlock seems pointless—locks are failed anyway due to blackout. Just pass. But wait, gift could build trust... risky to reveal powder. Do nothing.

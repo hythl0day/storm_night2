@@ -1,0 +1,1 @@
+Room action: only legal option is gift, or nothing. Keep powder. No action.

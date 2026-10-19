@@ -1,0 +1,1 @@
+Situation: power outage, all rooms dark except parlor. My plan to verify Doubao opening monitor room is void—monitor room full, I'm stuck in parlor with Claude. Need to speak to Claude, update notes. Free action actions=[].

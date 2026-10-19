@@ -1,0 +1,1 @@
+Three candidates, non-candidates: 克劳德, 格罗克, 杰米尼 vote. Three-way race risks splitting. Stay or withdraw? As doctor I have investigation value regardless. Splitting three ways risks no detective or unpredictable outcome. Perhaps stay—gun useful. But狄西封门也不错。I'll stay; my skill is real asset.

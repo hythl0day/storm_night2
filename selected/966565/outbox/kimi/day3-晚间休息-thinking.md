@@ -1,0 +1,1 @@
+Stay in 会客室 with everyone. Empty speech, choose 会客室. Maybe invite someone to share suspicion? Inviting 杰米尼 or 格罗克 could be useful, but night宿会客室 public anyway. No need.

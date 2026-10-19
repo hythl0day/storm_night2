@@ -93,6 +93,18 @@ def _case_results(state: dict, case: dict) -> dict:
     return res
 
 
+def _means_label(means: tuple[str, str]) -> str:
+    return f"【{means[1]}】" if means[0] == "skill" else f"「{means[1]}」"
+
+
+def _investigation_announcement(user: str, case: dict, res: dict, trait: str,
+                                means: tuple[str, str]) -> str:
+    return (f"{user} 当众宣读了自己的调查结论（{case['victim']} 案 · {case['room']}；"
+            f"调查手段：{_means_label(means)}）："
+            f"「死亡时间 = {res['死亡时间']}；尸体{'被移动过' if res['尸体转移'] else '未被移动'}；"
+            f"武器伤痕 = {res['武器伤痕']}；杀手线索：{trait} = {res['杀手线索']}」")
+
+
 def investigation_means(state: dict, p: dict) -> tuple[str, str] | None:
     """可用调查手段：优先技能【现场调查】，其次「鲁米诺试剂」「可疑的粉末」。"""
     if skill_left(state, p["name"], "现场调查") > 0:
@@ -409,9 +421,7 @@ def investigate(state: dict, user: str, case_id: int) -> dict:
     case["investigated"] = True
     res = _case_results(s, case)
     trait = lock_clue_trait(s, case)
-    ann = (f"{user} 当众宣读了自己的调查结论（{case['victim']} 案 · {case['room']}）："
-           f"「死亡时间 = {res['死亡时间']}；尸体{'被移动过' if res['尸体转移'] else '未被移动'}；"
-           f"武器伤痕 = {res['武器伤痕']}；杀手线索：{trait} = {res['杀手线索']}」")
+    ann = _investigation_announcement(user, case, res, trait, means)
     return {
         "ok": True,
         "type": "investigate",
@@ -421,17 +431,14 @@ def investigate(state: dict, user: str, case_id: int) -> dict:
 
 
 def tamper_investigation(state: dict, user: str, case_id: int) -> dict:
-    """篡改案件调查（v4.0）：反派消耗一次调查次数，随机篡改四项结论中的两项（私下告知改了哪两项、
-    改成什么），此后本案的调查结果永久为假。同一案件篡改一次即定型（不可重复篡改刷随机数）；
-    篡改行为不会被任何人发现（毁证窗口的亮房可见性除外，见下）。
-
-    注意：篡改不封闭调查——本案此后仍可被正常调查一次（公告的即为假值）。篡改抢先的意义正在于此：
-    反派在清晨队列中先于平民调查者行动时篡改，随后平民的自动调查会把假结论当成真的公告出去。
+    """篡改案件调查：反派消耗一次调查手段，随机篡改四项结论中的两项并私下获知明细。
 
     两处窗口：
-    ① 毁证窗口——案发当天（自由活动/晚间休息），身处案发现场且现场无其他非反派（evidence_vulnerable）；
-       亮房中此行为会被同房者看见（沿用毁证可见性口径）；
-    ② 清晨调查队列——案件调查阶段，本案已公告、尚未被任何人调查且未被篡改。
+    ① 毁证窗口——案发当天身处案发现场，只污染案件，不公开、不封闭后续调查；
+    ② 清晨调查队列（v4.0.2）——篡改后立即由本人按正常调查的同口径当众宣读假结论，
+       并将案件标记为 investigated；每案首个实际调查者（含篡改并宣读）定型，后续持有者不再处理。
+
+    同一案件只能篡改一次，不可重复刷随机；篡改行为本身不公开（毁证窗口的亮房可见性除外）。
     """
     s = state
     day, stage = s["phase"]["day"], s["phase"]["stage"]
@@ -467,10 +474,18 @@ def tamper_investigation(state: dict, user: str, case_id: int) -> dict:
     detail = "；".join(f"{k} → {v if not isinstance(v, bool) else ('是' if v else '否')}" for k, v in faked.items())
     private = {user: f"你已篡改 {case['victim']} 的案件调查：改动两项——{detail}。"
                      f"此后本案的调查结果永久为假（无人会察觉篡改本身）。"}
+    public = None
+    if in_queue:
+        case["investigated"] = True
+        res = _case_results(s, case)
+        trait = lock_clue_trait(s, case)
+        ann = _investigation_announcement(user, case, res, trait, means)
+        public = {"announcements": [ann]}
+        private[user] += "你已同时当众宣读这份被污染的调查结论，本案已经定型。"
     if at_scene and not is_dark(s, case["room"]):
         for w in _roommates(s, case["room"], user):  # 毁证可见性口径：亮房中同房者看见此行为
             private[w] = f"{user} 在{case['room']}对案发现场做了些什么（疑似篡改证物）"
-    return {"ok": True, "type": "tamper_investigation", "public": None, "private": private}
+    return {"ok": True, "type": "tamper_investigation", "public": public, "private": private}
 
 
 def report(state: dict, user: str) -> dict:

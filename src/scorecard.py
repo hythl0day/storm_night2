@@ -86,7 +86,7 @@ def is_lite(st: dict) -> bool:
 
 def _ver_tuple(v: str) -> tuple[int, int, int] | None:
     """解析 "v4.0" / "v4.0.1" 为 (4, 0, 0) / (4, 0, 1)；第三位补丁号缺省为 0。
-    补丁号变化意味着规则未变（仅措辞/呈现修订）；无法解析（如 "≤v3.4"）返回 None
+    补丁号用于同主.次版本内的措辞与小范围裁决修补；无法解析（如 "≤v3.4"）返回 None
     （--min-version 过滤时被排除）。"""
     m = re.fullmatch(r"v(\d+)\.(\d+)(?:\.(\d+))?", v)
     return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
@@ -103,8 +103,8 @@ def roster_identities(script: str) -> dict[str, str]:
 
 
 def rules_group(st: dict) -> str:
-    """平衡统计分组：按（主.次版本 × 规则集）分组——第三位补丁号不参与分组：补丁变化只改
-    措辞/呈现、不改规则，合并统计；无法解析版本的旧档按原字符串成组。
+    """平衡统计分组：按（主.次版本 × 规则集）分组——第三位补丁号不参与分组：
+    同一主.次版本内的措辞调整与小范围裁决修补合并统计；无法解析版本的旧档按原字符串成组。
     lite 规则面不同，永不与高级规则同池：同版本的两池以 lite· 前缀区分。"""
     v = rules_version(st)
     t = _ver_tuple(v)

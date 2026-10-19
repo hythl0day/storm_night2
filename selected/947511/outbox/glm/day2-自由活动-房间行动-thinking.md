@@ -1,0 +1,1 @@
+Think: I have 2 field investigations remaining, to be used tomorrow morning. Take no action this turn. Already spoke to Grock just now; remain silent and continue monitoring the blackout / repairing the generator. This turn I'm in the study; the only legal action is gifting. Don't gift the revolver. actions is empty.

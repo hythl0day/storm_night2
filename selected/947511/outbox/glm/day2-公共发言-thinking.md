@@ -1,0 +1,5 @@
+Key: I have medical investigation ×2. No investigation has been announced this morning (Jerini announced his own? Actually Gemini's conclusion is his investigation). My speech: I should announce I'll investigate next case, but there's already a case—wait, investigation phase already happened (Gemini read). Rules: each case investigated once. Gemini already investigated. So I can't. I'm the detective, last to speak.
+
+Analysis: The monitor only recorded who entered the study during free time—three people including Dixi. At night in the study, no one entered, and neither did Dixi's bedroom. Gemini claims secret passage. Who moves the body? Gemini, Doubao, Grock are all ordinary/thin. Gemini's conclusion excludes Claude and me, and he himself is within the scope—suspicious. I'll keep the handgun for armed identification.
+
+Speech: point out that the body was moved but no one entered the study at night per surveillance—Gemini's "secret passage" is convenient; suspicion on Gemini (who self-excluded... actually he's within scope). Announce voting intent.

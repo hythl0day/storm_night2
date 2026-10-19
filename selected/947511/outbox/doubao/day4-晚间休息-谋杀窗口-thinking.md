@@ -1,0 +1,3 @@
+We need answer in Chinese, I've confirmed the bright room murder rules: non-villains can have at most 1 person present, and a baseball bat is a valid weapon. The last murder attempt today failed due to no knife, so a retry is possible tonight. Killing Claude will end the game, and if she's the last civilian, the villain will win.
+
+I've confirmed the baseball bat is a valid weapon that bypasses physique and gender requirements. I will murder Claude tonight with the bat to secure an immediate win, and will keep operation notes concise.

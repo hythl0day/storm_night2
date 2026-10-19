@@ -8,9 +8,10 @@ A scenario-based interactive role-playing reality show featuring AI-powered dedu
 
 ## 文档
 
-- 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v3）/ [docs/rules-8.md](docs/rules-8.md)（8 人局）
+- 规则书：[docs/rules-6.md](docs/rules-6.md)（6 人局，v4）/ [docs/rules-8.md](docs/rules-8.md)（8 人主谋局，基础形态）
 - 失忆版规则集：[docs/rules-6-lite.md](docs/rules-6-lite.md)（同一套裁决规则，但只告诉 AI 生存骨架——职业/道具全表与分配结构不下发，机制靠菜单临场发现，供节目前期"失忆受害者"阶段使用）
 - 工程计划与里程碑：[docs/dev-plan.md](docs/dev-plan.md)
+- 8 人局重构计划（含暂缓机制）：[docs/rules-8-v3-plan.md](docs/rules-8-v3-plan.md)
 - 节目规划（两季 + 特别单集）：[screenwriting/show-bible.md](screenwriting/show-bible.md)
 - 脚本使用说明（环境准备、席位配置、连通性测试、跑局与查看器的完整用法）：[docs/usage.md](docs/usage.md)
 

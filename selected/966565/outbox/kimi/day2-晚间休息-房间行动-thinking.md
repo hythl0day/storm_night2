@@ -1,0 +1,1 @@
+Evening room action in parlor. Options: unlock parlor (pointless, power out), gift powder. Better no action.

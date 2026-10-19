@@ -1280,13 +1280,13 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
                   "体格": "健壮或魁梧" if a["physique"] >= 3 else "普通或瘦弱"}[case["clue_trait"]]
         self.assertEqual(res["杀手线索"], expect)
         self.assertIn(f"杀手线索：{case['clue_trait']} = {expect}", ev["public"]["announcements"][0])
+        self.assertIn("调查手段：【现场调查】", ev["public"]["announcements"][0])
         # 确定性锁定：同一案件线索项不变（不可刷随机）
         from src.engine.murder import lock_clue_trait
         self.assertEqual(lock_clue_trait(eng.state, case), case["clue_trait"])
 
     def test_tamper_investigation_queue_window(self):
-        """v4.0 篡改抢先（清晨调查队列窗口）：反派先处理 → 随机篡改两项、此后本案结论永久为假；
-        篡改一次定型（不可重复篡改），但不封闭调查——随后平民的自动调查公告的正是假值。"""
+        """v4.0.2 清晨篡改并宣读：只消耗一次，直接公开假值并定型；后续持有者不再处理。"""
         players = default_players()
         players[1] = P("B", "杀手", "医师", "不明药剂", gender="女", physique=2)  # 反派医师持调查手段
         eng = Engine(mk_state(players=players))
@@ -1297,23 +1297,29 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         ev = eng.tamper_investigation("B", 1)
         self.assertTrue(ev["ok"], ev)
         self.assertIn("改动两项", ev["private"]["B"])          # 私下告知改了哪两项、改成什么
+        self.assertIn("同时当众宣读", ev["private"]["B"])
         case = eng.state["cases"][0]
-        self.assertFalse(case["investigated"])                 # 篡改不封闭调查
+        self.assertTrue(case["investigated"])                  # 清晨篡改并宣读立即定型
         self.assertEqual(len(case["falsified"]), 2)            # 随机两项
         self.assertTrue(set(case["falsified"]) <= {"死亡时间", "尸体转移", "武器伤痕", "杀手线索"})
-        self.assertEqual(eng.state["skill_uses"]["B"]["现场调查"], 1)  # 篡改消耗一次调查次数
-        self.assertFalse(eng.tamper_investigation("B", 1)["ok"])       # 一次定型，不可刷随机
-        ev = eng.investigate("C", 1)   # 篡改后仍可调查——公告的即为假值
-        self.assertTrue(ev["ok"], ev)
-        res = ev["private"]["C"]["results"]
-        for k, v in case["falsified"].items():
-            self.assertEqual(res[k], v)
-        truth = {"死亡时间": "第2天自由活动", "尸体转移": False, "武器伤痕": "利器"}
-        for k, v in truth.items():
-            if k not in case["falsified"]:
-                self.assertEqual(res[k], v)                  # 未篡改项仍为真
-        self.assertTrue(case["investigated"])                  # 调查一次定型
-        self.assertEqual(eng.investigation_queue(), [])        # 队列清空
+        self.assertEqual(eng.state["skill_uses"]["B"]["现场调查"], 1)  # 只消耗一次调查次数
+        self.assertEqual(len(ev["public"]["announcements"]), 1)
+        ann = ev["public"]["announcements"][0]
+        self.assertIn("B 当众宣读了自己的调查结论", ann)       # 公告格式与正常调查一致
+        self.assertIn("调查手段：【现场调查】", ann)
+        for k, v in case["falsified"].items():                 # 公告中的被改项正是假值
+            if k == "尸体转移":
+                text = "尸体被移动过" if v else "尸体未被移动"
+            elif k == "杀手线索":
+                text = f"杀手线索：{case['clue_trait']} = {v}"
+            else:
+                text = f"{k} = {v}"
+            self.assertIn(text, ann)
+        self.assertFalse(eng.tamper_investigation("B", 1)["ok"])  # 一次定型，不可刷随机
+        self.assertEqual(eng.state["skill_uses"]["C"]["现场调查"], 2)
+        self.assertFalse(eng.investigate("C", 1)["ok"])           # 后续平民不能再次调查
+        self.assertEqual(eng.state["skill_uses"]["C"]["现场调查"], 2)  # 驳回不消耗平民次数
+        self.assertEqual(eng.investigation_queue(), [])            # 队列清空
 
     def test_tamper_investigation_scene_window(self):
         """毁证窗口：案发当天须身处案发现场（现场无其他非反派）；场外反派不能远程篡改；
@@ -1330,8 +1336,9 @@ class TestMorningReportAndInvestigation(unittest.TestCase):
         player(eng, "A")["items"].append({"name": "可疑的粉末", "uses_left": 1, "available_day": 1})
         ev = eng.tamper_investigation("A", 1)   # 杀手本人在场 + 粉末道具 → 可篡改
         self.assertTrue(ev["ok"], ev)
+        self.assertIsNone(ev["public"])                          # 毁证只污染，不当场公告
         self.assertEqual(len(eng.state["cases"][0]["falsified"]), 2)
-        self.assertFalse(eng.state["cases"][0]["investigated"])  # 篡改不封闭调查（次日清晨照常调查，公告假值）
+        self.assertFalse(eng.state["cases"][0]["investigated"])  # 次日首个实际调查者仍会宣读并定型
         self.assertNotIn("可疑的粉末", items_of(eng, "A"))     # 消耗一次调查次数（粉末销毁）
 
     def test_tamper_rejected_when_witnessed(self):

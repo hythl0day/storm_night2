@@ -1,0 +1,1 @@
+Suspicion: 克劳德高。Vote 克劳德.

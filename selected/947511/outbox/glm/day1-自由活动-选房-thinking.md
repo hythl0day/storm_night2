@@ -1,0 +1,1 @@
+Choose monitoring room? Locked, requires brute force — I have screwdriver. As detective I said I'd open surveillance room. Go to monitoring room with screwdriver.

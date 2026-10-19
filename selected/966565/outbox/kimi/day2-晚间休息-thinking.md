@@ -1,0 +1,1 @@
+Evening, no speech. Choose room: 会客室 is bright, safe-ish, but killers... 杰米尼 is after me—could invite her? Risky. I'll stay in 会客室 alone.

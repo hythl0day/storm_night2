@@ -11,7 +11,7 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
 - skill_uses: {名字: {技能: 剩余}}      技能台账（反派技能仅反派登记；使用时仍校验身份与次数）
 - cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/杀手线索（clue_trait）/篡改（falsified={调查项: 假值}）/封存/
-                                        announced（清晨已公告）/investigated（已定型：调查或篡改一次即定型）/discovered_by（发现者，host 侧）/reported_by（报案人，公告刊出）
+                                        announced（清晨已公告）/investigated（公开调查或清晨篡改并宣读已定型）/discovered_by（发现者，host 侧）/reported_by（报案人，公告刊出）
 - attempts: [未遂]                      谋杀未遂记录；供公告与无杀倒计时
 - poisoned: [{name,day,by}]             缓释毒剂延迟死亡队列（v4.0）：下毒当夜翻页时结算（死于自己卧室，伤痕毒或药物）
 - last_murder_day: int|None             最近一次谋杀行为（含未遂与下毒）的日期；None=尚无行为

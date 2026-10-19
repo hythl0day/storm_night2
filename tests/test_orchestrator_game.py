@@ -2043,12 +2043,13 @@ class TestVillainChannel(MockGameTestBase):
 
 
 class TestInvestigationQueueV4(MockGameTestBase):
-    """v4.0 清晨调查队列：平民自动结算（不调 API）；反派私密菜单（篡改/调查/跳过）；
-    篡改不封闭调查——篡改者可亲自把假结论公告出去。"""
+    """清晨调查队列：未污染案件的反派可篡改并宣读；已污染案件由首位持有者自动公布。
+    公告包含实际消耗的调查手段。"""
 
-    def test_villain_tamper_then_publicize(self):
+    def test_villain_tamper_single_use_publicizes_once(self):
         players = default_players()
-        players[0] = P("A", "杀手", "医师", "刀", gender="男", physique=4)   # 反派医师持调查手段（×2）
+        players[0] = P("A", "杀手", "魔术师", "刀", gender="男", physique=4)  # 无调查技能，只有一次性粉末
+        players[0]["extra_items"] = ["可疑的粉末"]
         players[2] = P("C", "平民", "运动员", "急救箱", gender="女", physique=3)  # C 换无调查手段职业
         players[3] = P("D", "平民", "心理医生", "手电筒", gender="男", physique=3)  # 保持职业不重复
         d = write_game_dir(self.root / "iq1", players)
@@ -2071,13 +2072,8 @@ class TestInvestigationQueueV4(MockGameTestBase):
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             if "案件调查" in title and name == "A":
                 calls["n"] += 1
-                # 第一次：篡改（菜单含三选一）；第二次：正常调查（本案已被篡改，菜单只剩调查/跳过）
-                act = {"type": "tamper_investigation", "case": "E"} if calls["n"] == 1 \
-                    else {"type": "investigate", "case": "E"}
-                if calls["n"] == 1:
-                    self.assertIn("tamper_investigation", briefing)
-                else:
-                    self.assertNotIn("tamper_investigation", briefing)  # 一次定型：篡改项消失
+                self.assertIn("篡改并宣读", briefing)
+                act = {"type": "tamper_investigation", "case": "E"}
                 return ChatResult(name, ok=True, content=payload(notes="x", actions=[act]),
                                   latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
             return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
@@ -2085,14 +2081,64 @@ class TestInvestigationQueueV4(MockGameTestBase):
         orch = self.run_game_with(d, chat_fn)
         s = orch.state
         case = s["cases"][0]
-        self.assertEqual(calls["n"], 2)                  # 篡改后仍被再次询问
+        self.assertEqual(calls["n"], 1)                  # 一次性粉末也只询问一次，不再重复进队列
         self.assertEqual(len(case["falsified"]), 2)      # 随机篡改两项
-        self.assertTrue(case["investigated"])            # 随后调查定型
+        self.assertTrue(case["investigated"])            # 篡改并宣读立即定型
+        a = next(p for p in s["players"] if p["name"] == "A")
+        self.assertNotIn("可疑的粉末", [e["name"] for e in a["items"]])
         self.assertTrue(any("改动两项" in m for m in s["orch"]["hist"]["A"]))  # 私下告知明细
         log = (d / "public" / "log.md").read_text(encoding="utf-8")
-        self.assertIn("A 当众宣读了自己的调查结论（E 案", log)  # 假结论由篡改者亲自宣读
+        self.assertIn("A 当众宣读了自己的调查结论（E 案", log)  # 假结论直接由篡改者宣读
+        self.assertIn("调查手段：「可疑的粉末」", log)
+        self.assertEqual(log.count("当众宣读了自己的调查结论（E 案"), 1)
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertIn("篡改案件调查（E案）", script)
+
+    def test_scene_tamper_auto_publicizes_next_morning(self):
+        players = default_players()
+        players[0] = P("A", "杀手", "医师", "刀", gender="男", physique=4)  # 两次调查：毁证一次、次日自动公布一次
+        players[2] = P("C", "平民", "运动员", "急救箱", gender="女", physique=3)
+        players[3] = P("D", "平民", "心理医生", "手电筒", gender="男", physique=3)
+        d = write_game_dir(self.root / "iq2", players)
+        base = make_fake_chat(False)
+        morning_calls = []
+
+        def chat_fn(player, messages, *, on_token=None, reasoning_effort=None):
+            name = player.name
+            briefing = messages[-1]["content"]
+            title = briefing.splitlines()[0]
+            m = re.search(r"第(\d+)天", title)
+            day = int(m.group(1)) if m else 1
+            if "第2天" in title and "选房" in title and name in ("A", "E"):
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "choose_room", "room": "书房"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "谋杀窗口" in title and day == 2 and name == "A" and '"type": "murder"' in briefing:
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "murder", "target": "E", "weapon": "刀"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "毁证机会" in title and day == 2 and name == "A":
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "tamper_investigation", "case": "E"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            if "案件调查" in title:
+                morning_calls.append(name)  # 已污染案件应自动处理，不应再调用任何席位
+                return ChatResult(name, ok=True,
+                                  content=payload(notes="x", actions=[{"type": "investigate", "case": "E"}]),
+                                  latency=0.01, usage={"total_tokens": 5}, finish_reason="stop")
+            return base(player, messages, on_token=on_token, reasoning_effort=reasoning_effort)
+
+        orch = self.run_game_with(d, chat_fn)
+        s = orch.state
+        case = s["cases"][0]
+        self.assertEqual(morning_calls, [])
+        self.assertEqual(len(case["falsified"]), 2)
+        self.assertTrue(case["investigated"])
+        self.assertEqual(s["skill_uses"]["A"]["现场调查"], 0)  # 提前篡改者排在首位，也消耗第二次
+        log = (d / "public" / "log.md").read_text(encoding="utf-8")
+        self.assertIn("A 当众宣读了自己的调查结论（E 案", log)
+        self.assertIn("调查手段：【现场调查】", log)
+        self.assertEqual(log.count("当众宣读了自己的调查结论（E 案"), 1)
 
 
 if __name__ == "__main__":

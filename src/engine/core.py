@@ -138,17 +138,17 @@ class Engine:
         return ledger.remote_tamper_monitoring(self.state, user, period)
 
     def investigate(self, user: str, case_id: int) -> dict:
-        """现场调查（v4.0）：一次获知全部四项结论，结果以调查者当众宣读口径全员公开；每案一次。"""
+        """现场调查：一次获知全部四项结论，公开调查者与实际消耗的调查手段；每案一次。"""
         return ledger.investigate(self.state, user, case_id)
 
     def tamper_investigation(self, user: str, case_id: int) -> dict:
-        """篡改案件调查（v4.0）：反派消耗一次调查次数，随机篡改两项；一次定型。"""
+        """篡改案件调查：毁证时只污染；清晨队列中篡改并宣读，公开假值、所用手段并定型。"""
         return ledger.tamper_investigation(self.state, user, case_id)
 
     def investigation_queue(self) -> list[dict]:
-        """清晨调查队列（v4.0，供编排器驱动）：当日清晨公告、尚未定型的案件 × 持调查手段者
-        （按行动顺序，含反派）。编排器按队列顺序处理：平民自动 investigate，反派私密菜单
-        （tamper_investigation / investigate / 跳过）。"""
+        """清晨调查队列（供编排器驱动）：当日清晨公告、尚未定型的案件 × 持调查手段者
+        （按行动顺序，含反派）。平民与已污染案件的持有者自动 investigate；未污染案件的反派
+        私密选择 tamper_investigation / investigate / 跳过，首个实际调查者定型。"""
         s = self.state
         out = []
         if s["phase"]["stage"] != "案件调查":

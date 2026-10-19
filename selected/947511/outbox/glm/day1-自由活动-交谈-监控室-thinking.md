@@ -1,0 +1,1 @@
+Monitor room: check recordings? Already in the room conversation phase. Talk to Claude, probe. No action available besides speech.

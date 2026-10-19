@@ -1,0 +1,5 @@
+We need respond with json only block.  I’m currently in the living room with Jamini and Qimi, with a full set of legal actions available. I’ve confirmed the existence of a lie detector that can only be used before my public speech, and I’m sorting out conflicting witness statements and my own private records to make a strategic decision.
+
+I’ve confirmed the sequence of events involving Qimi and the monitoring room is confusing, and no murder option is available for me. I’ll keep the lie detector instead of gifting it, and it’s better not to leave the lit living room for now.
+
+I’ve confirmed the living room is already unlocked and lit, so no extra unlocking is needed. I’ve finalized the content of the empty speech, inner notes and empty action list, and will output a valid JSON block as required.
