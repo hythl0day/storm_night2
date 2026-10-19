@@ -25,6 +25,7 @@ def make_game(root: Path) -> Path:
     (d / "rules.md").write_text("（规则书快照）", encoding="utf-8")
     state = {
         "seed": 1,
+        "phase": {"day": 3, "stage": "案件调查"},
         "players": [
             {"name": "A", "identity": "平民", "profession": "医师", "alive": True},
             {"name": "B", "identity": "杀手", "profession": "化学家", "alive": False},
@@ -140,6 +141,30 @@ class TestBuildMemory(unittest.TestCase):
         self.assertNotIn("你的内心", mem)
         self.assertIn("你说：「我参选。」", mem)
 
+    def test_log_header_separates_first_speech(self):
+        """public/log.md 的 ## 阶段标题是无戳发言行的真正边界：竞选首发言归入公共发言段，
+        不再混入开局准备（主人字条）段；log.md 缺失或无标题的旧档回退 feed（原行为）。"""
+        log = "\n".join([
+            "## 第1天 · 开局", "",
+            "〔第1天·开局准备〕欢迎来到暴风夜。",
+            "〔第1天·开局准备〕—— 主人",
+            "",
+            "## 第1天 · 侦探竞选", "",
+            "**A**：我先说两句。",
+            "〔第1天·公共发言〕A 宣告参选侦探",
+            "",
+            "## 第2天 · 清晨", "",
+            "- 第 2/6 天开始。今日行动顺序：B → A",
+        ])
+        (self.dir / "public" / "log.md").write_text(log, encoding="utf-8")
+        mem, _ = build_memory(self.dir, self.state, "A", "A", full=True)
+        prep_seg = mem.split("### 第1天 · 开局准备")[1].split("###")[0]
+        self.assertIn("—— 主人", prep_seg)
+        self.assertNotIn("我先说两句", prep_seg)                    # 不再粘在字条后
+        self.assertIn("### 第1天 · 公共发言\n\n**A**：我先说两句。", mem)
+        # 清晨标题 + 不打戳的"第 N/6 天开始"状态行 → 案件调查段
+        self.assertIn("### 第2天 · 案件调查", mem)
+
 
 class TestRunInterview(unittest.TestCase):
     def setUp(self):
@@ -166,8 +191,30 @@ class TestRunInterview(unittest.TestCase):
         self.assertEqual(seen[0], ["system", "user", "user"])
         self.assertEqual(seen[1], ["system", "user", "user", "assistant", "user"])
         text = archive.read_text(encoding="utf-8")
-        self.assertIn("**制作人**：第一个问题", text)
+        self.assertIn("**主神**：第一个问题", text)
         self.assertIn("**B**：回答2", text)
+
+    def test_view_commands_during_interview(self):
+        """采访中的查看命令（help/status/log/peek/inner/host/quit，与 console 同口径）：
+        只打印不调用 API、不写入采访存档。"""
+        d = make_game(Path(self.tmp.name))
+        player = Player(name="B", model="mock", base_url="http://localhost", api_key_env="X")
+        calls = []
+
+        def fake_chat(p, messages, *, on_token=None, **kw):
+            calls.append(1)
+            return ChatResult(p.name, ok=True, content="回答")
+
+        archive = Path(self.tmp.name) / "interview.md"
+        archive.write_text("# 采访记录\n", encoding="utf-8")
+        qs = iter(["help", "status", "log 5", "peek A", "inner A", "host 5", "真正的问题", "quit"])
+        rounds = run_interview(player, "system", "记忆", archive,
+                               chat_fn=fake_chat, input_fn=lambda _p: next(qs), game_dir=d)
+        self.assertEqual(rounds, 1)          # 只有最后一个真问题调用了 API
+        self.assertEqual(len(calls), 1)
+        text = archive.read_text(encoding="utf-8")
+        self.assertIn("**主神**：真正的问题", text)
+        self.assertNotIn("**主神**：status", text)  # 命令不进存档
 
     def test_failed_call_not_recorded(self):
         player = Player(name="B", model="mock", base_url="http://localhost", api_key_env="X")

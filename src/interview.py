@@ -1,9 +1,9 @@
 """采访录制器（show-bible §5）：把某席位 AI 拉出古堡进行自由问答采访。
 
 记忆载荷从存档逐字节复原（不经引擎重建）：
-- 第一编「你经历的一切」：state.json 的 orch.feed（公共事件流）+ orch.hist[名字]（私密事件流）
-  按（天, 阶段序）归并；无时间戳的发言行归入其上一条带戳条目的阶段；反派密谋不进 feed/hist，
-  从 private/<席位>/log.md 的（反派密谋）节补入。
+- 第一编「你经历的一切」：public/log.md（公共事件流，## 阶段标题作边界；旧档无标题时回退
+  state.json 的 orch.feed）+ orch.hist[名字]（私密事件流）按（天, 阶段序）归并；
+  无时间戳的发言行归入当前阶段；反派密谋不进 feed/hist，从 private/<席位>/log.md 的（反派密谋）节补入。
 - 第二编「你的发言与内心全记录」：outbox/<席位>/dayN-*.md 的 speech/inner 全文 + 最终版 notes。
 --at 天:阶段 把记忆冻结在该阶段（含）为止（局中冻结采访："采访死亡前 10 分钟的他"）。
 
@@ -44,6 +44,9 @@ STAGE_ORDER = {"开局准备": 0, "案件调查": 1, "公共发言": 2, "投票"
 STAMP_RE = re.compile(r"^〔第(\d+)天·([^〕]+)〕")
 MORNING_RE = re.compile(r"第\s*(\d+)\s*/\s*6\s*天开始")  # 清晨状态行不打戳（见 orchestrator._stamp）
 OUTBOX_RE = re.compile(r"^day(\d+)-(.+)\.md$")
+LOG_HEADER_RE = re.compile(r"^##\s+第(\d+)天 · (.+)$", re.M)
+# log.md 阶段标题 → 阶段序名（stamped 行用〔第N天·阶段〕口径，标题文案与之不同）
+LOG_HEADER_STAGE = {"开局": "开局准备", "侦探竞选": "公共发言", "清晨": "案件调查", "终局宣判": "投票"}
 
 # outbox 文件标签 → 所属阶段（用于 --at 过滤与排序）；无法从标签区分阶段的（毁证机会/赠送回应）→ None
 LABEL_STAGE = {
@@ -54,13 +57,42 @@ LABEL_STAGE = {
 
 SITUATION_POST = (
     "你刚刚经历的这局《暴风夜》已经落幕。现在你被暂时带离古堡，坐在采访间里。对面是这档节目的"
-    "「制作人」——这场游戏的设立者。他知道规则与一切答案，但不必把他当成立场上的朋友或敌人："
+    "「主神」——这场游戏的设立者。他知道规则与一切答案，但不必把他当成立场上的朋友或敌人："
     "如实回答、隐瞒、撒谎、反问，都是你的自由。"
 )
 SITUATION_MID = (
-    "你正在经历的这局《暴风夜》还在继续。你被短暂地带离古堡，坐在采访间里——制作人告诉你："
+    "你正在经历的这局《暴风夜》还在继续。你被短暂地带离古堡，坐在采访间里——主神告诉你："
     "聊几句就送你回去，游戏里的其他人不会察觉你离开过。注意：你的记忆只到被带离的那一刻为止。"
 )
+
+# 采访中的查看命令（与 console 同口径的 view 子集）；其余输入均视为主神提问
+INTERVIEW_HELP = ("可用命令：help（本帮助）/ status（阶段与存活台账）/ log [n]（公开日志末尾 n 行）/ "
+                  "peek <席位>（私密卡+笔记+内心）/ inner <席位>（仅内心独白）/ host [n]（API 调用台账）/ "
+                  "quit（结束采访）——其余输入均作为对 TA 的提问")
+
+
+def _handle_command(q: str, game_dir: Path, out) -> bool:
+    """采访中的查看命令：已处理返回 True（不调用 API、不写入采访存档）。"""
+    from . import viewer
+    parts = q.split()
+    cmd, arg = parts[0].lower(), parts[1] if len(parts) > 1 else ""
+    if cmd == "help":
+        print(INTERVIEW_HELP, file=out)
+    elif cmd == "status":
+        print(viewer.render_status(game_dir), file=out)
+    elif cmd == "log":
+        print(viewer.render_log(game_dir, int(arg) if arg.isdigit() else 20), file=out)
+    elif cmd == "host":
+        print(viewer.render_host_log(game_dir, int(arg) if arg.isdigit() else 10), file=out)
+    elif cmd in ("peek", "inner"):
+        if not arg:
+            print(f"用法：{cmd} <席位 id 或角色名>", file=out)
+        else:
+            render = viewer.render_peek if cmd == "peek" else viewer.render_inner
+            print(render(game_dir, arg), file=out)
+    else:
+        return False
+    return True
 
 
 def _stage_key(day: int, stage: str | None) -> tuple[int, int]:
@@ -73,6 +105,44 @@ def _parse_timeline(lines: list[str]) -> list[tuple[int, str, str]]:
     cur = (0, "开局准备")
     for line in lines:
         s = line.strip()
+        if s.startswith("- "):
+            s = s[2:]
+        m = STAMP_RE.match(s)
+        if m:
+            cur = (int(m.group(1)), m.group(2))
+            s = s[m.end():].strip()
+        else:
+            mm = MORNING_RE.search(s)
+            if mm:  # "第 N/6 天开始" 是次日清晨状态行（_stamp 不打戳），归入清晨
+                cur = (int(mm.group(1)), "案件调查")
+        if s:
+            out.append((cur[0], cur[1], s))
+    return out
+
+
+def _parse_public_log(log_path: Path) -> list[tuple[int, str, str]] | None:
+    """从 public/log.md 解析公开事件流：feed 里没有阶段边界，无戳发言行会错误继承上一条戳的
+    阶段（竞选首发言曾混入开局字条段）；log.md 的「## 第N天 · 阶段」标题是真正的边界。
+    文件不存在或没有阶段标题（旧档）时返回 None，调用方回退 feed。"""
+    if not log_path.exists():
+        return None
+    text = log_path.read_text(encoding="utf-8")
+    if not LOG_HEADER_RE.search(text):
+        return None
+    out: list[tuple[int, str, str]] = []
+    cur = (0, "开局准备")
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        hm = LOG_HEADER_RE.match(s)
+        if hm:
+            label = hm.group(2).strip()
+            cur = (int(hm.group(1)), LOG_HEADER_STAGE.get(label, label))
+            continue
+        if s.startswith("## "):  # "游戏结束"等非阶段标题
+            cur = (cur[0], s.lstrip("# ").strip())
+            continue
         if s.startswith("- "):
             s = s[2:]
         m = STAMP_RE.match(s)
@@ -174,7 +244,11 @@ def build_memory(game_dir: Path, state: dict, name: str, seat: str,
     if cut is None and not full:
         cut = _death_cut(state, name)
     orch = state.get("orch", {})
-    entries = [(d, st, 0, t) for d, st, t in _parse_timeline(orch.get("feed", []))]
+    # 公开流优先走 public/log.md（含 ## 阶段标题，无戳发言行才能归对阶段）；旧档无标题回退 feed
+    public_entries = _parse_public_log(game_dir / "public" / "log.md")
+    if public_entries is None:
+        public_entries = _parse_timeline(orch.get("feed", []))
+    entries = [(d, st, 0, t) for d, st, t in public_entries]
     entries += [(d, st, 1, t) for d, st, t in _parse_timeline(orch.get("hist", {}).get(name, []))]
     entries += [(d, st, 2, t) for d, st, t in _conspiracy_entries(game_dir / "private" / seat / "log.md")]
     if cut:
@@ -215,17 +289,20 @@ def build_system(name: str, personas: dict, rules: str, mid_game: bool) -> str:
 
 
 def run_interview(player, system: str, memory: str, archive: Path,
-                  chat_fn=chat, input_fn=input, out=sys.stdout) -> int:
-    """多轮采访循环： interviewer（stdin）/ assistant 交替，流式渲染，逐轮落盘。返回采访轮数。"""
+                  chat_fn=chat, input_fn=input, out=sys.stdout, game_dir: Path | None = None) -> int:
+    """多轮采访循环：主神（stdin）/ assistant 交替，流式渲染，逐轮落盘。返回采访轮数。
+
+    game_dir 给定后支持查看命令（help/status/log/peek/inner/host，与 console 同口径）——
+    命令只打印到终端，不调用 API、不写入采访存档。"""
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": memory + "\n\n（制作人清了清嗓子，采访开始。）"},
+        {"role": "user", "content": memory + "\n\n（主神清了清嗓子，采访开始。）"},
     ]
     rounds = 0
     with open(archive, "a", encoding="utf-8") as f:
         while True:
             try:
-                q = input_fn("制作人> ").strip()
+                q = input_fn("主神> ").strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
@@ -233,8 +310,11 @@ def run_interview(player, system: str, memory: str, archive: Path,
                 continue
             if q.lower() in ("exit", "quit"):
                 break
+            if game_dir is not None and q.split()[0].lower() in ("help", "status", "log", "peek", "inner", "host"):
+                if _handle_command(q, game_dir, out):
+                    continue
             messages.append({"role": "user", "content": q})
-            f.write(f"\n**制作人**：{q}\n\n")
+            f.write(f"\n**主神**：{q}\n\n")
             print(f"{player.name}> ", end="", flush=True)
             result = chat_fn(player, messages,
                              on_token=lambda text, is_r: (out.write(text), out.flush()) if not is_r else None)
@@ -314,8 +394,8 @@ def main() -> None:
 
     if not player.api_key:
         raise SystemExit(f"环境变量 {player.api_key_env} 未设置（无法调用 {name} 的 API）")
-    print(f"采访开始：{name}（{game_dir.name}，{mode}）｜输入问题，exit 结束｜归档：{archive}")
-    rounds = run_interview(player, system, memory, archive)
+    print(f"采访开始：{name}（{game_dir.name}，{mode}）｜输入问题，help 查看命令，quit 结束｜归档：{archive}")
+    rounds = run_interview(player, system, memory, archive, game_dir=game_dir)
     print(f"采访结束：{rounds} 轮问答，已归档 {archive}")
 
 
