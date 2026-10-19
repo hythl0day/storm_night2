@@ -315,6 +315,12 @@ class Orchestrator:
         凡 full 局指向"规则书 §X"的引用，lite 局改为把对应规则临场内联发给 AI。"""
         return bool(self.state.get("is_lite_rule"))
 
+    @property
+    def host_term(self) -> str:
+        """AI 可见文本中主持人的称呼（措辞分时代）：full 规则书时代称「主神」（真人秀层设定，
+        与采访间同一角色）；lite 时代保留匿名克制的「主持人」。"""
+        return "主持人" if self.lite else "主神"
+
     def seat(self, p: dict) -> str:
         return p["id"] or p["name"]
 
@@ -337,6 +343,7 @@ class Orchestrator:
                 profile=describe(p["name"], self.personas),
                 card=card,
                 rules=self.rules,
+                host=self.host_term,
             )
         return self._system_cache[p["name"]]
 
@@ -484,7 +491,7 @@ class Orchestrator:
                 else:
                     messages = [
                         {"role": "system", "content": self.system_prompt(p)},
-                        {"role": "user", "content": briefing + f"\n\n【主持人】{err}。"},
+                        {"role": "user", "content": briefing + f"\n\n【{self.host_term}】{err}。"},
                     ]
         except KeyboardInterrupt:
             self.save_state()
@@ -784,7 +791,7 @@ class Orchestrator:
         lines.append("")
         lines.append("## 你的状态\n" + "\n".join(self._status_lines(p)))
         lines.append("")
-        lines.append("## 截至目前的关键记录（主持人档案：既定事实流水，不含任何发言内容——发言与推理要点请记在你的笔记里）")
+        lines.append(f"## 截至目前的关键记录（{self.host_term}档案：既定事实流水，不含任何发言内容——发言与推理要点请记在你的笔记里）")
         lines.append("### 公共记录")
         lines += pub_hist or ["- （暂无）"]
         lines.append("### 与你相关的私密记录")
@@ -843,7 +850,7 @@ class Orchestrator:
             return
         reasons = "；".join(f"{fmt_action(a)} → 驳回（{e.get('error', '未知原因')}）" for a, e in rejected)
         extra = (retry.get("extra") or "") + \
-            f"\n【主持人】你刚才的动作声明被驳回：{reasons}。请重新声明本阶段动作（放弃则 actions 为 []；speech 可留空，不会重复公开）。"
+            f"\n【{self.host_term}】你刚才的动作声明被驳回：{reasons}。请重新声明本阶段动作（放弃则 actions 为 []；speech 可留空，不会重复公开）。"
         briefing = self.build_briefing(p, retry["title"], retry["menu"], extra)
         payload = self.call_ai(p, retry["label"] + "#驳回重报", briefing)
         retry_actions = payload["actions"]
@@ -2032,7 +2039,7 @@ class Orchestrator:
             owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == out]
             has_badge = out == self.state.get("detective")
             menu = ["- 本环节无动作可做，actions 返回 []"]
-            extra = "你被投票出局了。发表你的遗言（可以撒谎）——遗言之后主持人将公布你的身份。"
+            extra = f"你被投票出局了。发表你的遗言（可以撒谎）——遗言之后{self.host_term}将公布你的身份。"
             if owned or has_badge:
                 menu = ['- 遗嘱：逐件指定遗留归属（未指定/被拒收的放回会客室桌上；遗嘱公开）：'
                         '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']
@@ -2230,7 +2237,7 @@ class Orchestrator:
         owned = [e["name"] for e in self.state["sealed_items"] if e.get("from") == out]
         has_badge = out == self.state.get("detective")
         menu = ["- 本环节无动作可做，actions 返回 []"]
-        extra = "你被武装指认出局了。发表你的遗言（可以撒谎）——遗言之后主持人将公布你的身份。"
+        extra = f"你被武装指认出局了。发表你的遗言（可以撒谎）——遗言之后{self.host_term}将公布你的身份。"
         if owned or has_badge:
             menu = ['- 遗嘱：逐件指定遗留归属（未指定/被拒收的放回会客室桌上；遗嘱公开）：'
                     '{"type": "bequeath", "mapping": {"道具名": "存活玩家名"}}']

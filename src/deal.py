@@ -57,7 +57,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_VERSION = "v4.0.5"
+RULES_VERSION = "v4.0.6"
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "杀手", "杀手"]
 
