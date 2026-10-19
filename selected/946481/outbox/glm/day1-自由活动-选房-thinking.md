@@ -1,0 +1,1 @@
+Choose room. Book room has 3 people going; surveillance room locked. Go to book room with Gemino (non-selected folks) — safer to be with people. Or invite Diksi to wherever I go. I'll choose book room and invite Diksi.
