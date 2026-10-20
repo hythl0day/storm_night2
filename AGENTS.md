@@ -25,7 +25,7 @@ src/          Python 代码（跑局管线）
   scorecard.py    评分卡（M6）：默认扫描 game/，--dir selected 扫精选池；单局/多局报告
   bench.py        API 速度诊断（流式 TTFT/吞吐）
 players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key 只填环境变量名）
-personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
+personas.toml 角色人设卡（项目根；性别/体格/国籍/性格 persona/语言习惯 voice）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
 screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md / s1-e1-storyboard.md（S1E1 开场分镜）
 docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 / engine.md（引擎参考）；脚本用法已并入 README.md

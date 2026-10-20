@@ -50,10 +50,13 @@ def describe(name: str, personas: dict) -> str:
     if not p:
         return "普通人"
     physique = physique_desc(p.get("physique"))
-    return (
+    text = (
         f"{p.get('gender', '?')}，{p.get('nationality', '?')}人，"
         f"体格{physique}。{p.get('persona', '')}"
     )
+    if p.get("voice"):  # 语言习惯（旧档 personas.toml 快照无此字段则跳过）
+        text += f" 语言习惯：{p['voice']}"
+    return text
 
 
 def ask(player, prompt: str, personas: dict) -> ChatResult:
