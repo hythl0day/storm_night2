@@ -1,0 +1,1 @@
+I should declare candidacy with a pitch. I'm 奇米, competitive vs Americans. Maybe declare run true, mention my profession honestly-ish? I can lie, but lying leaves record. Declare candidacy, cite reasoning: organized, tracker of details.

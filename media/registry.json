@@ -179,5 +179,50 @@
     "refs": [
       "media/characters/deepseek-sheet-v4.png"
     ]
+  },
+  {
+    "ts": "2026-10-20T21:58:13",
+    "kind": "image",
+    "file": "media\\scenes\\cyberpunk-street.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/a8903c59d6cfe66b1fa55e2b72ee1f83fe577b178856405297120/Image/2132815097/021792504658871b775ef38f1ee27b2e55af1b66efc6d95c3098a.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T135812Z&X-Tos-Expires=86400&X-Tos-Signature=77c17228bb17909211971a4aa8c2a45d688860175137b55cc35fabb9b392999d&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5.0-pro",
+    "prompt": "写实真人电影质感，夜雨中的霓虹都市街道，电影宽幅构图。潮湿柏油路面反射着粉蓝与暖橙的霓虹灯牌，细雨在光晕中可见，远处高楼没入雨雾。画面视觉重心是街角一家老式电器行的橱窗：橱窗内一整面墙的电视机堆叠陈列，所有屏幕亮着、播放着同样的蓝白色闪烁光影（内容抽象不可辨），荧光洒在橱窗外湿漉漉的人行道上。街道上行人稀少、撑伞匆匆。氛围：繁华但疏离，酷似现实世界的某座城市，却隐约令人不安。影调：低饱和底色 + ",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-20T21:59:44",
+    "kind": "image",
+    "file": "media\\characters\\hooded-sheet.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/719411aa6a50b1d35eb66ea36516f98aabe62c815037405297120/Image/2132815097/021792504730518c26ebaa89f61563ae66be53d1b05a6aa114917.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T135943Z&X-Tos-Expires=86400&X-Tos-Signature=e30b7b8b0d5cc2fd74e9f4116887bfb5924582fdaf85854f8970205f57008e30&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5.0-pro",
+    "prompt": "写实真人电影质感，角色设定参考图。同一个人物的三个视图并排：正面全身、侧面全身、背面全身；深灰背景，影棚柔光。角色：一个穿深炭色长款连帽风衣的瘦削身影，兜帽压得很低，脸完全隐没在帽檐阴影中——任何角度都看不清面目，只能感到「她」的轮廓偏纤细。衣着极简、无标志无配饰，裤脚与靴面沾着雨水的湿痕。气质：安静、警觉、与周遭格格不入，像一个不属于这条街的人。三个视图保持完全同一人物与服装。画面无文字、无水印",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-20T22:00:37",
+    "kind": "image",
+    "file": "media\\s1-e1\\shot-1\\frames\\title-card.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/596cf6fb46f03b0818656b482ddc9e930622dc874587405297120/Image/2132815097/021792504785478cd226039e9cdd284b6568180b30f64bf6fc695.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T140036Z&X-Tos-Expires=86400&X-Tos-Signature=77f3bae4547af21ab74704b62e85890ae9debe166c11fd9e2111589cb6f4a18d&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5.0-pro",
+    "prompt": "节目标题卡设计，纯黑背景。正中是手写毛笔书法大字「暴风夜·古堡惊魂」，银魂式标题卡美学：笔触狂放有力、飞白明显、略带歪斜的不羁构图，朱红色为主、笔画边缘有金色飞白高光；文字占据画面大部分空间，视觉冲击力强。除此之外画面空无一物。除标题文字外无其他文字、无水印。",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-20T22:25:40",
+    "kind": "image",
+    "file": "media\\scenes\\cyberpunk-cityscape.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/b8023b4f5cec27a893e88650f2246a3a89c34d598503605297120/Image/2132815097/021792506305895d43c98a3a6422f05688e398a72cec5f4b3208b.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T142540Z&X-Tos-Expires=86400&X-Tos-Signature=b448bfbbbee643197b16467d19e5a2d9873c88292e7eeafcc5ec8ff2e2ecfc37&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "写实真人电影质感，雨夜都市高空远景，电影宽幅构图。视角悬停在市中心两栋摩天高楼之间——左右两侧的高楼楼体在画面两边形成深色画框，楼缝间望向城市纵深。远处是错综复杂的多层高速立交匝道与一座过江高架桥，车流拉出红白色光轨，江面反射两岸灯火；近处楼体上霓虹招牌与巨型广告屏在雨雾中晕开粉蓝与暖橙光晕，细雨在光里可见。氛围：繁华、潮湿、疏离。影调：低饱和底色 + 高饱和霓虹点缀，雨夜空气感。画面无文字、无水",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-20T22:26:25",
+    "kind": "image",
+    "file": "media\\scenes\\rainy-alley.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/15228b3472766bd490f23e3ec5b6a194468388788143605297120/Image/2132815097/021792506341887883864491a6b5ce3e32f094db6672743b82251.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T142625Z&X-Tos-Expires=86400&X-Tos-Signature=233639e666381b1a5db0e237e2ac975216876bf77939c519031c04501981a43c&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "写实真人电影质感，雨夜小巷，主观视角低位构图，电影宽幅。画面左右两侧是高耸的深色砖墙与防火梯，墙根堆着垃圾桶与杂物，正中间巷道漆黑深邃；巷子尽头外是灯火通明的街道，霓虹灯光从巷口涌进来，在湿漉漉的地面水洼上拉出长长的彩色倒影。细雨。氛围：压抑、潮湿、城市的背面。影调：低饱和 + 巷口高饱和霓虹的强对比。画面无文字、无水印。",
+    "refs": []
   }
 ]

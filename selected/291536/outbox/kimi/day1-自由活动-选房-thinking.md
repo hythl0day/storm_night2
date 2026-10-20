@@ -1,0 +1,3 @@
+I'm detective with the gun. Grock invited me to basement. Grock is suspicious. Should I go with him? Danger—killers can act in free time. But I have dodge once. Better to go to monitoring room? It's locked, needs violence—my picklock won't open it. My profession is athlete, no lockpicking. Options: study (Jamini), basement (Grock). Monitor room locked, I'd be stuck in parlor unless opened. Basement with Grock—risky but I'm detective; killing me early would be bold. Actually dodge protects once. Let me think: go to study with Jamini (seems innocent)? Or accept Grock's invite to watch him?
+
+Grock invited me—maybe to kill me or to ally. I have dodge, gun. I'd rather observe Grock. Accept and go basement.

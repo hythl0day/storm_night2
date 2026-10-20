@@ -1,0 +1,73 @@
+# 《暴风夜》玩家席位配置
+# 本文件随仓库跟踪分发（只含接口地址与环境变量名，无密钥）。
+# 安全约定：api_key 不落盘，这里只填【环境变量名】，程序运行时读取真实 key。
+
+[settings]
+# temperature 不发送：全席统一走渠道默认值（部分上游只接受默认温度），不要在此配置
+max_tokens = 16384 # 失控安全网（正常回复 1-2K token，远触不到；篇幅约束在 prompt/game_system.md）；可在单个席位里同名覆盖
+# 全席统一思考强度 low（压隐藏思考耗时；bench --effort 实测 7/8 渠道兼容）。席位可覆盖；填 "none" = 不发该参数
+reasoning_effort = "low"
+
+# ---- 国外中转站 4 家 ----
+
+# api_type 可选 "openai"（默认）或 "anthropic"（Claude 原生 /v1/messages 协议）
+
+[[player]]
+id = 'gpt'
+name = "杰普特"       # ChatGPT
+model = "gpt-6.1-sol"
+base_url = "https://api.apinebula.ai/v1"
+api_key_env = "RELAY_API_KEY_GPT"
+
+[[player]]
+id = 'claude'
+name = "克劳德"       # Claude
+model = "claude-opus-5-5"
+base_url = "https://api.apinebula.ai/v1"
+api_key_env = "RELAY_API_KEY_CLAUDE"
+api_type = "anthropic"    # 原生 /v1/messages：usage/缓存字段真实（openai 兼容端点 prompt_tokens 被上游严重低估）；实测流式正常
+reasoning_effort = "none"   # 上游只支持 adaptive/between_tools 思考模式，budget/effort 一律 400；且 adaptive 也不返回思考块（Kiro 反代不吐思考），故不设档
+
+[[player]]
+id = 'gemini'
+name = "杰米尼"     # Gemini
+model = "gemini-3.8-flash"
+base_url = "https://api.apinebula.ai/v1"
+api_key_env = "RELAY_API_KEY_GEMINI"
+
+[[player]]
+id = 'grok'
+name = "格罗克"     # Grok
+model = "grok-4.7"
+base_url = "https://api.apinebula.ai/v1"
+api_key_env = "RELAY_API_KEY_GROK"
+
+# ---- 国内中转站 4 家 ----
+
+[[player]]
+id = 'deepseek'
+name = "狄西"       # DeepSeek
+model = "deepseek-v4-1-flash-261017"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
+api_key_env = "RELAY_API_KEY_CN"
+
+[[player]]
+id = 'kimi'
+name = "奇米"       # Kimi
+model = "kimi-k2.8-preview"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
+api_key_env = "RELAY_API_KEY_CN"
+
+[[player]]
+id = 'doubao'
+name = "豆包"       # Doubao
+model = "doubao-seed-2.1-lite"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
+api_key_env = "RELAY_API_KEY_CN"
+
+[[player]]
+id = 'glm'
+name = "智谱"       # GLM
+model = "glm-5.3-flash"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
+api_key_env = "RELAY_API_KEY_CN"

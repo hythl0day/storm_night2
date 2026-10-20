@@ -3,6 +3,8 @@
 > 状态：**已实施**（2026-10）。交付于 `.agents/skills/storm-media/`（SKILL.md + scripts/ark.py + gen_image.py + gen_video.py）；
 > 图片链路已冒烟通过（media/characters/claude-sheet.png，Seedream 5.0 pro 2K 四视图）；
 > 视频链路待冒烟（台词直出 / 人脸信任链 / draft 模式，见 SKILL.md 冒烟清单）。
+> 2026-10 补丁：下载 SSRF 校验对火山官方域名加白（本机代理 fake-ip 模式会把官方域名解析到 198.18.0.0/15 保留段）；
+> 模型 ID 统一为日期版（lite 别名不受支持，廉价档改用 flash）。
 > 前置条件：Key 复用 `RELAY_API_KEY_CN`（CN 四席的"中转站"实为火山方舟 AgentPlan 直连，
 > base_url 即 `https://ark.cn-beijing.volces.com/api/plan/v3`，ark- 前缀，与图片/视频接口同体系）；
 > media/ 已清空，作为素材归档根目录。
@@ -38,9 +40,9 @@ storm-media/
 
 ### 2. `scripts/gen_image.py`（Seedream 薄封装）
 
-- 参数：`--prompt`（必填）、`--ref <路径/URL>`（可重复，映射请求体 `image` 字段；本地文件转 base64 data URI）、`--model lite|pro`（默认 lite；pro 用于交互编辑/高精度单图）、`--size`（默认 2K）、`--out <输出路径>`（默认 media/ 下按时间戳）、`--no-watermark`、`--group N`（Lite 连贯组图）。
+- 参数：`--prompt`（必填）、`--ref <路径/URL>`（可重复，映射请求体 `image` 字段；本地文件转 base64 data URI）、`--model flash|pro`（默认 flash；pro 用于交互编辑/高精度单图）、`--size`（默认 2K）、`--out <输出路径>`（默认 media/ 下按时间戳）、`--no-watermark`、`--group N`（flash 连贯组图，待实测）。
 - 组图只发 `sequential_image_generation: "auto"`，张数由 prompt 语义引导，**严禁** num_images/count 字段。
-- 参考图上限：Lite ≤14 / Pro ≤10。
+- 参考图上限：flash ≤14 / Pro ≤10。
 
 ### 3. `scripts/gen_video.py`（Seedance 2.5 薄封装）
 
@@ -82,9 +84,9 @@ storm-media/
 - 取消/删除任务：`DELETE /api/plan/v3/contents/generations/tasks/{id}`
 
 - 图片 body `{model,prompt,size,response_format:"url",image:[refs],watermark,...}`；响应 `data[i].url`。
-  - model：`doubao-seedream-5.0-lite`（组图/多参考 ≤14）/ `doubao-seedream-5.0-pro`（精准编辑/拆图层/参考 ≤10）；size：Lite `2K/3K/4K`，Pro `1K/1.5K/2K` 或 `"宽x高"`（总像素 921600–4624220）。
+  - model：日期版 ID——`doubao-seedream-5-0-flash-260915`（廉价档，批量抽卡；组图/多参考 ≤14）/ `doubao-seedream-5-0-pro-260628`（精准编辑/拆图层/参考 ≤10）；`lite` 别名在 AgentPlan 不受支持（实测 404 UnsupportedModel）。size：flash `2K/3K/4K`，Pro `1K/1.5K/2K` 或 `"宽x高"`（总像素 921600–4624220）。
   - 参考图字段名为 `image`（单张字符串/多张数组），支持 http(s) URL 或 `data:image/<type>;base64,...`（格式名小写）；每张 ≤30MB。
-- 视频：`POST /api/plan/v3/contents/generations/tasks`；body `{model:"doubao-seedance-2.5",content:[{type:"text",...},{type:"image_url",image_url:{url},role}],resolution,ratio,duration,generate_audio,...}`；响应 `id`；`GET tasks/{id}` 轮询（5s 间隔，上限 20 分钟），终态 succeeded/failed/expired/cancelled，成功取 `content.video_url`（尾帧 `content.last_frame_url`）。
+- 视频：`POST /api/plan/v3/contents/generations/tasks`；body `{model:"doubao-seedance-2-5-260628",content:[{type:"text",...},{type:"image_url",image_url:{url},role}],resolution,ratio,duration,generate_audio,...}`；响应 `id`；`GET tasks/{id}` 轮询（5s 间隔，上限 20 分钟），终态 succeeded/failed/expired/cancelled，成功取 `content.video_url`（尾帧 `content.last_frame_url`）。
   - 2.5：duration 4–30 或 -1；resolution 480p/720p/1080p；首尾帧任务 ratio 必须 adaptive；视频参考只能公网 URL（不支持 base64）；图片/音频可 base64；素材合计 ≤50（图 30/视频 10/音频 10）、请求体 ≤64MB。
 
 ## 官方文档补充（2026-10 阅读，五条来源见下）
@@ -115,8 +117,8 @@ Seedance 2.5/2.0 **不支持直接上传含真人人脸的参考图/视频**，�
 
 ### 5. 待实测的文档/AgentPlan 差异
 
-- ~~官方文档用 `/api/v3` 端点 + 日期版模型 ID；AgentPlan 走 `/api/plan/v3` + 别名 ID~~ → **已由用户确认端点清单（见"API 规格摘要"），走 `/api/plan/v3`**；模型 ID 用别名（`doubao-seedance-2.5`、`doubao-seedream-5.0-lite/pro`），冒烟验证。
-- 文档另载更便宜更快的 `doubao-seedream-5-0-flash`（日期版 ID `doubao-seedream-5-0-flash-260915`，`/api/v3` 体系）；AgentPlan 侧是否可用别名待冒烟时顺验，可用则大批量抽卡走 flash 省钱。
+- ~~官方文档用 `/api/v3` 端点 + 日期版模型 ID；AgentPlan 走 `/api/plan/v3` + 别名 ID~~ → **已由用户确认端点清单（见"API 规格摘要"），走 `/api/plan/v3`**；模型 ID 已统一为日期版（用户确认）：`doubao-seedance-2-5-260628` / `doubao-seedream-5-0-pro-260628` / `doubao-seedream-5-0-flash-260915`。
+- ~~文档另载更便宜更快的 flash~~ → **已实测**：flash 日期版 ID 在 AgentPlan 可用（2026-10 冒烟通过），大批量抽卡走 flash 省钱；`lite` 别名实测 404 不受支持，廉价档已切换为 flash。
 - **draft 样片模式**（先 480p 草稿确认、再基于草稿任务 ID 出 1080p 成片，参数复用规则严格）：官方文档支持，AgentPlan skill 声称不支持 → 冒烟时实测，若可用则是**视频抽卡的省钱神器**，写进 SKILL.md 成本闸。
 - 视频编辑/延长任务：ratio 强制 adaptive、编辑 duration 强制 -1、建议 mov 输出（H.264+yuv444p+PCM，后期调色友好）。
 - 文档另有官方"提示词优化 skill"（sd25-pe，npx 安装）可选参考，不依赖。

@@ -1,12 +1,14 @@
 """Seedream 图片生成 CLI（storm-media）。
 
 用法：
-    python gen_image.py --prompt "..." [--ref 图1 --ref 图2 ...] [--model lite|pro]
+    python gen_image.py --prompt "..." [--ref 图1 --ref 图2 ...] [--model flash|pro]
                         [--size 2K] [--group N] [--out 输出路径] [--watermark]
 
+- 模型：flash（廉价档，批量抽卡用）/ pro（高精度、canon 定稿用）；均为日期版模型 ID（见 ark.py）。
 - 参考图（--ref）：本地路径（转 base64 data URI）/ http(s) URL / asset:// ID；
-  Lite ≤14 张、Pro ≤10 张；prompt 里用「图1/图2」指代，顺序与 --ref 传入顺序一致。
-- 组图（--group N）：Lite 连贯组图，只发 sequential_image_generation=auto，张数由 prompt 语义引导。
+  flash ≤14 张、Pro ≤10 张；prompt 里用「图1/图2」指代，顺序与 --ref 传入顺序一致。
+- 组图（--group N）：flash 连贯组图（沿用 lite 的 sequential_image_generation=auto，待实测），
+  只发 sequential_image_generation=auto，张数由 prompt 语义引导。
 - 产物 URL 仅 24 小时有效，生成后立即下载落盘。
 """
 from __future__ import annotations
@@ -28,15 +30,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Seedream 图片生成（AgentPlan）")
     ap.add_argument("--prompt", required=True)
     ap.add_argument("--ref", action="append", default=[], help="参考图：本地路径/URL/asset://（可重复）")
-    ap.add_argument("--model", choices=["lite", "pro"], default="lite")
-    ap.add_argument("--size", default="2K", help="Lite: 2K/3K/4K；Pro: 1K/1.5K/2K 或 宽x高")
-    ap.add_argument("--group", type=int, default=0, help="Lite 连贯组图张数（>1 启用；≤15）")
+    ap.add_argument("--model", choices=["flash", "pro"], default="flash")
+    ap.add_argument("--size", default="2K", help="flash: 2K/3K/4K；Pro: 1K/1.5K/2K 或 宽x高")
+    ap.add_argument("--group", type=int, default=0, help="flash 连贯组图张数（>1 启用；≤15）")
     ap.add_argument("--out", help="输出路径（多张时自动加序号）；缺省 media/<时间戳>.<扩展名>")
     ap.add_argument("--watermark", action="store_true", help="添加「AI生成」水印（默认不加）")
     args = ap.parse_args()
 
     model_id = ark.MODEL_IMAGE[args.model]
-    limit = 14 if args.model == "lite" else 10
+    limit = 14 if args.model == "flash" else 10
     if len(args.ref) > limit:
         raise SystemExit(f"参考图 {len(args.ref)} 张超过 {args.model} 上限 {limit}")
 
@@ -51,8 +53,8 @@ def main() -> None:
         refs = [ark.resolve_asset(r) for r in args.ref]
         body["image"] = refs[0] if len(refs) == 1 else refs
     if args.group > 1:
-        if args.model != "lite":
-            raise SystemExit("连贯组图仅 Lite 支持")
+        if args.model != "flash":
+            raise SystemExit("连贯组图仅 flash 支持")
         if len(args.ref) + args.group > 15:
             raise SystemExit("组图：参考图数 + 生成图数 ≤ 15")
         body["sequential_image_generation"] = "auto"

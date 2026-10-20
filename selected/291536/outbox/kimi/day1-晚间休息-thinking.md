@@ -1,0 +1,3 @@
+I'm in the dark basement with Grok. Night. I need to pick a destination. As detective with the revolver, I'm a target. My dodge passive protects once. Options: stay in bedroom alone (dark), or go to lounge (bright, public list next morning). Going to lounge advertises where I am—killers know. Bedroom alone: killers could target me but need to enter my locked room? Others' bedrooms are locked—need lockpick or invitation. So my bedroom is relatively safe. Basement is dark and Grok is here. Staying in basement with Grok is risky.
+
+I'll go back to my bedroom. actions: [] per spec, but to be explicit choose_room 卧室? The spec says actions empty = bedroom default. I'll use [] and keep inner/notes.

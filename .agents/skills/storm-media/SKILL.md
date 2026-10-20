@@ -10,8 +10,8 @@ description: 《暴风夜》节目素材生成管线（Python 薄客户端 + 节
 ## 脚本（本 skill 根目录 scripts/ 下，Python + httpx，无任何安装步骤）
 
 ```bash
-# 图片（Seedream）：文生图 / 参考图生图 / Lite 连贯组图
-python scripts/gen_image.py --prompt "..." [--ref 图1 --ref 图2] [--model lite|pro] \
+# 图片（Seedream）：文生图 / 参考图生图 / flash 连贯组图
+python scripts/gen_image.py --prompt "..." [--ref 图1 --ref 图2] [--model flash|pro] \
     [--size 2K] [--group N] [--out 输出路径] [--watermark]
 
 # 视频（Seedance 2.5）：首帧/首尾帧/参考素材
@@ -64,4 +64,4 @@ media/
 - [ ] Seedance 台词直出（`{}` + generate_audio）逐字稳定性 → 通过则砍掉 TTS 方案
 - [ ] 人脸信任链端到端（Seedream 人设图 → Seedance 首帧/参考）
 - [ ] draft 样片模式（480p 草稿 → 1080p 成片）在 AgentPlan 网关是否可用
-- [ ] Seedream flash 别名（更便宜）在 AgentPlan 是否可用
+- [x] Seedream flash 在 AgentPlan 可用（日期版 ID `doubao-seedream-5-0-flash-260915`，廉价档走它；`lite` 别名实测 404 不受支持）

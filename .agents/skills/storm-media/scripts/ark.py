@@ -27,8 +27,10 @@ BASE = os.environ.get("ARK_API_BASE_URL", "https://ark.cn-beijing.volces.com/api
 IMAGE_URL = f"{BASE}/images/generations"
 TASKS_URL = f"{BASE}/contents/generations/tasks"
 
-MODEL_IMAGE = {"lite": "doubao-seedream-5.0-lite", "pro": "doubao-seedream-5.0-pro"}
-MODEL_VIDEO = "doubao-seedance-2.5"
+# 日期版模型 ID（用户确认）。lite 别名在 AgentPlan 不受支持（实测 404 UnsupportedModel），
+# 廉价档用 flash；别名 doubao-seedream-5.0-pro 可用但统一用日期版 ID。
+MODEL_IMAGE = {"flash": "doubao-seedream-5-0-flash-260915", "pro": "doubao-seedream-5-0-pro-260628"}
+MODEL_VIDEO = "doubao-seedance-2-5-260628"
 
 TASK_TERMINAL = ("succeeded", "failed", "expired", "cancelled")
 
@@ -128,10 +130,18 @@ def resolve_asset(ref: str) -> str:
     return to_data_uri(ref)
 
 
+TRUSTED_HOSTS = (".volces.com", ".volcengine.com", ".volcdns.com", ".volcengineapi.com")
+
+
 def _public_https(url: str) -> None:
     u = urlparse(url)
     if u.scheme not in ("http", "https") or not u.hostname:
         raise SystemExit(f"非法下载地址：{url[:120]}")
+    host = u.hostname.lower()
+    # 火山官方对象存储域名：URL 来自 API 响应本身、非用户输入，可信；
+    # 且本机代理 fake-ip 模式会把它们解析到 198.18.0.0/15 保留段，IP 检查必然误伤
+    if any(host.endswith(d) for d in TRUSTED_HOSTS):
+        return
     try:
         for info in socket.getaddrinfo(u.hostname, None):
             ip = ipaddress.ip_address(info[4][0])
