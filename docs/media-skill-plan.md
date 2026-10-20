@@ -1,7 +1,7 @@
 # storm-media skill 计划
 
 > 状态：**已实施**（2026-10）。交付于 `.agents/skills/storm-media/`（SKILL.md + scripts/ark.py + gen_image.py + gen_video.py）；
-> 图片链路已冒烟通过（media/canon/characters/claude-sheet-v1.png，Seedream 5.0 pro 2K 四视图）；
+> 图片链路已冒烟通过（media/characters/claude-sheet.png，Seedream 5.0 pro 2K 四视图）；
 > 视频链路待冒烟（台词直出 / 人脸信任链 / draft 模式，见 SKILL.md 冒烟清单）。
 > 前置条件：Key 复用 `RELAY_API_KEY_CN`（CN 四席的"中转站"实为火山方舟 AgentPlan 直连，
 > base_url 即 `https://ark.cn-beijing.volces.com/api/plan/v3`，ark- 前缀，与图片/视频接口同体系）；
@@ -10,7 +10,7 @@
 
 ## 背景与目标
 
-- 官方 AgentPlan skill（seedream/seedance）是 Node.js 通用件；本项目全 Python 技术栈，且需求高度特化（固定 8 角色卡司、固定场景清单、台词逐字来自对局存档）。自建项目级 skill，把官方 skill 的 API 规格与 byted-drama 的流程纪律消化进来。
+- 官方 AgentPlan skill（seedream/seedance）是 Node.js 通用件；本项目全 Python 技术栈，且需求高度特化（固定 8 角色卡司、固定场景清单、台词取材对局存档或补拍归档（真实生成，措辞可润色、意图不可歪曲））。自建项目级 skill，把官方 skill 的 API 规格与 byted-drama 的流程纪律消化进来。
 - 已备条件：`ARK_API_KEY`（ark- 前缀）已入环境变量；media/ 已清空，作为素材归档根目录。
 - API 规格已从官方 skill 源码完整提取（见下"API 规格摘要"）；实施中若遇参数报错，用 FetchURL 拉取火山官方文档补全。
 
@@ -53,11 +53,11 @@ storm-media/
 ### 4. `SKILL.md`（工作流纪律，消化 byted-drama 方法论）
 
 - **canon 优先**：角色图（单张含面部特写+正/侧/背全身，白底）→ 场景图 → 道具图 → 分镜首帧 → 视频；禁止跳过基础素材直接出分镜。
-- **目录约定**：`media/canon/characters|scenes|props/`（视觉 canon，跨集复用）；每集产出 `media/<episode>/frames|videos/`；canon 图作为参考图传入后续所有生成。
+- **目录约定**：`media/characters|scenes|props/`（视觉 canon，跨集复用）；每集产出 `media/<episode>/frames|videos/`；canon 图作为参考图传入后续所有生成。
 - **参考图引用规则**：prompt 内用"图1/图2"命名、末尾注释说明、传参顺序一致（byted-drama 纪律）。
 - **成本闸**：视频生成批量操作前必须先报价确认；单张图片可直接生成。
-- **台词铁律**：成片台词逐字来自 `game/<id>/` 存档；TTS 暂缓，先实测 Seedance `--audio` 直出台词能力。
-- 风格基线待定（真人 vs 动漫/漫画试点对比），SKILL.md 留 `media/canon/style.md` 槽位。
+- **台词铁律**：成片台词取材真实生成（对局存档或 scene/interview 补拍归档）；措辞可润色、意图与逻辑不可歪曲、事实不得与存档矛盾；TTS 暂缓，先实测 Seedance `--audio` 直出台词能力。
+- 风格基线待定（真人 vs 动漫/漫画试点对比），SKILL.md 留 `media/style.md` 槽位。
 
 ## 实施步骤
 
@@ -68,7 +68,7 @@ storm-media/
 
 ## 验证
 
-- `python .agents/skills/storm-media/scripts/gen_image.py --prompt "..." --out media/canon/characters/test.png` 成功落盘；
+- `python .agents/skills/storm-media/scripts/gen_image.py --prompt "..." --out media/characters/test.png` 成功落盘；
 - 视频步骤 4 输出 mp4 落盘且可播放；
 - 全程不碰 src/ 与 game/（游戏管线零改动）。
 
@@ -99,7 +99,7 @@ Seedance 2.5/2.0 **不支持直接上传含真人人脸的参考图/视频**，�
 
 ### 2. 台词直出（实测后可砍掉 TTS）
 
-`generate_audio: true` 时 Seedance 原生生成人声配音，**台词写在 prompt 里用 `{}` 括起**，模型按词对口型（官方说唱示例演示了多语言逐字对嘴）。声音标注法：音乐 `()`、音效 `<>`、台词 `{}`、字幕 `【】`；非中文台词需注明语言。→ 我们的台词铁律（逐字来自存档）的落地方式 = 分镜 prompt 中 `{存档原文}`。待实测：长台词/多角色对白的稳定性。
+`generate_audio: true` 时 Seedance 原生生成人声配音，**台词写在 prompt 里用 `{}` 括起**，模型按词对口型（官方说唱示例演示了多语言逐字对嘴）。声音标注法：音乐 `()`、音效 `<>`、台词 `{}`、字幕 `【】`；非中文台词需注明语言。→ 我们的台词铁律（真实生成取材、措辞可润色、意图不可歪曲）的落地方式 = 分镜 prompt 中 `{台词}`（取自存档或补拍归档，可润色）。待实测：长台词/多角色对白的稳定性。
 
 ### 3. 提示词规则（写进 SKILL.md 的分镜规范）
 

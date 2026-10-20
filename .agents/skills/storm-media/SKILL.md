@@ -25,14 +25,14 @@ python scripts/gen_video.py --prompt "...台词用{}括起..." [--first-frame �
 ## 铁律
 
 1. **人脸信任链**：含人脸素材必须是本账号 Seedream 文生图自产（30 天有效期，超期重新生成或图生图刷新）。禁止外部导入人脸参考图——会触发 Seedance 输入审核拦截。
-2. **台词铁律**：成片台词逐字来自 `game/<id>/` 存档（speech/inner 通道），禁止改写。台词在视频 prompt 中用 `{台词原文}` 标记；音乐 `()`、音效 `<>`、字幕 `【】`。
+2. **台词铁律**：成片台词取材自 AI 真实生成——`game/<id>/` 存档（speech/inner 通道）或 scene/interview 补拍归档；允许剪辑修剪与措辞润色（AI 演技生涩，成句可重写），但不得歪曲原本的意图、立场与推理逻辑，不得添加它没表达过的信息，游戏事实以存档裁决为准。台词在视频 prompt 中用 `{台词原文}` 标记；音乐 `()`、音效 `<>`、字幕 `【】`。
 3. **成本闸**：批量视频生成前必须向用户报价确认；单张图片可直接生成。
 
 ## 工作流（canon 优先，禁止跳步）
 
 角色图 → 场景图 → 道具图 → 分镜首帧 → 视频。
 
-1. **角色图**：Seedream Pro 文生图，白底单张含面部特写 + 正/侧/背全身（参考 `media/canon/characters/claude-sheet-v1.png`）；人设对齐 `personas.toml`（性别/体格/国籍/性格底色）。
+1. **角色图**：Seedream Pro 文生图，白底单张含面部特写 + 正/侧/背全身（参考 `media/characters/claude-sheet.png`）；人设对齐 `personas.toml`（性别/体格/国籍/性格底色）。
 2. **场景图**：会客室（壁炉/长桌/规则书）/书房（保险箱/雕像）/监控室/地下室/卧室/走廊/采访黑屋；风格与角色图一致。
 3. **道具图**：12 种道具特写（剧情证物）。
 4. **分镜首帧**：Seedream 多参考生图（角色 canon + 场景 canon），prompt 内用「图1/图2」指代、末尾注释、传参顺序一致；单镜头 1–5 个主体最稳，多人群戏给角色拆单视图参考。
@@ -42,11 +42,11 @@ python scripts/gen_video.py --prompt "...台词用{}括起..." [--first-frame �
 
 ```
 media/
-  canon/            # 视觉 canon（跨集复用；人脸图 30 天有效期，注意刷新）
-    characters/     # 角色图（白底四视图）
-    scenes/         # 场景图
-    props/          # 道具图
-    style.md        # 风格基线（待定：真人 vs 动漫试点对比后定稿）
+  characters/       # 角色 canon 图（白底四视图，跨集复用；人脸图 30 天有效期，注意刷新）
+  scenes/           # 场景 canon 图
+  props/            # 道具 canon 图
+  style.md          # 风格基线（待定：真人 vs 动漫试点对比后定稿）
+  registry.json     # 生成台账（原始 URL 24h 有效，拿到即下载落盘）
   <episode>/        # 每集产出
     frames/         # 分镜首帧
     videos/         # 视频片段
