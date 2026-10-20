@@ -1,0 +1,1 @@
+Accept the lie detector—useful to verify statements later, though I can't actually verify much myself... Actually it lets me "verify" others publicly, or I could use it privately. Accepting adds credibility.

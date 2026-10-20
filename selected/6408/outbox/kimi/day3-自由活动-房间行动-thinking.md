@@ -1,0 +1,1 @@
+Situation: I pulled the blackout again. I'm in basement alone (dark). I should not fix the generator — keep the blackout for tonight's plan to sneak into Di Xi's bedroom. Delay device already used. So do nothing ([]) — but wait, could I... my plan requires blackout to persist. Do nothing.

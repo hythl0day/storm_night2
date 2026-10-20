@@ -1,0 +1,5 @@
+Day1 free activity. I'm magician, safe day 1. Go to study to open safe? Safe contains a knife—opening it publicly gives me a knife (civilian,自卫用). But I announced退出, no votes. Knife in safe is a weapon; getting it could protect or look suspicious. As civilian, knife only自卫. But also—and good for soft self-defense. Room limit 3. Study has statue (environmental weapon). Going alone to study—someone could kill me there. Alternatively stay会客室 with杰米尼.
+
+Safer: invite狄西 to书房? Opening safe in front of狄西 builds trust. Or go alone—risk. 健壮 vs most: I can空手 kill conditions only for killers, irrelevant. I'm平民, could be murdered. Day1 killers may act.
+
+I'll choose书房 and invite狄西—he's detective, opening safe together, transparent. Actually safe opened gives刀 to whoever takes it;狄西 already has gun. If I open, I take刀. That's自卫 tool. Good.

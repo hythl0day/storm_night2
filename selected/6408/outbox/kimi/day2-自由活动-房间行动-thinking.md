@@ -1,0 +1,1 @@
+Device already set in 监控室 (used). Can't re-set. Gift options only. Room is lit (flashlight). No action needed — keep 不明药剂 and keys. Actions empty.

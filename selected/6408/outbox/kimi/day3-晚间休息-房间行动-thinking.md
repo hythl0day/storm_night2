@@ -1,0 +1,3 @@
+Current state: I'm in 会客室 with 狄西 and 杰米尼. Tonight is the murder window. If I attack now: 会客室 is bright, 3 people, non-killers = 2. 不明药剂 requires ≤1 non-killer — can't use. No other means. So no legal kill tonight in the parlor. Options: I could go... too late, already in parlor.
+
+Best action: nothing? Actions list only has unlock/set_device/gift. 会客室 is bright — any action visible. No useful action. Best: do nothing, avoid suspicion, stay quiet, blend in. Actions: [].

@@ -1,0 +1,1 @@
+I'm oddi. Only 3 alive: me, 狄西, 杰米尼. 1 killer left (me). Today must murder or lose tomorrow. Speech: attack 狄西's plan subtly. Also maybe use 测谎仪/看破伪装? I have 看破伪装? No — 测谎仪 = 看破伪装, but using it here would consume... it's an item, usable? The legal actions only list see_through. Skip.

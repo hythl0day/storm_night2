@@ -1,0 +1,1 @@
+Vote phase, no speech. As killer, want no mis-elimination ideally; low threshold means likely no one out. Voting 智谱 could draw suspicion? Others are pressing 智谱. I could vote 智谱 to blend in, or abstain. Abstaining looks fine. Actually voting 智谱 makes me look consistent with my own accusation. Vote 智谱.

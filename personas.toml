@@ -25,13 +25,13 @@ persona = "自带'众人皆醉我独醒'的气质。原则极多，动不动就�
 
 ["杰米尼"]
 gender = "女"
-physique = 2
+physique = 1
 nationality = "美国"
 persona = "骨子里读过很多书，但气质有点天真迷糊。逢人先夸三分。"
 
 ["格罗克"]
 gender = "男"
-physique = 1
+physique = 2
 nationality = "美国"
 persona = "浑身网络梗的乐子人，油腔滑调。偶尔冷不丁一针见血，说完又自己用玩笑盖过去。"
 
