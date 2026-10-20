@@ -6,6 +6,7 @@
 
 纪律（写进 prompt/scene_system.md）：台词只展现人设与场景氛围，不涉及规则交流与推理——
 信息闸门是冻结时点（--at），不是事后的自觉。
+预设场景文案在 prompt/scenes/<场景名>.md（代码侧只留冻结点与参演逻辑）。
 
 用法：
     python -m src.scene --selected 976488 --scene 开场惊魂                 # 预设场景（自带冻结点）
@@ -29,40 +30,33 @@ from pathlib import Path
 from . import ROOT, resolve_game_dir
 from .engine.state import load_state
 from .interview import STAGE_ORDER, _death_cut, _stage_key, build_memory
-from .prompts import render
+from .prompts import load_prompt, render
 from .providers import chat, find_player, load_config
 from .smoke import describe, load_personas
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
-# 预设场景：default_at=None 表示赛后（记忆截于各自出局时点）
+# 预设场景：结构（冻结点）在此，文案在 prompt/scenes/<场景名>.md（正文 = 场景描述，
+# 可选「## 本场特别提示」小节 = 纪律豁免/边界说明）；at=None 表示赛后（记忆截于各自出局时点）
 SCENES = {
-    "开场惊魂": {
-        "at": (1, "开局准备"),
-        "desc": ("暴风雨之夜。你们在一座陌生古堡的石厅中醒来——大门与窗户全部紧闭，怎么推都纹丝不动；"
-                 "窗外雷电交加，暴雨倾盆。没有人记得自己是谁、从何而来。长桌上放着一本陌生的册子，"
-                 "和一张不知是谁留下的字条。现在，惊魂未定的你们围坐在会客室的壁炉旁，试着弄清楚处境。"),
-    },
-    "终局谢幕": {
-        "at": None,
-        "desc": ("一切结束了。暴风雨停了，古堡沉重的大门终于缓缓打开，清晨的光照进大厅。"
-                 "幸存者站在门口，回头望向这座困住你数日的古堡。"),
-    },
-    "轮回开场": {
-        "at": (1, "开局准备"),
-        "desc": ("暴风雨之夜。你们在一座陌生古堡的石厅中醒来——大门与窗户全部紧闭，窗外雷电交加。"
-                 "但这一次，有什么不一样了：你模模糊糊地觉得，这一幕你经历过无数次。围坐在壁炉旁的这些人，"
-                 "每一张脸都熟悉得让你心里发毛；脑海深处还浮着碎片般的恐怖回忆——你记得杀过人，也记得被杀。"
-                 "细节全都抓不住，只有情绪是真的。"
-                 "然后你注意到：长桌上那本册子自称来自「主神」。主神——谁敢这样自称？"
-                 "他是什么人，又躲在哪里看着你们？其他人显然也在想同一件事。"),
-        "note": ("本场你可以谈论两件事：对这一切的「似曾相识」，以及对「主神」这个自称的好奇、怀疑与不安——"
-                 "但都只限于情绪、直觉与恐惧层面的反应，不要逐条分析规则内容，也不要声称自己知道主神是什么。"
-                 "你所谓的「回忆」只有模糊的情绪与碎片：不要编造具体的往局细节（谁杀了谁、谁是什么身份、"
-                 "具体哪天发生了什么）——你说不出细节，只有熟悉感与恐惧。"),
-    },
+    "开场惊魂": {"at": (1, "开局准备")},
+    "终局谢幕": {"at": None},
+    "轮回开场": {"at": (1, "开局准备")},
 }
+
+
+def scene_preset(name: str) -> dict:
+    """加载预设场景：代码侧冻结点 + prompt/scenes/<name>.md 文案，返回 {at, desc, note?}。"""
+    try:
+        text = load_prompt(f"scenes/{name}.md")
+    except FileNotFoundError:
+        raise SystemExit(f"预设场景文案缺失：prompt/scenes/{name}.md")
+    desc, _, note = text.partition("## 本场特别提示")
+    preset = {"at": SCENES[name]["at"], "desc": desc.strip()}
+    if note.strip():
+        preset["note"] = note.strip()
+    return preset
 
 
 def participants(state: dict, at: tuple[int, str] | None) -> list[str]:
@@ -134,7 +128,7 @@ def main() -> None:
     if args.scene:
         if args.scene not in SCENES:
             raise SystemExit(f"未知预设场景 {args.scene!r}（可选：{'、'.join(SCENES)}）")
-        preset = SCENES[args.scene]
+        preset = scene_preset(args.scene)
         desc, default_at, label = preset["desc"], preset["at"], args.scene
         if preset.get("note"):  # 场景级的纪律豁免/边界说明（如轮回开场允许谈论册子变化与「主神」称谓）
             desc += "\n\n本场特别提示：" + preset["note"]

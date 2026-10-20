@@ -54,12 +54,14 @@ from .gamedata import (
     WEAPONS,
     physique_desc,
 )
+from .prompts import load_prompt, render
 from .providers import find_player, load_config
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
+HOST = "主神"  # 措辞统一（v4.0.10）：与 Orchestrator.host_term / game_system.md 的 {host} 占位符同源
 RULES_VERSION = "v4.0.10"  # v4.0.7：看破伪装技能声明改验"是否拥有"；providers 空 200 响应改可重试错误
                            # v4.0.8：看破伪装行踪改按事实判定（visits 台账），监控空白/抹除/密道隐匿不再影响
                            # v4.0.9：看破伪装道具声明改验"是否曾经持有"（ever_items 台账），消耗/转手不再误判谎言
@@ -67,32 +69,24 @@ RULES_VERSION = "v4.0.10"  # v4.0.7：看破伪装技能声明改验"是否拥�
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "杀手", "杀手"]
 
-IDENTITY_BRIEF = {
-    "平民": "你是平民。找出两名杀手，把他们送上投票席；活下去。",
-    "杀手": "你是杀手。两名杀手都拥有完整的主动谋杀权：每天自由活动与晚间休息各有一个谋杀窗口，"
-            "每个窗口全队至多发动一次尝试（按行动顺序询问，仅放弃或无合法目标才顺延给同伙），"
-            "每天全队至多一起成功谋杀（规则书 §7.6）。每天两次密谋频道（自由活动开始前、晚间休息选房前）"
-            "与同伙私密协调。持有「万能钥匙」的杀手还可在自由活动开始前消耗一次【暴力破解】秘密拉电闸停电"
-            "（门锁失效、监控缺失、除会客室外全部黑暗）——停电是抹掉监控记录、免开锁进卧室、撕开守夜的核心手段（规则书 §7.5）。",
+IDENTITY_BRIEF_FILE = {  # 身份简报文案：prompt/deal_identity_*.md
+    "平民": "deal_identity_civilian.md",
+    "杀手": "deal_identity_killer.md",
 }
 
 
+def _identity_brief(identity: str, lite: bool) -> str:
+    """身份简报文案（prompt/deal_identity_*.md）；lite 局杀手换用无 § 引用版。"""
+    name = IDENTITY_BRIEF_FILE[identity]
+    if lite and identity == "杀手":
+        name = name.replace(".md", "_lite.md")
+    return load_prompt(name)
+
+
 def announcement(safe_item: str) -> str:
-    """开局公告（主神字条）：保险箱内容公开 + 桌上凶器公开。"""
-    return f"""# 开局公告
-
-欢迎来到暴风夜。
-
-你们是六名失去记忆的客人。但你们之中隐藏着两个杀手。找出他们并通过投票淘汰他们；否则，他们将会一个一个杀死你们所有人。
-
-具体的游戏规则就放在大厅的桌上，自己读。
-
-书房保险箱里，我留了一件礼物：「{safe_item}」。谁先打开，就是谁的。
-
-大厅的桌上还有我年轻时的收藏：「{TABLE_WEAPON}」.你们中的佼佼者可以通过选举成为侦探，便可获得这把武器，以及更多票权。至于谁能拿到它，就看你们的本事了。
-
-—— 主神
-"""
+    """开局公告（主神字条）：保险箱内容公开 + 桌上凶器公开。文案：prompt/deal_announcement.md。"""
+    return render("deal_announcement.md",
+                  safe_item=safe_item, table_weapon=TABLE_WEAPON, host=HOST) + "\n"
 
 
 def load_personas(path: Path) -> dict:
@@ -356,13 +350,7 @@ def validate(state: dict) -> list[str]:
 
 
 # lite 局特权席私密卡附段（deal --seats 的 [full] 标记）：别人的册子是残页，只有你的完整——信息优势纪律
-PRIVILEGED_NOTE = [
-    "## 你的册子是完整的",
-    "别人的册子都被撕去了几页——他们只有一份生存须知，不知道职业与道具的完整清单、分配结构，"
-    "也不知道许多机制的存在，只能在主神给出的菜单里临场发现；只有你手里的这本是完整的。",
-    "这份信息不对称是你最大的武器，藏好它：不要引用只有完整册子才有的知识——需要动用这些知识时，"
-    "把它包装成你的猜测、直觉或推理，让别人以为你和他们一样无知。",
-]
+# 文案：prompt/deal_privileged_note.md（段落单行排列，write_card 按行并入，保持卡片逐字节不变）
 
 
 def write_card(player: dict, players: list, lite: bool = False, privileged: bool = False) -> str:
@@ -370,9 +358,7 @@ def write_card(player: dict, players: list, lite: bool = False, privileged: bool
     不引用规则书章节；身份简报中的规则书引用同步剥离。
     privileged = lite 局特权席：卡片按 full 格式写（引用完整规则书章节），并附"你的册子是完整的"附段。"""
     p = player
-    brief = IDENTITY_BRIEF[p["identity"]]
-    if lite:
-        brief = brief.replace("（规则书 §7.5）", "").replace("（规则书 §7.6）", "")
+    brief = _identity_brief(p["identity"], lite)
     lines = [
         f"# {p['name']} 的私密卡（仅本人可见）",
         "",
@@ -382,7 +368,7 @@ def write_card(player: dict, players: list, lite: bool = False, privileged: bool
         brief,
     ]
     if privileged:
-        lines += ["", *PRIVILEGED_NOTE]
+        lines += ["", *load_prompt("deal_privileged_note.md").splitlines()]
     if p["identity"] == "杀手":
         partner = next(q for q in players if q["identity"] == "杀手" and q["name"] != p["name"])
         lines.append(

@@ -90,14 +90,18 @@ class TestRunScene(unittest.TestCase):
 class TestPresets(unittest.TestCase):
     def test_loop_opening_preset(self):
         """轮回开场预设：冻结在开局准备（同开场惊魂），钩子 = 既视感 + 对「主神」自称的好奇与怀疑
-        （v4.0.10 起措辞统一为「主神」，不再做主持人/主神对照），note 写明纪律豁免边界（不编造往局细节）。"""
-        from src.scene import SCENES
-        p = SCENES["轮回开场"]
+        （v4.0.10 起措辞统一为「主神」，不再做主持人/主神对照），note 写明纪律豁免边界（不编造往局细节）。
+        文案存于 prompt/scenes/<场景名>.md，scene_preset() 负责加载。"""
+        from src.scene import scene_preset
+        p = scene_preset("轮回开场")
         self.assertEqual(p["at"], (1, "开局准备"))
         self.assertIn("主神", p["desc"])
         self.assertNotIn("主持人", p["desc"])  # 措辞已统一，不再有对照
         self.assertIn("好奇、怀疑与不安", p["note"])
         self.assertIn("不要编造具体的往局细节", p["note"])
+        p2 = scene_preset("终局谢幕")  # 无特别提示小节的预设不带 note
+        self.assertIsNone(p2["at"])
+        self.assertNotIn("note", p2)
 
 
 if __name__ == "__main__":

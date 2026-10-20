@@ -357,7 +357,7 @@ python -m src.scene --selected s1-e1 --scene 开场惊魂 --seats claude,deepsee
 | --------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
 | `src/providers.py`    | ✅ 可用 | 多协议 API 客户端与配置加载（`load_config` / `chat` / `find_player`），被其他模块复用                     |
 | `src/prompts.py`      | ✅ 可用 | prompt 模板加载器：读取根目录 `prompt/` 下的 md 模板，支持占位符渲染（`__file__` 锚定，任意目录运行皆可） |
-| `prompt/`             | ✅ 可用 | prompt 模板目录（game/interview/scene/smoke 四个系统提示），与代码分离、可直接编辑                        |
+| `prompt/`             | ✅ 可用 | prompt 模板目录（game/interview/scene/smoke 系统提示 + deal 开局公告/身份简报/特权席附段 + scenes/ 补拍预设文案），与代码分离、可直接编辑 |
 | `personas.toml`       | ✅ 可用 | 角色人设卡（性别/体格/国籍/性格人设），smoke 与后续 prompt 模板共用                                       |
 | `src/smoke.py`        | ✅ 可用 | 连通性测试（席位选择 / 随机抽取 / 真人席位）                                                              |
 | `src/ping.py`         | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关）                                             |

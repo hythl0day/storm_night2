@@ -15,7 +15,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import unittest
 
-from src.deal import ROOT, deal, load_personas, validate, write_card
+from src.deal import ROOT, announcement, deal, load_personas, validate, write_card
 from src.engine import Engine
 from src.gamedata import (
     ITEM_DESC,
@@ -272,6 +272,13 @@ class TestDealVillainGuarantees(unittest.TestCase):
     def test_deal_still_deterministic(self):
         self.assertEqual(deal(42, self.players, self.personas, None),
                          deal(42, self.players, self.personas, None))
+
+    def test_announcement_from_template(self):
+        """开局公告与特权席附段文案抽自 prompt/ 模板（占位符渲染，产物口径不变）。"""
+        text = announcement("急救箱")
+        self.assertIn("「急救箱」", text)
+        self.assertIn("左轮手枪", text)
+        self.assertTrue(text.endswith("\n"))
 
     def test_full_seats_privileged(self):
         """lite 局特权席（[full] 标记）：state 记 full_rule_seats；特权席拿 full 格式卡
