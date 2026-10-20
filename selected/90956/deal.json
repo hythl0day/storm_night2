@@ -1,0 +1,119 @@
+{
+  "seed": 90956,
+  "ruleset": "rules-6.md",
+  "rules_version": "v4.0.9",
+  "is_lite_rule": false,
+  "excluded_seats": [],
+  "pinned_identities": {
+    "claude": "杀手"
+  },
+  "mode": "6人局",
+  "phase": {
+    "day": 1,
+    "stage": "开局准备"
+  },
+  "order": [
+    "杰米尼",
+    "奇米",
+    "智谱",
+    "格罗克",
+    "狄西",
+    "克劳德"
+  ],
+  "safe_item": "刀",
+  "table_items": [
+    {
+      "name": "左轮手枪",
+      "uses_left": 1
+    }
+  ],
+  "unused_professions": [
+    "医师",
+    "魔术师"
+  ],
+  "unused_items": [
+    "急救箱",
+    "测谎仪",
+    "鲁米诺试剂"
+  ],
+  "players": [
+    {
+      "id": "grok",
+      "name": "格罗克",
+      "gender": "男",
+      "physique": 2,
+      "nationality": "美国",
+      "identity": "平民",
+      "profession": "黑客",
+      "item": "窃听器",
+      "item_uses_left": 2,
+      "alive": true
+    },
+    {
+      "id": "kimi",
+      "name": "奇米",
+      "gender": "女",
+      "physique": 2,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "机械师",
+      "item": "螺丝起子",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "deepseek",
+      "name": "狄西",
+      "gender": "男",
+      "physique": 4,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "运动员",
+      "item": "可疑的粉末",
+      "item_uses_left": 1,
+      "alive": true
+    },
+    {
+      "id": "glm",
+      "name": "智谱",
+      "gender": "男",
+      "physique": 3,
+      "nationality": "中国",
+      "identity": "平民",
+      "profession": "心理医生",
+      "item": "手电筒",
+      "item_uses_left": 2,
+      "alive": true
+    },
+    {
+      "id": "claude",
+      "name": "克劳德",
+      "gender": "女",
+      "physique": 3,
+      "nationality": "美国",
+      "identity": "杀手",
+      "profession": "建筑师",
+      "item": "棒球棍",
+      "item_uses_left": 1,
+      "alive": true,
+      "extra_items": [
+        "木马程序U盘"
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "杰米尼",
+      "gender": "女",
+      "physique": 1,
+      "nationality": "美国",
+      "identity": "杀手",
+      "profession": "化学家",
+      "item": "不明药剂",
+      "item_uses_left": 1,
+      "alive": true,
+      "extra_items": [
+        "万能钥匙"
+      ]
+    }
+  ]
+}

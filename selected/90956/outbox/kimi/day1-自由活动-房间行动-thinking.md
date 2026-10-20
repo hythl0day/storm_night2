@@ -1,0 +1,1 @@
+I'm Qimi, the detective/mechanic. I opened the monitoring room. Now I can view monitoring records.

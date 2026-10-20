@@ -1,0 +1,1 @@
+Only I declared monitoring room? I don't know others. I have unlock x2 via skill + screwdriver. Open it myself, priority. Cost one.

@@ -1,0 +1,1 @@
+I'm alone in my dark bedroom. No useful action — can't gift to anyone (alone). Actions empty.

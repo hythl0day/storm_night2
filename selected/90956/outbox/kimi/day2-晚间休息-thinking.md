@@ -1,0 +1,1 @@
+Go back to own bedroom. Maybe invite Grok? No—safer alone. Bedroom locks; only breaking in can enter, and if someone enters my room, I have revolver+baseball bat self-defense. Return empty actions.

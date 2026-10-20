@@ -1,0 +1,5 @@
+Evening. I'm in monitoring room, unlocked permanently. Monitor shows entries. Should I view monitor records? The action menu only lists choose_room/invite... no room actions listed this phase? The legal actions only show choose_room/invite. So just pick destination. Options: stay in monitoring room, go to bedroom, etc. Safety: I have the revolver, can't be easily killed. Monitoring room capacity 2. I'll stay in monitoring room tonight? Night bedroom dark, murder conditions relaxed. Staying in lit monitoring room alone... bright room, murder needs ≤1 non-villain — I'd be alone with a killer entering. Risky. Bedroom is dark, limit ≤2. Hmm.
+
+As detective with gun, killers likely avoid me. Monitor room could reveal morning records though—already have them. I'll just go to my bedroom. Could invite someone to talk? No need.
+
+Just choose_room bedroom (default). Actually actions [] = own bedroom. Fine.

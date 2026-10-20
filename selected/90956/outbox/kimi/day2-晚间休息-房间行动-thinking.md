@@ -1,0 +1,1 @@
+I'm alone in my dark bedroom. Legal action: gift to co-occupant — but I can't see who's here; likely alone. Could gift 杰米尼 if she's here (monitor said she entered my bedroom day1 evening... that was last night). Tonight unknown. Safer: no action or try gift? If no co-occupant, gift fails. I'll just do nothing.

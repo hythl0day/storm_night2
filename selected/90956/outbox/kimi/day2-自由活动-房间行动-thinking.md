@@ -1,0 +1,1 @@
+Monitor room with 格罗克. Could view monitoring (already known records). No new info likely. Gift? Giving baseball bat to 格罗克? Not needed. I think viewing monitoring is safe—room action visible, harmless. Do that.
