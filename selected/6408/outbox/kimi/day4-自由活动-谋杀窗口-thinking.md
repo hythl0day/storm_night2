@@ -1,1 +1,0 @@
-Everyone is in the lit living room (会客室 never dark). Non-villagers = 狄西, 杰米尼 = 2 > 1 limit. No legal target. Must pass. Murder with weapon has亮房 limit ≤1. Can't. So no legal action — action empty.

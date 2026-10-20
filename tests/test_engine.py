@@ -1190,7 +1190,7 @@ class TestCountdownAndNightRaid(unittest.TestCase):
         ev = eng.night_assign({"D": "A的卧室"}, invited={"D": "A"})
         self.assertEqual(ev["positions"]["A"], "A的卧室")
         self.assertEqual(ev["positions"]["D"], "A的卧室")  # 旧规则下 D 被静默拒之门外
-        self.assertIn("接受了你的邀请", ev["private"].get("A", ""))  # 邀请成立对主人可见
+        self.assertIn("接受了你的邀请", ev["private"].get("A", ""))  # 邀请成立对主神可见
         self.assertFalse(ev.get("host"))  # 无拦截即无 host 备注
 
     def test_invited_unlocker_keeps_inviter_notification(self):

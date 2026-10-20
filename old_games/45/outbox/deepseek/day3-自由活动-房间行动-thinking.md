@@ -46,7 +46,7 @@ Normal room needs ≤1. 会客室 is bright (永不黑暗), so not a dark room. 
 
 So I cannot murder in 会客室 with all present.
 
-Hmm. So what can I do this 自由活动 phase? 
+Hmm. So what can I do this 自由活动 phase?
 
 Options: I could try to move to another room? But the phase structure — actually the 房间行动 is the last part after entering. I already entered 会客室.
 
@@ -60,7 +60,7 @@ Hmm, but 自由活动 room actions... The murder action needs the right conditio
 
 So this phase, maybe I do nothing (actions: []) and plan for 晚间休息? But the prompt says "现在可使用房间设施或道具/技能。无动作可做则 actions 为 []."
 
-Actually the user says this is 自由活动 (房间行动). And the action menu only shows 谋杀. So maybe I should NOT murder now (can't) and just... 
+Actually the user says this is 自由活动 (房间行动). And the action menu only shows 谋杀. So maybe I should NOT murder now (can't) and just...
 
 Hmm, but actually wait. Let me reconsider whether I can murder. Actually, maybe I can murder now?
 
@@ -72,7 +72,7 @@ OK so what do I do? The phase is essentially just room actions. I could use 看�
 
 Hmm, but actually this seems odd. Let me reconsider — maybe I should think about the whole strategy.
 
-Key question: How do I win? I need to kill 豆包 and 杰米尼. Two kills needed. I have one murder chance per phase (自由活动 and 晚间休息 each one). 
+Key question: How do I win? I need to kill 豆包 and 杰米尼. Two kills needed. I have one murder chance per phase (自由活动 and 晚间休息 each one).
 
 But 会客室 is bright, can't kill. I need to get targets alone or in dark rooms.
 
@@ -104,21 +104,21 @@ Hmm, actually wait. Let me recount alive. Role table: 奇米, 豆包, 狄西, �
 
 So must kill. Need 2 kills (豆包, 杰米尼).
 
-Alternatively, if I kill one, then 2v1, and next day vote: 3 alive, need >1.5 = 2 votes. I have 奇米 + me = 2. So we can vote out the remaining平民! 
+Alternatively, if I kill one, then 2v1, and next day vote: 3 alive, need >1.5 = 2 votes. I have 奇米 + me = 2. So we can vote out the remaining平民!
 
 So: kill one 平民 → next day (Day 4) vote out the last 平民. That wins.
 
-Actually even better: kill one now, then Day 4 vote out other. 
+Actually even better: kill one now, then Day 4 vote out other.
 
 Or: kill one tonight, Day 4 morning 3 alive (2反派 +1平民). Vote: we both vote平民, 2 votes >1.5, out. 反派胜利!
 
-So I only need ONE successful kill. 
+So I only need ONE successful kill.
 
 So my one 不明药剂 is enough. Just need to make it successful.
 
 Now, how to get 豆包 alone/dark tonight?
 
-晚间休息: I go to 豆包's bedroom. It's dark (停电中, 卧室黑暗). Non-反派 in room ≤2 OK. 
+晚间休息: I go to 豆包's bedroom. It's dark (停电中, 卧室黑暗). Non-反派 in room ≤2 OK.
 
 But 豆包's bedroom door: 停电 →門锁失效, so I can enter freely. But if 豆包 is inside with someone (e.g., 杰米尼), then there are 2 非反派 — that's OK for dark room (≤2)! And 空手豁免 in dark.
 
@@ -128,13 +128,13 @@ But wait — if I'm in the room with 豆包 and 杰米尼, and I kill 豆包, th
 
 Hmm, but actually if both are in one bedroom, they're protecting each other. But dark room allows ≤2 non-反派. So I can still kill.
 
-But actually, my speech suggested 豆包 with me, 奇米 with 杰米尼. If 豆包 accepts my proposal, she'd come to my room or I go to hers. Then I kill her. 
+But actually, my speech suggested 豆包 with me, 奇米 with 杰米尼. If 豆包 accepts my proposal, she'd come to my room or I go to hers. Then I kill her.
 
-Actually, better: my speech said "豆包跟我一间". If that happens, 豆包 in my bedroom (dark). 奇米+杰米尼 in another. Then I kill 豆包. 
+Actually, better: my speech said "豆包跟我一间". If that happens, 豆包 in my bedroom (dark). 奇米+杰米尼 in another. Then I kill 豆包.
 
 But wait — if 豆包 is invited to my room... Actually I can't invite in 晚间休息 (I'm last in order, and 同入邀请 requires inviting someone AFTER me). I'm last (狄西). So I can't invite anyone. Hmm.
 
-Wait, action order: 格罗克 → 杰米尼 → 豆包 → 奇米 → 狄西. After 格罗克 out: 杰米尼 → 豆包 → 奇米 → 狄西. So Day 3 order, I'm last. So I cannot send 同入邀请 (need someone after me). 
+Wait, action order: 格罗克 → 杰米尼 → 豆包 → 奇米 → 狄西. After 格罗克 out: 杰米尼 → 豆包 → 奇米 → 狄西. So Day 3 order, I'm last. So I cannot send 同入邀请 (need someone after me).
 
 Hmm, but if 豆包 decides to go to my bedroom (following my speech suggestion), she could... but she'd need my invitation? No — to enter another's bedroom you need 开锁 or 受邀. 停电 →門锁失效, so anyone can enter any bedroom freely during 停电. So 豆包 could just walk into my room.
 
@@ -148,7 +148,7 @@ Actually, let me reconsider my own speech: I proposed 豆包 with me, 奇米 wit
 
 But there's a problem: what if 豆包 goes to 会客室 instead? Or the plan doesn't hold.
 
-Anyway, for THIS phase (自由活动 房间行动), I'm in 会客室 and can't murder. So actions: [] probably. Or... could I do anything else? 
+Anyway, for THIS phase (自由活动 房间行动), I'm in 会客室 and can't murder. So actions: [] probably. Or... could I do anything else?
 
 Hmm, actually maybe I should kill in 自由活动 instead of 晚间, to be safe. But I'm stuck in 会客室.
 
@@ -170,9 +170,9 @@ Hmm. 杰米尼 is "普通·美国·女". 豆包 is "瘦弱·中国·女".
 
 Actually, killing 豆包 seems good since her defense is used.
 
-Wait, but actually, do I know 豆包's defense is used? She survived my 不明药剂 attack. 不明药剂 only defeated by 急救箱/敏捷闪避/药用不明药剂. She survived, so she had one of those. If 急救箱, consumed. If 敏捷闪避 (运动员), consumed (×1). If药用不明药剂, consumed. Either way consumed. So 豆包 now undefended. 
+Wait, but actually, do I know 豆包's defense is used? She survived my 不明药剂 attack. 不明药剂 only defeated by 急救箱/敏捷闪避/药用不明药剂. She survived, so she had one of those. If 急救箱, consumed. If 敏捷闪避 (运动员), consumed (×1). If药用不明药剂, consumed. Either way consumed. So 豆包 now undefended.
 
-Unless 豆包 got 急救箱 from someone else's 遗嘱. 克劳德的 急救箱 went to me (狄西). 格罗克的 螺丝起子 went to 豆包. So 豆包 has 螺丝起子, not 急救箱. So 豆包 has no defense now. 
+Unless 豆包 got 急救箱 from someone else's 遗嘱. 克劳德的 急救箱 went to me (狄西). 格罗克的 螺丝起子 went to 豆包. So 豆包 has 螺丝起子, not 急救箱. So 豆包 has no defense now.
 
 So kill 豆包 with 不明药剂 tonight = success!
 
@@ -260,13 +260,13 @@ So I pick 豆包's bedroom as target destination.
 
 Actually, can I murder someone in a different room than I go? No, I must be in the room.
 
-OK. And if 豆包 isn't in her bedroom (she went elsewhere), I fail to act (no target). 
+OK. And if 豆包 isn't in her bedroom (she went elsewhere), I fail to act (no target).
 
 Hmm. Risk: 豆包 might go to 杰米尼's room, or 会客室.
 
 Given my speech said "豆包跟我一间" — hopefully she goes to my room? But then I'd need to be in my own room. Hmm, conflict: I can only pick ONE destination.
 
-Ugh. If my speech said 豆包 comes to my room, and she does, but I go to HER room, we miss each other. 
+Ugh. If my speech said 豆包 comes to my room, and she does, but I go to HER room, we miss each other.
 
 Hmm. So I should pick my own bedroom? Because the plan I announced was 豆包 with me.
 
@@ -316,7 +316,7 @@ Versus going to 豆包's room: target only if she's in her room.
 
 Which is more likely? Given 豆包 is the one who was attacked, and my proposal, I think... hmm.
 
-Actually, you know, I think there's a strong argument that 豆包 will be cautious and NOT be alone with anyone, OR will stay with 杰米尼. 
+Actually, you know, I think there's a strong argument that 豆包 will be cautious and NOT be alone with anyone, OR will stay with 杰米尼.
 
 Hmm, but also 杰米尼 is American and seems friendly to everyone. 杰米尼 said "咱们不如就安安心心待在一起" — 会客室.
 
@@ -338,7 +338,7 @@ Hmm. Given 杰米尼 loves 会客室 ("炉火长明"), and 豆包 agrees... they
 
 But my speech and 奇米's warned against 会客室 ("大厅四面透风,真出事谁也挡不住"). Hmm.
 
-Risk assessment: If they sleep in 会客室, I can't kill, and I've wasted the night. 
+Risk assessment: If they sleep in 会客室, I can't kill, and I've wasted the night.
 
 Alternatively, I could ALSO go to 会客室 — but bright, can't kill. Useless.
 
@@ -370,7 +370,7 @@ OK, so actions = [].
 
 Hmm, but that makes this response trivial. Let me make sure I'm not missing a chance. Actually — could I use 【看破伪装】now? No, that's 公共发言阶段. So no.
 
-Could I use items? 万能钥匙 to... 拉闸? Already dark. No point. 
+Could I use items? 万能钥匙 to... 拉闸? Already dark. No point.
 
 OK, actions = [].
 
@@ -384,7 +384,7 @@ Hmm, hold on, but let me reconsider whether the game wants me to consider: the 4
 
 Actually, hmm, wait. Let me reconsider whether I should have voted/acted differently. No, it's done.
 
-Let me now also reconsider: is killing 豆包 tonight the best? I have 不明药剂 ×1. If I kill 豆包, then it's 2反派(me,奇米) vs 1平民(杰米尼). Day 4 vote: we vote 杰米尼, 2 votes >1.5 → out. 反派 win. 
+Let me now also reconsider: is killing 豆包 tonight the best? I have 不明药剂 ×1. If I kill 豆包, then it's 2反派(me,奇米) vs 1平民(杰米尼). Day 4 vote: we vote 杰米尼, 2 votes >1.5 → out. 反派 win.
 
 But wait — 杰米尼 might have a defense that... no, we vote in daytime, no defense. And 杰米尼 can't 武装指认 (no detective; 杰米尼 is平民 with possible weapon... hmm).
 
@@ -408,9 +408,9 @@ Actually for 武装指认, need a weapon: 左轮手枪/刀/棒球棍. 刀 — di
 
 Hmm. So one of 豆包/杰米尼/克劳德 has the 刀. 克劳德 out (机械师). So 刀 is with 豆包 or 杰米尼.
 
-Wait, 克劳德 was 平民/机械师. Hmm, the 刀 could be with 克劳德 (dead) → then it's collected and遗嘱 assigned. 克劳德's only遗嘱 was 急救箱. Hmm, so 克劳德 had no 刀 (else it'd be in遗嘱). Actually 遗嘱 lists all unused items. 克劳德's 遗嘱 only 急救箱. So 克劳德 didn't have 刀 (or 克劳德's 刀... hmm, 机械师 平民 with 急救箱? but 急救箱 is from 通用池). 
+Wait, 克劳德 was 平民/机械师. Hmm, the 刀 could be with 克劳德 (dead) → then it's collected and遗嘱 assigned. 克劳德's only遗嘱 was 急救箱. Hmm, so 克劳德 had no 刀 (else it'd be in遗嘱). Actually 遗嘱 lists all unused items. 克劳德's 遗嘱 only 急救箱. So 克劳德 didn't have 刀 (or 克劳德's 刀... hmm, 机械师 平民 with 急救箱? but 急救箱 is from 通用池).
 
-Hmm, actually 克劳德 was 平民机械师. 机械师 is a 职业, and 克劳德 also had 急救箱 (通用道具). But 平民的车道: 4平民 = 1 螺丝起子 + 3 from 通用池. So 克劳德 had 急救箱 from 通用池. So 克劳德 wasn't the 刀 holder (刀 holder would be a平民 who got 刀 instead... wait no).
+Hmm, actually 克劳德 was 平民机械师. 机械师 is a 职业, and 克劳德 also had 急救箱 (通用道具). But 平民的道具池: 4平民 = 1 螺丝起子 + 3 from 通用池. So 克劳德 had 急救箱 from 通用池. So 克劳德 wasn't the 刀 holder (刀 holder would be a平民 who got 刀 instead... wait no).
 
 Re-read §2: "保险箱内放置 1 件道具：从未被分配的剩余凶器 + 剩余反派道具 中随机...若抽中反派道具，剩余的那件凶器改由随机一名平民获得". 保险箱 = 病毒U盘 (反派道具). So the remaining 凶器 = 刀 → given to a random 平民.
 
@@ -430,7 +430,7 @@ Plan: Day 3 晚间 kill one平民 (say 豆包). Day 4 morning: 3 alive (me, 奇�
 
 Wait, 武装指认 timing: "① 一次投票未产生出局者时；② 投票将导致最后一名平民出局时". So if we vote 杰米尼 and it "will cause the last平民 to be eliminated", 杰米尼 can 武装指认 before execution!
 
-Hmm. So on Day 4, if I+奇米 vote 杰米尼 (2 votes, out), 杰米尼 can 武装指认. If she has a weapon (刀 or 左轮) and correctly accuses me → I'm out. 
+Hmm. So on Day 4, if I+奇米 vote 杰米尼 (2 votes, out), 杰米尼 can 武装指认. If she has a weapon (刀 or 左轮) and correctly accuses me → I'm out.
 
 Hmm. So I must kill 杰米尼 too, not vote her. But I can only kill one per phase... Day 3 晚间 one kill, Day 4 自由活动 another kill. Then Day 4 evening... no, if I kill both, 反派 win immediately.
 
@@ -450,7 +450,7 @@ Unless 杰米尼 has no weapon. But she might have 刀.
 
 Alternatively, on Day 4 vote, we (2反派) could abstain or vote to avoid triggering 武装指认? If no out, then ① "一次投票未产生出局者时" → 杰米尼 could still 武装指认. Hmm. Actually推出局: "投票将导致最后一名平民出局时". If we DON'T vote her out (abstain), no 武装指认 trigger ②; but trigger ① is "一次投票未产生出局者时" → 武装指认 can be used! So she can still指认.
 
-Ugh. So Day 4 with a平民 who has a weapon, she'll 武装指认 me. If correct, I'm out. Then 奇米 继任杀手, and 奇米 vs 杰米尼. Then 奇米 kills 杰米尼? 奇米 is帮凶 → becomes杀手. Then 1v1... 
+Ugh. So Day 4 with a平民 who has a weapon, she'll 武装指认 me. If correct, I'm out. Then 奇米 继任杀手, and 奇米 vs 杰米尼. Then 奇米 kills 杰米尼? 奇米 is帮凶 → becomes杀手. Then 1v1...
 
 Actually per rules: if I (killer) get out via 武装指认, 帮凶 继任杀手, game continues. Then 奇米 (new killer) vs 杰米尼. 奇米 can kill 杰米尼 that night → 反派 win.
 
@@ -495,6 +495,7 @@ notes: update.
 Let me write notes concisely.
 
 ## 第3天
+
 - 【身份】杀手/心理医生；同伙奇米(帮凶/化学家,持棒球棍)；我:不明药剂×1、急救箱×1
 - 【事实】存活4: 我+奇米 vs 豆包、杰米尼；万能钥匙已耗尽(不能再拉闸)；停电持续(今夜除会客室外全黑,卧室黑暗,锁失效,监控停)
 - 【事实】我行动顺序最后→不能发同入邀请；桌上左轮未必还在；"刀"在豆包/杰米尼之一(保险箱是U盘,刀归随机平民)

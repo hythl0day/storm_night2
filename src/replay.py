@@ -70,7 +70,7 @@ def _script_initial_order(source: Path) -> list[str] | None:
 
 def _validate_initial(initial: dict, source_state: dict, source: Path) -> None:
     errors: list[str] = []
-    for key in ("seed", "safe_item", "ruleset", "is_lite_rule"):
+    for key in ("seed", "safe_item", "ruleset", "is_lite_rule", "full_rule_seats"):
         if initial.get(key) != source_state.get(key):
             errors.append(f"{key}: {initial.get(key)!r} != {source_state.get(key)!r}")
     expected_order = _script_initial_order(source)
@@ -114,6 +114,7 @@ def _load_initial(source: Path, source_state: dict) -> tuple[dict, Path]:
                 None,
                 lite=bool(source_state.get("is_lite_rule")),
                 exclude=set(source_state.get("excluded_seats", [])),
+                full_seats=set(source_state.get("full_rule_seats") or []),
             )
         except SystemExit as e:
             raise ReplayError(f"无法按源存档重新生成开局：{e}") from e
@@ -154,6 +155,7 @@ def _copy_initial_files(source: Path, target: Path, initial: dict, personas_path
         else:
             (target / "public" / filename).write_text(fallback(), encoding="utf-8")
 
+    privileged_seats = set(initial.get("full_rule_seats") or [])  # lite 局特权席：分叉同样保留完整规则书
     for p in initial["players"]:
         seat = p["id"] or p["name"]
         src = source / "private" / seat / "card.md"
@@ -161,7 +163,18 @@ def _copy_initial_files(source: Path, target: Path, initial: dict, personas_path
         if src.exists():
             shutil.copyfile(src, dst)
         else:
-            dst.write_text(write_card(p, initial["players"], lite=bool(initial.get("is_lite_rule"))), encoding="utf-8")
+            dst.write_text(write_card(p, initial["players"],
+                                      lite=bool(initial.get("is_lite_rule")) and seat not in privileged_seats,
+                                      privileged=seat in privileged_seats), encoding="utf-8")
+        if seat in privileged_seats:
+            src_rules = source / "private" / seat / "rules-full.md"
+            dst_rules = target / "private" / seat / "rules-full.md"
+            if src_rules.exists():
+                shutil.copyfile(src_rules, dst_rules)
+            else:
+                full_rules = ROOT / "docs" / "rules-6.md"
+                if full_rules.exists():
+                    shutil.copyfile(full_rules, dst_rules)
 
 
 class ReplayOrchestrator(Orchestrator):

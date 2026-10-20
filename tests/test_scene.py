@@ -89,13 +89,14 @@ class TestRunScene(unittest.TestCase):
 
 class TestPresets(unittest.TestCase):
     def test_loop_opening_preset(self):
-        """轮回开场预设：冻结在开局准备（同开场惊魂），desc 含册子措辞变化与「主神」，
-        note 写明纪律豁免边界（可谈既视感与称谓，不编造往局细节）。"""
+        """轮回开场预设：冻结在开局准备（同开场惊魂），钩子 = 既视感 + 对「主神」自称的好奇与怀疑
+        （v4.0.10 起措辞统一为「主神」，不再做主持人/主神对照），note 写明纪律豁免边界（不编造往局细节）。"""
         from src.scene import SCENES
         p = SCENES["轮回开场"]
         self.assertEqual(p["at"], (1, "开局准备"))
         self.assertIn("主神", p["desc"])
-        self.assertIn("主持人", p["desc"])  # 措辞变化的对照
+        self.assertNotIn("主持人", p["desc"])  # 措辞已统一，不再有对照
+        self.assertIn("好奇、怀疑与不安", p["note"])
         self.assertIn("不要编造具体的往局细节", p["note"])
 
 

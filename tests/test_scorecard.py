@@ -189,6 +189,11 @@ class TestScorecard(unittest.TestCase):
         self.assertFalse(is_lite({}))
         self.assertFalse(is_lite({"is_lite_rule": None}))
         self.assertTrue(is_lite({"is_lite_rule": True}))
+        # lite 局特权席（full_rule_seats）：再单列 lite+特权· 池，不与纯 lite 同池
+        mixed = {"rules_version": "v4.0.10", "is_lite_rule": True, "full_rule_seats": ["claude"]}
+        self.assertEqual(rules_group(mixed), "lite+特权·v4.0")
+        self.assertNotEqual(rules_group(mixed),
+                            rules_group({"rules_version": "v4.0.10", "is_lite_rule": True}))
 
     def test_min_version_filter(self):
         """--min-version：多局报告只统计指定版本及以后的存档；无法解析版本的旧档被排除。"""

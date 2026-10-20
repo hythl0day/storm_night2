@@ -1,1 +1,0 @@
-Speak to defuse: agree to stay together, but I need to separate from杰米尼 at night... Actually my plan: kill狄西 tonight with药剂, but杰米尼 is also in会客室 — two non-反派, can't act. My plan relied on狄西 alone. Now need to shift: agree outwardly, plan to break away. But leaving = suspicion per狄西's logic. Still, speech only; act later.

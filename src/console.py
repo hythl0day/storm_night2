@@ -528,7 +528,7 @@ def main() -> None:
         print("输入 help 查看命令。")
         if not args.resume:
             print(f"\n\x1b[3m{OPENING}\x1b[0m")
-            for fname in ("roster.md", "announcement.md"):  # 环境描写：角色表 + 主人字条
+            for fname in ("roster.md", "announcement.md"):  # 环境描写：角色表 + 主神字条
                 f = game_dir / "public" / fname
                 if f.exists():
                     print(f"\n\x1b[90m{f.read_text(encoding='utf-8').strip()}\x1b[0m")

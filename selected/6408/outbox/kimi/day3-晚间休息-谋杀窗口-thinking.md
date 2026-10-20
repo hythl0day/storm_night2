@@ -1,1 +1,0 @@
-All three in bright parlor — poison requires ≤1 non-villain in bright room, so no legal target. Must pass. Actions empty.

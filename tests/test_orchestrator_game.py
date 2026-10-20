@@ -1871,6 +1871,31 @@ class TestLiteJustInTimeRules(MockGameTestBase):
         for f in inboxes:
             self.assertNotIn("§", f.read_text(encoding="utf-8"), f.name)
 
+    def test_privileged_seat_full_rules(self):
+        """lite 局特权席（full_rule_seats）：保留规则书章节引用、注入完整规则书快照；
+        其余 lite 席仍是临场内联口径（v4.0.10）。"""
+        d = write_game_dir(self.root, default_players())
+        sj = d / "state.json"
+        st = json.loads(sj.read_text(encoding="utf-8"))
+        st["is_lite_rule"] = True
+        st["full_rule_seats"] = ["C"]
+        sj.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        (d / "private" / "C" / "rules-full.md").write_text("（完整规则书快照：§7.6 谋杀判定）", encoding="utf-8")
+        orch = Orchestrator(d)
+        priv, lite_p = orch.player("C"), orch.player("A")
+        self.assertFalse(orch.seat_lite(priv))
+        self.assertTrue(orch.seat_lite(lite_p))
+        # 特权席：规则速查保留 § 引用；lite 席：临场内联
+        self.assertTrue(any("§7.3" in h for h in orch._stage_hints("第2天 · 投票", priv)))
+        self.assertNotIn("§", "、".join(orch._stage_hints("第2天 · 投票", lite_p)))
+        # 空手提示同样分口径（C 无凶器）
+        self.assertIn("见规则 §7.6", orch._weapon_hint(priv, None))
+        self.assertNotIn("§", orch._weapon_hint(orch.player("E"), None))  # E 也无凶器
+        # system prompt：特权席注入完整规则书，其余席注入本局（lite）规则书
+        self.assertIn("完整规则书快照", orch.system_prompt(priv))
+        self.assertNotIn("完整规则书快照", orch.system_prompt(lite_p))
+        self.assertIn("测试用规则书快照", orch.system_prompt(lite_p))
+
 
 class TestScriptFmt(MockGameTestBase):
     """script.md / console 显示修复：开局公告不重复；自由活动按房间分段；
@@ -1879,7 +1904,7 @@ class TestScriptFmt(MockGameTestBase):
     def test_no_duplicate_announcement(self):
         d = write_game_dir(self.root, default_players())
         (d / "public" / "announcement.md").write_text(
-            "# 开局公告\n\n欢迎来到暴风夜。\n规则书就放在大厅的桌上，自己读。\n—— 主人\n", encoding="utf-8")
+            "# 开局公告\n\n欢迎来到暴风夜。\n规则书就放在大厅的桌上，自己读。\n—— 主神\n", encoding="utf-8")
         self.run_game(d, killer_script=False)
         script = (d / "script.md").read_text(encoding="utf-8")
         self.assertEqual(script.count("规则书就放在大厅的桌上"), 1)  # 只在开头「开局公告」节出现一次

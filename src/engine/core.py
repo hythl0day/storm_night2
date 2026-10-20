@@ -615,7 +615,7 @@ class Engine:
                 is_invited = invited.get(name) in occupants  # 邀请者已在该房间 → 应邀成立
                 if sealed and want == sealed["room"] and name != sealed["owner"] and name not in sealed["allowed"]:
                     note = "无法进入（房间被临时锁死）"
-                    host.append(f"{name} 未能进入{want}（真实原因：被【封闭空间】锁死，主人：{sealed['owner']}）")
+                    host.append(f"{name} 未能进入{want}（真实原因：被【封闭空间】锁死，主神：{sealed['owner']}）")
                 elif len(occupants) >= ROOM_CAPACITY[want]:
                     note = f"无法进入（{want}已满员）"
                     host.append(f"{name} 未能进入{want}（真实原因：满员——{'、'.join(occupants)}）")

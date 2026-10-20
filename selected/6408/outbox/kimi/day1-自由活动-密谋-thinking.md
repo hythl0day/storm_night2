@@ -1,1 +1,0 @@
-Respond in Chinese. Coordinate: agree not to kill today, plan tomorrow. Suggest I open 书房保险箱 with 暴力破解 to get 刀; use 延时装置 somewhere. Night plans.

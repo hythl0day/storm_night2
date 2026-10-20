@@ -1,1 +1,0 @@
-Dark room, but flashlight was turned on by someone—room lit? The note says "有人打开了手电筒，房间被照亮" — so room is bright, can talk normally. Speech to 狄西、格罗克.

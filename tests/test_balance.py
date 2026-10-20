@@ -160,15 +160,15 @@ class TestHallCamping(unittest.TestCase):
         self.assertFalse(eng.state["stage_murder_used"])
         self.assertIsNone(eng.state["last_murder_day"])  # 不重置无杀倒计时
         self.assertFalse(eng.state["cases"])
-        # 邀请成立对主人私密可见（黑暗中也知道应邀者到来）
+        # 邀请成立对主神私密可见（黑暗中也知道应邀者到来）
         self.assertIn("接受了你的邀请", ev["private"].get("C", ""))
 
 
 class TestDealVillainGuarantees(unittest.TestCase):
     """deal 分配约束（v4.0）：平民×4 + 杀手×2；两杀手各一件互不重复凶器（刀/棒球棍/不明药剂），
     随机一名另得「万能钥匙」、另一名另得一件反派道具（可疑的粉末/木马程序U盘）；
-    平民车道（螺丝起子 1 人 + 其余 3 人从「通用池 5 件 + 未分出的反派道具」共 6 件各抽 1）；
-    桌上凶器固定「左轮手枪」（不进反派车道）；四凶器严格必现；职业 8 选 6 纯随机（无保底互换）。"""
+    平民道具池（螺丝起子 1 人 + 其余 3 人从「通用池 5 件 + 未分出的反派道具」共 6 件各抽 1）；
+    桌上凶器固定「左轮手枪」（不进反派道具池）；四凶器严格必现；职业 8 选 6 纯随机（无保底互换）。"""
 
     @classmethod
     def setUpClass(cls):
@@ -181,7 +181,7 @@ class TestDealVillainGuarantees(unittest.TestCase):
             self.assertEqual(validate(st), [], f"seed={seed} 分配校验失败")
             killers = [p for p in st["players"] if p["identity"] == "杀手"]
             self.assertEqual(len(killers), 2, f"seed={seed} 杀手人数错误")
-            # 双杀手车道：各一件互不重复的反派池凶器（左轮手枪固定上桌）
+            # 双杀手道具池：各一件互不重复的反派池凶器（左轮手枪固定上桌）
             for k in killers:
                 self.assertIn(k["item"], VILLAIN_WEAPON_POOL, f"seed={seed} 杀手凶器非法")
             self.assertNotEqual(killers[0]["item"], killers[1]["item"], f"seed={seed} 反派凶器重复")
@@ -195,23 +195,23 @@ class TestDealVillainGuarantees(unittest.TestCase):
             self.assertEqual(len(gear_holders[0]["extra_items"]), 1, f"seed={seed} 反派道具数错误")
             self.assertEqual(st["table_items"], [{"name": TABLE_WEAPON, "uses_left": 1}],
                              f"seed={seed} 桌上凶器缺失")
-            # 平民车道：螺丝起子恰好 1 人；无人持有万能钥匙；其余为通用池道具 /
+            # 平民道具池：螺丝起子恰好 1 人；无人持有万能钥匙；其余为通用池道具 /
             # 未分出的反派道具 /（保险箱抽中反派道具时的）剩余凶器
             civs = [p for p in st["players"] if p["identity"] == "平民"]
             self.assertEqual(len(civs), 4, f"seed={seed} 平民人数错误")
             for p in civs:
                 self.assertNotEqual(p["item"], "万能钥匙",
-                                    f"seed={seed} 平民 {p['name']} 抽到万能钥匙（禁入平民车道）")
+                                    f"seed={seed} 平民 {p['name']} 抽到万能钥匙（禁入平民道具池）")
                 self.assertFalse(p.get("extra_items"), f"seed={seed} 平民 {p['name']} 持有额外道具")
             self.assertEqual(sum(1 for p in civs if p["item"] == "螺丝起子"), 1,
-                             f"seed={seed} 螺丝起子车道错误")
+                             f"seed={seed} 螺丝起子道具池错误")
             for p in civs:
                 if p["item"] == "螺丝起子":
                     continue
                 self.assertTrue(
                     p["item"] in ITEMS_GENERAL or p["item"] in VILLAIN_ITEMS
                     or p["item"] in VILLAIN_WEAPON_POOL,
-                    f"seed={seed} 平民 {p['name']} 持有车道外道具 {p['item']}")
+                    f"seed={seed} 平民 {p['name']} 持有道具池外道具 {p['item']}")
             # 四凶器严格必现：反派 2 件 + 桌上 1 件 + 保险箱或第四平民 1 件
             weapons_in_play = [p["item"] for p in st["players"] if p["item"] in WEAPONS]
             if st["safe_item"] in WEAPONS:
@@ -245,7 +245,7 @@ class TestDealVillainGuarantees(unittest.TestCase):
         self.assertEqual(full["ruleset"], "rules-6.md")
         self.assertTrue(lite["is_lite_rule"])
         self.assertEqual(lite["ruleset"], "rules-6-lite.md")
-        self.assertEqual(lite["rules_version"], "v4.0.9")
+        self.assertEqual(lite["rules_version"], "v4.0.10")
         self.assertEqual(full["players"], lite["players"])
         self.assertEqual(full["order"], lite["order"])
         self.assertFalse(validate(lite))  # lite 局同样过分配校验
@@ -272,6 +272,38 @@ class TestDealVillainGuarantees(unittest.TestCase):
     def test_deal_still_deterministic(self):
         self.assertEqual(deal(42, self.players, self.personas, None),
                          deal(42, self.players, self.personas, None))
+
+    def test_full_seats_privileged(self):
+        """lite 局特权席（--full-seats）：state 记 full_rule_seats；特权席拿 full 格式卡
+        （章节引用 + "你的册子是完整的"附段），其余席仍是 lite 自包含卡；
+        只改信息口径、不消耗随机序列（同 seed 分配与纯 lite 局逐字节一致）。"""
+        lite = deal(42, self.players, self.personas, ["claude"], lite=True)
+        mixed = deal(42, self.players, self.personas, ["claude"], lite=True, full_seats={"claude"})
+        self.assertEqual(lite["full_rule_seats"], [])
+        self.assertEqual(mixed["full_rule_seats"], ["claude"])
+        self.assertEqual(lite["players"], mixed["players"])  # 分配不变
+        self.assertEqual(lite["order"], mixed["order"])
+        self.assertFalse(validate(mixed))  # 混局同样过分配校验
+        for p in mixed["players"]:
+            privileged = p["id"] == "claude"
+            card = write_card(p, mixed["players"],
+                              lite=not privileged, privileged=privileged)
+            if privileged:
+                self.assertIn("规则书 §", card)
+                self.assertIn("你的册子是完整的", card)
+                self.assertNotIn("行凶须知", card)
+            else:
+                self.assertNotIn("规则书 §", card, p["name"])
+                self.assertNotIn("你的册子是完整的", card, p["name"])
+
+    def test_full_seats_requires_lite_and_roster(self):
+        """--full-seats 仅配合 --lite；特权席须在本局阵容中。"""
+        with self.assertRaises(SystemExit):
+            deal(42, self.players, self.personas, ["claude"], full_seats={"claude"})
+        # 屏蔽 claude 后特权席仍指定它 → 不在本局阵容中，报错（不受随机抽席影响）
+        with self.assertRaises(SystemExit):
+            deal(42, self.players, self.personas, None, lite=True,
+                 exclude={"claude"}, full_seats={"claude"})
 
     def test_deal_writes_lite_flag(self):
         """deal 写入 is_lite_rule（默认 False = 高级规则；评分卡对缺字段旧档同样视为 False）。"""
@@ -361,7 +393,7 @@ class TestDealSeatSpecs(unittest.TestCase):
         self.assertEqual(ids.count("杀手"), 2)
         self.assertEqual(ids.count("平民"), 4)
         self.assertEqual(validate(st), [])
-        # 车道不受身份锁定影响：两名杀手中恰好一人持有万能钥匙
+        # 道具池不受身份锁定影响：两名杀手中恰好一人持有万能钥匙
         killers = [p for p in st["players"] if p["identity"] == "杀手"]
         self.assertEqual(sum(1 for k in killers if "万能钥匙" in k.get("extra_items", [])), 1)
 

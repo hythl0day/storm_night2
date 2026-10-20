@@ -35,6 +35,8 @@ python -m src.deal --seed 42 --seats gpt:杀手,claude,glm:平民  # 席位后�
 python -m src.deal --seed 42 --exclude grok   # 随机抽席屏蔽指定席位（逗号分隔，id 或名字；state 记 excluded_seats）
 python -m src.deal --seed 42 --lite    # 失忆版规则集（生存须知 + 临场规则下发；裁决规则不变，
                                        # state 记 is_lite_rule，评分卡独立分池不混算胜率）
+python -m src.deal --seed 42 --lite --full-seats claude   # lite 局特权席：claude 独持完整规则书，
+                                       # 其余席仍是 lite（state 记 full_rule_seats，评分卡再单列 lite+特权 池）
 
 # 跑局（二选一），跑到对局结束；中断后加 --resume 按席位断点续跑
 # （所有脚本的 --game 都可只给 id，如 --game 42 自动解析为 game/42）
@@ -74,7 +76,7 @@ python -m src.scorecard --min-version v4.0     # 只统计指定版本及以后�
 python -m unittest discover -s tests
 ```
 
-对局产物：`game/<id>/script.md` 是主神侧全记录（含剧透，供整理剧本）；`public/` 为公开口径，`private/` 为各席私密素材（内心独白/笔记），剪辑时注意防剧透。
+对局产物：`game/<id>/script.md` 是主持人侧全记录（含剧透，供整理剧本）；`public/` 为公开口径，`private/` 为各席私密素材（内心独白/笔记），剪辑时注意防剧透。
 
 ## 环境准备
 
@@ -101,7 +103,7 @@ export RELAY_API_KEY_CN="sk-你的key"
 
 **人设卡**：每个角色的性别 / 体格 / 国籍 / 性格人设写在 `personas.toml`（键名须与 `players.toml` 的 `name` 一致，未命中的席位按"普通人"处理）。人设只写性格不写职业（失忆设定；职业每局临时分配），且 prompt 中已声明"人设不影响推理能力""性格靠言行流露、禁止自我介绍"。性别/体格/国籍是游戏机制属性（空手谋杀判定、杀手线索会用到）——规则书不含固定角色表，每局开局以此文件为准生成角色表并全员公布；体格数值仅供裁决使用，注入 prompt 时会转成文字描述，角色不会得知数值。
 
-**措辞分时代**（v4.0.6）：full 规则书与 full 局的 AI 可见文案中主持人称「主神」（真人秀层设定，与采访间同一角色）；lite 时代保留匿名克制的「主持人」；采访间一律「主神」，补拍现场不出现该角色。
+**措辞统一**（v4.0.10）：AI 可见文案中主持人一律称「主神」（真人秀层设定，与采访间同一角色）——full 与 lite 时代不再分口径（避免 lite 特权席混局的措辞分裂）；补拍现场不出现该角色。
 
 ## 详细用法
 
@@ -159,10 +161,13 @@ python -m src.deal --seed 42 --seats gpt,claude   # 部分名单：指名 2 席�
 python -m src.deal --seed 42 --seats gpt:杀手,claude,glm:平民  # 席位后可锁身份（平民/杀手，先落位，state 记 pinned_identities）
 python -m src.deal --seed 42 --exclude grok,doubao   # 随机抽席时屏蔽席位（id 或名字，逗号分隔；两侧各需剩 ≥3 席）
 python -m src.deal --seed 42 --lite    # 失忆版精简规则集（rules-6-lite.md），见下
+python -m src.deal --seed 42 --lite --full-seats claude   # lite 局特权席：claude 独持完整规则书，见下
 python -m src.deal --seed 42 --out games/test   # 自定义输出目录
 ```
 
 **lite 规则集（失忆版）**：`--lite` 把注入 AI 的规则书换成 `docs/rules-6.md` 的精简版——只含生存骨架（处境/时间轴/投票/胜负/侦探），职业全表、道具全表与分配结构一律不下发，AI 靠私密卡（内联定义，自包含）和每阶段合法动作菜单临场发现机制；**裁决规则完全不变**（引擎按 v4.0 裁决），变的是 AI 的信息面。state 记 `is_lite_rule=True`，评分卡单独成组（`lite·vX.Y`，不与高级规则混池）。**临场规则下发**：full 局简报中指向"规则书 §X"的引用（投票武装指认/空手谋杀条件/看破伪装名目/统一开锁与进入结算共 4 处），lite 局自动替换为规则内容的内联说明——AI 在需要的那一刻才学到这条规则。
+
+**lite 局特权席**（`--full-seats`，v4.0.10）：lite 局中指定席位独持完整规则书（rules-6.md），其余席位仍是 lite——同一局内信息面不对称（"别人的册子都被撕去了几页，只有你的完整"）。特权席拿 full 格式私密卡（章节引用 + 藏拙纪律附段），完整规则书快照存 `private/<席位>/rules-full.md`；编排器对其保留 § 引用、其余席照常内联。特权席须在阵容中（配合 `--seats` 指名）。state 记 `full_rule_seats`，评分卡再单列 `lite+特权·vX.Y` 池；存档分叉（replay）保留特权席设定。
 
 生成的 `game/<seed>/` 结构：
 
@@ -174,14 +179,15 @@ rules.md               # 本局规则书快照
 players.toml           # 阵容与参数快照
 personas.toml          # 本局人设快照（Orchestrator 优先于项目根配置读取）
 public/roster.md       # 全员公布角色表（体格为文字描述，不含数值）
-public/announcement.md # 开局公告（主人字条）
+public/announcement.md # 开局公告（主神字条）
 private/<id>/card.md   # 每席私密卡：身份/同伙/职业技能/道具次数/开局准备义务
+private/<id>/rules-full.md  # 仅 lite 局特权席：完整规则书快照
 inbox/<id>/  outbox/<id>/   # 编排器阶段简报与回执（M4 起使用）
 ```
 
 内心独白等私密素材（M4 起）按席位归档到 `private/<id>/`（如 `inner.md` 内心独白、私聊记录、个人调查结果），与私密卡并列。
 
-分配约束（生成即校验，违反会报错退出）：**席位中美 3+3 对称**（纯随机模式自动满足，两侧 API 渠道均衡；手动 `--seats` 全员指定或部分名单导致不对称时仅提示）；`--seats` 可全可部分——指名不足 6 席时剩余随机补足，席位后附 `:身份` 可锁定该席身份（平民/杀手，先落位、剩余身份随机补给其余席；指定超配额报错，留痕 state `pinned_identities`）；身份 4 平民/2 杀手（v4.0 双杀手制，无帮凶无继任）；职业 8 选 6 不重复（纯随机，无保底）；道具车道：两杀手各得一件互不相同的凶器（刀/棒球棍/不明药剂），随机一名杀手另得万能钥匙、另一名另得一件反派道具（可疑的粉末/木马程序U盘）；平民螺丝起子 1 人 + 其余 3 人从「通用池 5 件 + 未分出的反派道具」共 6 件各抽 1（可能拿到仅供自卫的武器或只能正常调查的反派道具）；保险箱从剩余凶器 + 未分配反派道具中抽 1（开局全员公告"主人字条"内容）；四凶器必现（含桌上左轮手枪）。
+分配约束（生成即校验，违反会报错退出）：**席位中美 3+3 对称**（纯随机模式自动满足，两侧 API 渠道均衡；手动 `--seats` 全员指定或部分名单导致不对称时仅提示）；`--seats` 可全可部分——指名不足 6 席时剩余随机补足，席位后附 `:身份` 可锁定该席身份（平民/杀手，先落位、剩余身份随机补给其余席；指定超配额报错，留痕 state `pinned_identities`）；身份 4 平民/2 杀手（v4.0 双杀手制，无帮凶无继任）；职业 8 选 6 不重复（纯随机，无保底）；道具池：两杀手各得一件互不相同的凶器（刀/棒球棍/不明药剂），随机一名杀手另得万能钥匙、另一名另得一件反派道具（可疑的粉末/木马程序U盘）；平民螺丝起子 1 人 + 其余 3 人从「通用池 5 件 + 未分出的反派道具」共 6 件各抽 1（可能拿到仅供自卫的武器或只能正常调查的反派道具）；保险箱从剩余凶器 + 未分配反派道具中抽 1（开局全员公告"主神字条"内容）；四凶器必现（含桌上左轮手枪）。
 
 控制台输出是**主神视角**（含身份分配），不要外发。
 
@@ -208,7 +214,7 @@ python -m src.orchestrator --game game/012345 --resume   # 从 state.json 断点
 落盘产物（`game/<id>/`）：
 
 ```
-script.md                # 主神侧全记录：背景/阵容分配（全剧透）/全部发言与行动/裁决结果，不含内心独白；
+script.md                # 主持人侧全记录：背景/阵容分配（全剧透）/全部发言与行动/裁决结果，不含内心独白；
                          # 回执一律第三人称，自由活动按「选房/各房间交谈/各房间行动」分节
 public/log.md            # 公开口径：公告、发言、交换、死亡公告（按阶段标题）
 private/<id>/inner.md    # 内心独白（追加）；notes.md 私人笔记（每阶段覆盖）
@@ -296,11 +302,11 @@ python -m src.interview --selected s1-e1 --seat deepseek --memory m.md       # �
 
 **当前预设场景**（`--scene`，自带冻结时点）：
 
-| 预设 | 冻结点 | 内容 |
-| ---- | ---- | ---- |
-| `开场惊魂` | 第1天·开局准备 | 雷雨夜醒来、门窗紧闭、全员失忆，围坐会客室惊魂未定 |
-| `轮回开场` | 第1天·开局准备 | 既视感版开局：模糊记得经历过无数次（含杀人与被杀的碎片恐惧），并注意到册子措辞从「主持人」变成了「主神」（纪律豁免：可谈既视感与称谓，不编造往局细节） |
-| `终局谢幕` | 赛后（记忆截于各自出局时点） | 大门打开，幸存者每人一句谢幕感言 |
+| 预设       | 冻结点                       | 内容                                                                                                                                                         |
+| ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `开场惊魂` | 第1天·开局准备               | 雷雨夜醒来、门窗紧闭、全员失忆，围坐会客室惊魂未定                                                                                                           |
+| `轮回开场` | 第1天·开局准备               | 既视感版开局：模糊记得经历过无数次（含杀人与被杀的碎片恐惧），并对册子落款「主神」的自称产生好奇与怀疑（纪律豁免：可谈既视感与对主神的猜测，不编造往局细节） |
+| `终局谢幕` | 赛后（记忆截于各自出局时点） | 大门打开，幸存者每人一句谢幕感言                                                                                                                             |
 
 ```bash
 python -m src.scene --selected s1-e1 --scene 开场惊魂               # 预设场景（自带冻结点）
@@ -315,24 +321,24 @@ python -m src.scene --selected s1-e1 --scene 开场惊魂 --seats claude,deepsee
 
 `[settings]` 段：
 
-| 字段 | 说明 |
-| ---- | ---- |
-| `max_tokens` | 失控安全网（当前 16384）：正常回复 1-2K token 远触不到；篇幅约束在 `prompt/game_system.md` 的"输出篇幅纪律"。若某渠道报"max_tokens 超限"错误，在该席位单独调低 |
+| 字段               | 说明                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `max_tokens`       | 失控安全网（当前 16384）：正常回复 1-2K token 远触不到；篇幅约束在 `prompt/game_system.md` 的"输出篇幅纪律"。若某渠道报"max_tokens 超限"错误，在该席位单独调低                                    |
 | `reasoning_effort` | 全席统一思考强度（当前 `low`，压隐藏思考耗时）；席位可同名覆盖，填 `"none"` 表示不发该参数（claude 席位因上游只支持 adaptive 模式而例外）。启用前用 `python -m src.bench --effort` 验证渠道兼容性 |
 
 注意：**temperature 不发送**——所有席位统一走渠道默认值（部分中转站上游只接受默认温度，发送会报 400），配置里不要再写 `temperature`。
 
 `[[player]]` 段（每席一条，数量不限，当前模板 8 席）：
 
-| 字段 | 必填 | 说明 |
-| ---- | ---- | ---- |
-| `id` | 否 | 席位短 id（如 `deepseek`），ping / smoke 点名时用，比输入中文名方便 |
-| `name` | 是 | 角色名，用于日志与汇总显示 |
-| `model` | 是 | 模型名，以渠道方实际提供的为准 |
-| `base_url` | 是 | 接口地址，结尾 `/` 可有可无（程序会自动去掉） |
-| `api_key_env` | 是 | 存放真实 key 的**环境变量名** |
-| `api_type` | 否 | `openai`（默认，OpenAI 兼容 `/chat/completions`）或 `anthropic`（Claude 原生 `/v1/messages`） |
-| `max_tokens` | 否 | 该席位单独的输出上限，覆盖 `[settings]` 的全局值 |
+| 字段          | 必填 | 说明                                                                                          |
+| ------------- | ---- | --------------------------------------------------------------------------------------------- |
+| `id`          | 否   | 席位短 id（如 `deepseek`），ping / smoke 点名时用，比输入中文名方便                           |
+| `name`        | 是   | 角色名，用于日志与汇总显示                                                                    |
+| `model`       | 是   | 模型名，以渠道方实际提供的为准                                                                |
+| `base_url`    | 是   | 接口地址，结尾 `/` 可有可无（程序会自动去掉）                                                 |
+| `api_key_env` | 是   | 存放真实 key 的**环境变量名**                                                                 |
+| `api_type`    | 否   | `openai`（默认，OpenAI 兼容 `/chat/completions`）或 `anthropic`（Claude 原生 `/v1/messages`） |
+| `max_tokens`  | 否   | 该席位单独的输出上限，覆盖 `[settings]` 的全局值                                              |
 
 双协议说明：中转站、DeepSeek、Kimi 官方一般都提供 OpenAI 兼容接口，走 `openai`；Claude 官方或支持原生协议的中转站可走 `anthropic`（该协议会把 system 消息提升为顶层参数，`max_tokens` 固定 4096，token 用量归一化为 `total_tokens`）。两种协议可以按席位混用。
 
@@ -346,28 +352,28 @@ python -m src.scene --selected s1-e1 --scene 开场惊魂 --seats claude,deepsee
 
 ## 模块现状
 
-| 文件 | 状态 | 用途 |
-| ---- | ---- | ---- |
-| `src/providers.py` | ✅ 可用 | 多协议 API 客户端与配置加载（`load_config` / `chat` / `find_player`），被其他模块复用 |
-| `src/prompts.py` | ✅ 可用 | prompt 模板加载器：读取根目录 `prompt/` 下的 md 模板，支持占位符渲染（`__file__` 锚定，任意目录运行皆可） |
-| `prompt/` | ✅ 可用 | prompt 模板目录（game/interview/scene/smoke 四个系统提示），与代码分离、可直接编辑 |
-| `personas.toml` | ✅ 可用 | 角色人设卡（性别/体格/国籍/性格人设），smoke 与后续 prompt 模板共用 |
-| `src/smoke.py` | ✅ 可用 | 连通性测试（席位选择 / 随机抽取 / 真人席位） |
-| `src/ping.py` | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关） |
-| `src/deal.py` | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出 |
-| `src/engine/` | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](docs/engine.md) |
-| `src/gamedata.py` | ✅ 可用 | 与规则书对齐的职业/道具/技能次数/体格映射与 lite 私密卡内联词条 |
-| `src/fmt.py` | ✅ 可用 | 共享人读格式化：动作 JSON → 人读文本 + 角色状态统一口径（`player_status`） |
-| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/四通道 JSON 收集/引擎裁决/落盘与断点续跑 |
-| `src/replay.py` | ✅ 可用 | 存档分叉：目标前复用原 outbox，指定席位前另存为，console/orchestrator --resume 接续 |
-| `src/viewer.py` | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py / console.py / interview.py 共用 |
-| `src/view.py` | ✅ 可用 | 只读查看器（M4.5）：`status`/`log`/`peek`/`inner`/`host` 子命令，与跑局解耦 |
-| `src/console.py` | ✅ 可用 | 交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令 |
-| `src/scorecard.py` | ✅ 可用 | 评分卡（M6）：单局/多局报告（版本分组胜率/席位胜率/机制利用率/多样性/成本） |
-| `src/interview.py` | ✅ 可用 | 采访录制器：存档复原记忆 + 多轮问答（采访中可用查看命令），归档 `<对局>/interview/` |
-| `src/scene.py` | ✅ 可用 | 补拍演出器：冻结时点重聚补演（预设场景/自由描述，多角色多轮对话），归档 `<对局>/scene/` |
-| `src/bench.py` | ✅ 可用 | API 速度诊断（流式 TTFT/吞吐） |
-| `tests/` | ✅ 可用 | 引擎单测 + 平衡场景回归 + 编排 mock 全流程 + 采访/补拍：`python -m unittest discover -s tests` |
+| 文件                  | 状态    | 用途                                                                                                      |
+| --------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| `src/providers.py`    | ✅ 可用 | 多协议 API 客户端与配置加载（`load_config` / `chat` / `find_player`），被其他模块复用                     |
+| `src/prompts.py`      | ✅ 可用 | prompt 模板加载器：读取根目录 `prompt/` 下的 md 模板，支持占位符渲染（`__file__` 锚定，任意目录运行皆可） |
+| `prompt/`             | ✅ 可用 | prompt 模板目录（game/interview/scene/smoke 四个系统提示），与代码分离、可直接编辑                        |
+| `personas.toml`       | ✅ 可用 | 角色人设卡（性别/体格/国籍/性格人设），smoke 与后续 prompt 模板共用                                       |
+| `src/smoke.py`        | ✅ 可用 | 连通性测试（席位选择 / 随机抽取 / 真人席位）                                                              |
+| `src/ping.py`         | ✅ 可用 | 单席位连通性诊断（详细 HTTP 错误输出、`--insecure` 调试开关）                                             |
+| `src/deal.py`         | ✅ 可用 | 开局生成器（M1）：席位抽取 + 身份/职业/道具/顺序/保险箱分配 + `game/<seed>/` 输出                         |
+| `src/engine/`         | ✅ 可用 | 规则裁决引擎（M3）：谋杀/投票/台账/监控/阶段流转，详见 [engine.md](docs/engine.md)                        |
+| `src/gamedata.py`     | ✅ 可用 | 与规则书对齐的职业/道具/技能次数/体格映射与 lite 私密卡内联词条                                           |
+| `src/fmt.py`          | ✅ 可用 | 共享人读格式化：动作 JSON → 人读文本 + 角色状态统一口径（`player_status`）                                |
+| `src/orchestrator.py` | ✅ 可用 | 编排器主循环（M4/M5）：run_game() 驱动完整对局——阶段简报/四通道 JSON 收集/引擎裁决/落盘与断点续跑         |
+| `src/replay.py`       | ✅ 可用 | 存档分叉：目标前复用原 outbox，指定席位前另存为，console/orchestrator --resume 接续                       |
+| `src/viewer.py`       | ✅ 可用 | 视图层（M4.5）：读存档渲染 status/log/peek/inner/host 文本，view.py / console.py / interview.py 共用      |
+| `src/view.py`         | ✅ 可用 | 只读查看器（M4.5）：`status`/`log`/`peek`/`inner`/`host` 子命令，与跑局解耦                               |
+| `src/console.py`      | ✅ 可用 | 交互驾驶舱（M4.5）：流式跑局 + 顶栏状态 + 随时命令                                                        |
+| `src/scorecard.py`    | ✅ 可用 | 评分卡（M6）：单局/多局报告（版本分组胜率/席位胜率/机制利用率/多样性/成本）                               |
+| `src/interview.py`    | ✅ 可用 | 采访录制器：存档复原记忆 + 多轮问答（采访中可用查看命令），归档 `<对局>/interview/`                       |
+| `src/scene.py`        | ✅ 可用 | 补拍演出器：冻结时点重聚补演（预设场景/自由描述，多角色多轮对话），归档 `<对局>/scene/`                   |
+| `src/bench.py`        | ✅ 可用 | API 速度诊断（流式 TTFT/吞吐）                                                                            |
+| `tests/`              | ✅ 可用 | 引擎单测 + 平衡场景回归 + 编排 mock 全流程 + 采访/补拍：`python -m unittest discover -s tests`            |
 
 ## 其他
 

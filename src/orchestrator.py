@@ -147,7 +147,7 @@ def morning_roster_rows(state: dict, out_day: dict) -> list[tuple[str, str, str,
 OPENING = """\
 暴风雨之夜。
 你们在一座陌生古堡的石厅中醒来——没有人记得自己是谁、从何而来。
-壁炉里的火烧得正旺，长桌上放着一本规则书，和一张主人留下的字条。
+壁炉里的火烧得正旺，长桌上放着一本规则书，和一张主神留下的字条。
 你们之中，混着两名杀手。"""
 
 
@@ -188,6 +188,7 @@ class Orchestrator:
         personas_path = game_dir / "personas.toml"
         self.personas = load_personas(personas_path if personas_path.exists() else PERSONAS_PATH)
         self.rules = (game_dir / "rules.md").read_text(encoding="utf-8")
+        self.full_rule_seats = set(self.state.get("full_rule_seats") or [])  # lite 局特权席：独持完整规则书
         self.orch = self.state.setdefault("orch", {})
         self.orch.setdefault("feed", [])
         self.orch.setdefault("cursor", {})
@@ -236,7 +237,7 @@ class Orchestrator:
         ]
         ann = self.dir / "public" / "announcement.md"
         if ann.exists():
-            lines += ["## 开局公告（主人字条）", "", ann.read_text(encoding="utf-8").strip(), ""]
+            lines += ["## 开局公告（主神字条）", "", ann.read_text(encoding="utf-8").strip(), ""]
         self.script_path.write_text("\n".join(lines), encoding="utf-8")
 
     def script_line(self, line: str, _receipt: bool = False) -> None:
@@ -304,14 +305,19 @@ class Orchestrator:
     @property
     def lite(self) -> bool:
         """本局是否为 lite 规则集（失忆版）：AI 的规则书没有机制词条与章节，
-        凡 full 局指向"规则书 §X"的引用，lite 局改为把对应规则临场内联发给 AI。"""
+        凡 full 局指向"规则书 §X"的引用，lite 局改为把对应规则临场内联发给 AI。
+        逐席口径见 seat_lite：lite 局的特权席（full_rule_seats）独持完整规则书，不适用内联替换。"""
         return bool(self.state.get("is_lite_rule"))
+
+    def seat_lite(self, p: dict) -> bool:
+        """该席是否处于 lite 信息面：仅 lite 局中的非特权席。"""
+        return self.lite and self.seat(p) not in self.full_rule_seats
 
     @property
     def host_term(self) -> str:
-        """AI 可见文本中主持人的称呼（措辞分时代）：full 规则书时代称「主神」（真人秀层设定，
-        与采访间同一角色）；lite 时代保留匿名克制的「主持人」。"""
-        return "主持人" if self.lite else "主神"
+        """AI 可见文本中主持人的称呼：统一为「主神」（真人秀层设定，与采访间同一角色；
+        v4.0.10 起 lite 时代不再保留「主持人」——措辞不分时代，避免特权席混局的口径分裂）。"""
+        return "主神"
 
     def seat(self, p: dict) -> str:
         return p["id"] or p["name"]
@@ -329,12 +335,18 @@ class Orchestrator:
         if p["name"] not in self._system_cache:
             card_path = self.dir / "private" / self.seat(p) / "card.md"
             card = card_path.read_text(encoding="utf-8") if card_path.exists() else "（私密卡缺失）"
+            rules = self.rules
+            if self.seat(p) in self.full_rule_seats:
+                # lite 局特权席：注入完整规则书快照（deal 写入 private/<席位>/rules-full.md）
+                full_path = self.dir / "private" / self.seat(p) / "rules-full.md"
+                if full_path.exists():
+                    rules = full_path.read_text(encoding="utf-8")
             self._system_cache[p["name"]] = render(
                 "game_system.md",
                 name=p["name"],
                 profile=describe(p["name"], self.personas),
                 card=card,
-                rules=self.rules,
+                rules=rules,
                 host=self.host_term,
             )
         return self._system_cache[p["name"]]
@@ -530,12 +542,14 @@ class Orchestrator:
         """统一列表项前缀（feed 里的公告行自带 "- "，避免叠成双破折号）。"""
         return "- " + (line[2:] if line.startswith("- ") else line)
 
-    def _stage_hints(self, title: str) -> list[str]:
+    def _stage_hints(self, title: str, p: dict | None = None) -> list[str]:
         """本环节规则速查：只放本环节最易误读的规则与关键数字（全文仍以系统提示中的规则书为准）。
 
         置于简报末尾（动作菜单之前），吃 recency；针对真实对局中暴露的事故——
         如 game/1 双平民把"超过半数"误算成需 3 票（实际 2.5 票即出局）。
+        p 用于逐席 lite 判断（特权席持有完整规则书，保留 § 引用）；缺省按局级口径。
         """
+        lite = self.seat_lite(p) if p is not None else self.lite
         n = len(self.alive())
         if "侦探竞选声明" in title:
             return ["声明时可附带宣告职业与道具——可以撒谎，但这类声明属于【看破伪装】可验证范围，谎言会留档。",
@@ -550,7 +564,7 @@ class Orchestrator:
             return ["侦探末置发言（若侦探存活）。发言结束后（第 2 天起）进入投票。"]
         if "投票" in title:
             need = (n + 1) / 2  # 严格过半的最小票值（0.5 步进）：n=4→2.5，n=5→3，n=6→3.5
-            accuse_ref = ("见规则书 §7.3" if not self.lite else
+            accuse_ref = ("见规则书 §7.3" if not lite else
                           "持武器的平民可当众指认某人为杀手：指对则该杀手出局（两名杀手全部出局平民才获胜）、"
                           "指错（所指为平民）指认者出局；资格细节届时见菜单")
             return [f"存活 {n} 人：出局线 = 得票严格超过 {n}/2，即至少 {need:g} 票（普通票 1、侦探票 1.5）——"
@@ -686,8 +700,8 @@ class Orchestrator:
                 if e["uses_left"] > 0 and e["name"] in WEAPONS]
         if held:
             parts = ["你当前持有凶器：" + "、".join(held)]
-        elif self.lite:
-            # lite 规则书无 §7.6：空手条件临场内联发给杀手
+        elif self.seat_lite(p):
+            # lite 规则书无 §7.6：空手条件临场内联发给杀手（特权席持完整规则书，走下方引用口径）
             parts = ["你当前未持有凶器（只能空手。空手谋杀需满足其一：另一名杀手在场 / 你体格不弱于目标 / "
                      "你男而目标女；黑暗房间（含夜间卧室）中无任何附加条件——空手不被凶器克制，"
                      "但仍可能被急救箱/敏捷闪避等救援手段抵消）"]
@@ -796,7 +810,7 @@ class Orchestrator:
         if extra:
             lines.append("")
             lines.append("## 本环节说明\n" + extra)
-        hints = self._stage_hints(title)
+        hints = self._stage_hints(title, p)
         if hints:
             lines.append("")
             lines.append("## 本环节规则速查")
@@ -1014,7 +1028,7 @@ class Orchestrator:
         if not self.orch["feed"]:
             # 开局公告此前只进 script.md/console，从未送达玩家
             # （game/5 复盘：全员引用"开局公告"但内容靠编）。新局首发进 feed。
-            # script.md 开头 _init_script 已写「开局公告（主人字条）」整节——这里只送 feed/public/console，不进 script（避免重复）
+            # script.md 开头 _init_script 已写「开局公告（主神字条）」整节——这里只送 feed/public/console，不进 script（避免重复）
             ann = self.dir / "public" / "announcement.md"
             if ann.exists():
                 for ln in ann.read_text(encoding="utf-8").strip().splitlines():
@@ -1196,7 +1210,7 @@ class Orchestrator:
                 continue
             menu = []
             if skill_left(self.state, name, "看破伪装") > 0 or held_item(p, "测谎仪", day) is not None:
-                if self.lite:
+                if self.seat_lite(p):
                     # lite：不下发职业/道具全表，示例不得泄漏合法名目——一律"照抄对方声明中的原名"
                     menu.append('- 看破伪装（自己发言前。claims 只填你想验证的项；值照抄对方声明中的原名——对方自称什么职业就填什么职业名、'
                                 '对方提到什么道具就填什么道具名、房间填房间名；填整句描述属于非法名目，全部非法则驳回、不消耗次数。'
@@ -1793,7 +1807,7 @@ class Orchestrator:
                      "平民不敢非受邀进入已有他人的书房/监控室/地下室（被邀请者与反派不受此限）。\n"
                      "人数上限：书房 3 / 监控室 2 / 地下室 3 / 卧室 2 / 会客室不限；满员或无法进入者默认回自己卧室。\n"
                      + NO_SPEECH_NOTE)
-            if self.lite:
+            if self.seat_lite(p):
                 extra += ("\n你必须现在直接声明今晚的唯一去向，不能先回房待命、看到他人归宿后再移动；"
                           "想去某人的卧室就现在直接选择该卧室。若对方不在那里，你会独自进入，不会发生袭击。")
             if later:

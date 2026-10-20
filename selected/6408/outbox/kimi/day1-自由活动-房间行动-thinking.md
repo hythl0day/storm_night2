@@ -1,1 +1,0 @@
-Set the device in monitoring room (黑暗无人看见). Good choice since few people go there.

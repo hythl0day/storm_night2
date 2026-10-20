@@ -4,7 +4,7 @@ Now free activity. Declared destinations so far (in order): 奇米→地下室; 
 
 Wait, the order of declaration: I can see earlier declarers' destinations. But actually the order is by seating... Let me think. The order given: 奇米, 杰米尼, 克劳德 already declared. I'm next. Then 杰普特, 豆包.
 
-Key: 书房保险箱 has the suspicious powder. 克劳德 is going to 书房. If I also go to 书房, we'd both be there. But 克劳德 declared before me and is going to 书房. If we both go, both are in 书房. But the safe—first to open it gets it. Actually "谁先打开，就是谁的". 
+Key: 书房保险箱 has the suspicious powder. 克劳德 is going to 书房. If I also go to 书房, we'd both be there. But 克劳德 declared before me and is going to 书房. If we both go, both are in 书房. But the safe—first to open it gets it. Actually "谁先打开，就是谁的".
 
 Hmm, but room capacity? Not specified here. Actually there might be capacity issues but not stated.
 
@@ -14,9 +14,9 @@ Actually, the safe—我要开书房的保险箱。If I go to 书房 and 克劳�
 
 But wait, 奇米 went to 地下室. 杰米尼 went to 监控室 (locked, needs 暴力破解). 克劳德 to 书房.
 
-Consideration: should I go to 书房? It has the powder which is a "gift" — likely useful (maybe a weapon/poison, could be dangerous). Opening it and showing reveals... Actually I promised "粉末取出来亮给所有人看". 
+Consideration: should I go to 书房? It has the powder which is a "gift" — likely useful (maybe a weapon/poison, could be dangerous). Opening it and showing reveals... Actually I promised "粉末取出来亮给所有人看".
 
-But there's a risk: the powder might be a tool for killers. Hmm. Actually 主人's gift. Could be anything.
+But there's a risk: the powder might be a tool for killers. Hmm. Actually 主神's gift. Could be anything.
 
 Alternatively, monitor room is locked—needs 暴力破解 to open. Nobody mentioned having that. 杰米尼 going there might be stuck.
 
@@ -26,7 +26,7 @@ I have 螺丝起子 (provides a door/safe-opening method). So I can open the saf
 
 But 克劳德 is also going to 书房. Competition—who opens first? The 开锁行动轮 happens first, all unlockers act... Actually "先进行独立开锁行动轮" — independent unlocking action round. If both 克劳德 and I have unlocking tools, both might try.
 
-Should I invite someone? I can invite 杰普特 or 豆包. 
+Should I invite someone? I can invite 杰普特 or 豆包.
 
 Let me consider: going to 书房 with 克劳德. She voted for me. Two people in room, can talk privately. Might be fine.
 
@@ -64,7 +64,7 @@ Let me think: if I want to guarantee getting into a room, maybe go somewhere les
 
 So if capacity is 1 per room... no. Actually multiple people can be in a room (同房的人可以私下交谈).
 
-I'll go 书房. Let me also consider inviting 杰普特 to 书房 — no, that adds unknown factor. Actually inviting someone gives me an ally interpretation... The invite says "对方可改选". 
+I'll go 书房. Let me also consider inviting 杰普特 to 书房 — no, that adds unknown factor. Actually inviting someone gives me an ally interpretation... The invite says "对方可改选".
 
 Hmm, maybe better to invite no one and keep it simple.
 
@@ -99,7 +99,9 @@ Let me draft.
 inner: 侦探竞选输了（奇米2票：杰米尼、豆包；我1票：克劳德）。现在自由活动，各房间都被占了：奇米→地下室、杰米尼→监控室（上锁，她未必能进）、克劳德→书房。我承诺过当场开书房的保险箱，这是我的可信度资本，必须去兑现。克劳德也要去书房，她会看到我开箱取粉；透明对平民有利。用螺丝起子开保险箱。
 
 notes:
+
 ## 第1天
+
 - 【身份】平民/建筑师（封闭空间×1）/螺丝起子×1
 - 【事实】侦探=奇米（2票：杰米尼、豆包；克劳德投我）。奇米自称化学家/验尸鉴定；杰普特自称现场调查。
 - 【事实】去向：奇米→地下室；杰米尼→监控室（上锁，需暴力破解）；克劳德→书房；我→书房

@@ -143,11 +143,11 @@ class TestBuildMemory(unittest.TestCase):
 
     def test_log_header_separates_first_speech(self):
         """public/log.md 的 ## 阶段标题是无戳发言行的真正边界：竞选首发言归入公共发言段，
-        不再混入开局准备（主人字条）段；log.md 缺失或无标题的旧档回退 feed（原行为）。"""
+        不再混入开局准备（主神字条）段；log.md 缺失或无标题的旧档回退 feed（原行为）。"""
         log = "\n".join([
             "## 第1天 · 开局", "",
             "〔第1天·开局准备〕欢迎来到暴风夜。",
-            "〔第1天·开局准备〕—— 主人",
+            "〔第1天·开局准备〕—— 主神",
             "",
             "## 第1天 · 侦探竞选", "",
             "**A**：我先说两句。",
@@ -159,7 +159,7 @@ class TestBuildMemory(unittest.TestCase):
         (self.dir / "public" / "log.md").write_text(log, encoding="utf-8")
         mem, _ = build_memory(self.dir, self.state, "A", "A", full=True)
         prep_seg = mem.split("### 第1天 · 开局准备")[1].split("###")[0]
-        self.assertIn("—— 主人", prep_seg)
+        self.assertIn("—— 主神", prep_seg)
         self.assertNotIn("我先说两句", prep_seg)                    # 不再粘在字条后
         self.assertIn("### 第1天 · 公共发言\n\n**A**：我先说两句。", mem)
         # 清晨标题 + 不打戳的"第 N/6 天开始"状态行 → 案件调查段

@@ -10,7 +10,7 @@
 src/          Python 代码（跑局管线）
   providers.py    多协议 API 客户端与配置加载（load_config / chat / find_player）
   gamedata.py     游戏静态数据（职业/道具/体格映射，与规则书对齐）
-  deal.py         开局生成器（M1）→ game/<seed>/
+  deal.py         开局生成器（M1）→ game/<seed>/（--lite 失忆版规则集；--full-seats lite 局特权席独持完整规则书）
   engine/         规则裁决引擎（M3）：state / murder / vote / ledger / core
   orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
   replay.py       存档分叉：目标前复用原 outbox 重建到指定席位前并另存为，console/orchestrator --resume 接续
@@ -51,8 +51,8 @@ tests/        unittest（python -m unittest discover -s tests）
 - 人设只写性格底色（失忆设定，无传记无职业）；prompt 要求"靠言行流露、禁止自我介绍性格、人设不影响推理"。
 - 随机选席为**中美 3+3 对称**（两家 API 渠道均衡）；手动 `--seats` 不对称仅提示。
 - deal.py 的随机调用顺序固定（见其 docstring），改顺序 = 改变 seed 语义。
-- 文件协议：`game/<id>/` 下 `seed.txt / deal.json（初始快照）/ state.json / rules.md / players.toml / personas.toml（人设快照，旧档缺则回退项目根）/ script.md（主持人侧全记录，含剧透，不含内心独白）/ public/ / private|inbox|outbox/<席位id>/`；分叉存档另有 `replay.json`（源存档与分叉节点，普通旧档可无）。
-- **措辞分时代**（v4.0.6）：full 规则书与 full 局的 AI 可见文案中主持人称「**主神**」（真人秀层设定，与采访间同一角色）；lite 时代（失忆版规则集及其简报）保留匿名克制的「主持人」；采访间（interview）一律「主神」，补拍现场（scene）不出现该角色。代码侧统一走 `Orchestrator.host_term`（按 `is_lite_rule` 分支）与 `game_system.md` 的 `{host}` 占位符，不要再写死称呼。
+- 文件协议：`game/<id>/` 下 `seed.txt / deal.json（初始快照）/ state.json / rules.md / players.toml / personas.toml（人设快照，旧档缺则回退项目根）/ script.md（主持人侧全记录，含剧透，不含内心独白）/ public/ / private|inbox|outbox/<席位id>/`；分叉存档另有 `replay.json`（源存档与分叉节点，普通旧档可无）；lite 局特权席另有 `private/<席位id>/rules-full.md`（完整规则书快照，见下条）。
+- **措辞统一**（v4.0.10）：AI 可见文案中主持人一律称「**主神**」（真人秀层设定，与采访间同一角色）——full/lite 不再分时代（lite 特权席混局要求口径一致）；补拍现场（scene）默认不出现该角色，预设场景的纪律豁免除外。代码侧统一走 `Orchestrator.host_term` 与 `game_system.md` 的 `{host}` 占位符，不要再写死称呼。
 - 规则书（`docs/rules-6.md` / `rules-6-lite.md` / `rules-8.md` 及开局快照 `game/<id>/rules.md`）是 AI 的**唯一规则输入**：书内禁止修订记录、版本变更叙述（如"v3.27 起…""原…取消"）、对外部文件或其他版本规则书的引用——"见 §X"式内部章节互引可以。修订历史一律写在引擎代码注释（vX.Y 前缀）与 git 提交信息里。改规则时同步改：规则书 + `src/engine/` + `src/orchestrator.py`（菜单/简报/提示）+ 测试，并把 `deal.py` 的 `RULES_VERSION` +0.01。
 
 ## 测试与自检

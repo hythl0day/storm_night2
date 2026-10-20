@@ -18,7 +18,7 @@ Actually there's another consideration: 格罗克 said "我整段自由活动都
 
 Hmm wait — actually if 3 people were in 书房 (格罗克, 狄西, 杰米尼), and 克劳德 + 智谱 elsewhere. 克劳德 claims 建筑师. 智谱 in 会客室 died.
 
-So possible killers: 克劳德 (密道) — but 体格=健壮 matches clue. Or 智谱 died by 缓释毒剂? No, that's 毒或药物 伤痕. 舞台魔术 = 空手 伤痕. 强袭 = 空手 伤痕. 密道+空手 = 空手. 
+So possible killers: 克劳德 (密道) — but 体格=健壮 matches clue. Or 智谱 died by 缓释毒剂? No, that's 毒或药物 伤痕. 舞台魔术 = 空手 伤痕. 强袭 = 空手 伤痕. 密道+空手 = 空手.
 
 Hmm, 强袭 (运动员反派技能) = 空手 伤痕, 无条件. Interesting — I'm 运动员, but I'm 平民. Another player could be 运动员? No — 职业不重复，8选6. I'm 运动员, so no other 运动员. So 强袭 not possible.
 
@@ -34,7 +34,7 @@ Hmm wait, if she has 棒球棍, that's a 凶器. 平民 can hold 凶器 for 自�
 
 Alternatively — the powder results could be tampered by me? No, I'm 平民, I used it cleanly. But others might suspect. 格罗克's speech already hints: "要么调查是干净的，她就是动手的；要么粉末被改过两项，狄西自己魁梧，又是宣读者，时间就是洗给自己的不在场证明".
 
-So 格罗克 suspects either 克劳德 or me. I need to defend: I'm 平民, my investigation was clean (I can't prove, but 平民 cannot tamper — that's a rule fact! 平民持可疑的粉末只能正常调查，不能篡改). I should point that out: 篡改只有反派能做，而我是平民 — but everyone will say "I'm 平民". Still, the argument: if I were a killer holding powder, I'd be 反派 with 可疑的粉末 — but wait 可疑的粉末 is 反派道具, given to one 杀手 or in 保险箱 or 平民车道. Hmm, per §2: 平民 pool includes 反派道具中未被分出的那件 (粉末 or U盘). So a 平民 can hold 粉末. And 反派 holding 粉末 can tamper. So "I'm 平民" claim is just a claim.
+So 格罗克 suspects either 克劳德 or me. I need to defend: I'm 平民, my investigation was clean (I can't prove, but 平民 cannot tamper — that's a rule fact! 平民持可疑的粉末只能正常调查，不能篡改). I should point that out: 篡改只有反派能做，而我是平民 — but everyone will say "I'm 平民". Still, the argument: if I were a killer holding powder, I'd be 反派 with 可疑的粉末 — but wait 可疑的粉末 is 反派道具, given to one 杀手 or in 保险箱 or 平民道具池. Hmm, per §2: 平民 pool includes 反派道具中未被分出的那件 (粉末 or U盘). So a 平民 can hold 粉末. And 反派 holding 粉末 can tamper. So "I'm 平民" claim is just a claim.
 
 But I should argue: the tampering suspicion — actually if I tampered, I'd want to hide myself. But my results point to 体格 健壮/魁梧, which includes me (魁梧) AND 克劳德 (健壮). Hmm, that's a flaw — a tamperer wouldn't include themselves. Unless the clue is genuinely 健壮/魁梧 and I'm just reporting truth.
 
@@ -101,7 +101,7 @@ Draft speech:
 
 That's around 230 chars. Good. Maybe trim to under 400 — fine.
 
-Hmm, also 侦探 奇米 末置发言, and vote after. 
+Hmm, also 侦探 奇米 末置发言, and vote after.
 
 inner: 摘要, ≤200 chars. notes ≤300 chars.
 
@@ -120,7 +120,9 @@ Let me also consider: should I ask 克劳德 something in speech? Maybe not need
 Write inner: "粉末是我真实宣读的，四项不可能被我篡改（平民不能篡改）。体格线索锁定凶手是健壮或魁梧：活人只剩克劳德——我自己知道我不是。她自报建筑师，密道谋杀正好解释监控只拍到智谱进会客室。如果她能洗白，下一个怀疑对象就是我了。今日票必须集中到克劳德。格罗克那句'要么调查被篡改'是在铺路怀疑我，得靠书房人证压住。"
 
 Notes:
+
 ## 第2天
+
 - 【事实】智谱死于会客室，第1天自由活动、空手、凶手体格健壮或魁梧（我本人宣读，平民不能篡改，结论为真）
 - 【事实】监控：自由活动只有智谱进会客室；我全程在书房，格罗克+杰米尼可作证；书房未停电未锁
 - 【锁定】活人中体格符合=克劳德（健壮）；=唯一杀手候选
@@ -144,7 +146,7 @@ Hmm! So 舞台魔术 with 杰米尼 staying put... but then how did she get in �
 
 Also 强袭 not possible (I'm 运动员).
 
-Still, 体格 clue! 舞台魔术 clue = 空手 and 线索指向发动者本人 — so 发动者 must be 健壮或魁梧. 杰米尼 瘦弱 → ruled out. 格罗克 普通 → ruled out. 奇米 普通 → ruled out. So only 克劳德 or me. Airtight regardless of method. 
+Still, 体格 clue! 舞台魔术 clue = 空手 and 线索指向发动者本人 — so 发动者 must be 健壮或魁梧. 杰米尼 瘦弱 → ruled out. 格罗克 普通 → ruled out. 奇米 普通 → ruled out. So only 克劳德 or me. Airtight regardless of method.
 
 So I'm confident. Speech stands.
 

@@ -15,6 +15,7 @@ selected/ 作为精选池（--dir selected）。
 注意：平衡数据完全按（版本 × 规则集）分组、不做任何合并——快速迭代期每次更新几乎都改规则，合并即混池。
 winner 为空的中断局不计入胜负率。失忆版精简规则集（state 的 is_lite_rule）永不与高级规则同池：
 lite 按版本单列（lite·vX.Y），与同名版本的全规则组分池；旧档缺该字段一律视为高级规则（None → False）。
+lite 局含特权席（full_rule_seats，独持完整规则书）时再单列 lite+特权·vX.Y 池。
 """
 from __future__ import annotations
 
@@ -106,11 +107,14 @@ def roster_identities(script: str) -> dict[str, str]:
 def rules_group(st: dict) -> str:
     """平衡统计分组：按（主.次版本 × 规则集）分组——第三位补丁号不参与分组：
     同一主.次版本内的措辞调整与小范围裁决修补合并统计；无法解析版本的旧档按原字符串成组。
-    lite 规则面不同，永不与高级规则同池：同版本的两池以 lite· 前缀区分。"""
+    lite 规则面不同，永不与高级规则同池：同版本的两池以 lite· 前缀区分；
+    lite 局含特权席（full_rule_seats，独持完整规则书）时再单列 lite+特权· 池。"""
     v = rules_version(st)
     t = _ver_tuple(v)
     base = f"v{t[0]}.{t[1]}" if t else v
-    return f"lite·{base}" if is_lite(st) else base
+    if not is_lite(st):
+        return base
+    return f"lite+特权·{base}" if st.get("full_rule_seats") else f"lite·{base}"
 
 
 def roster_professions(script: str) -> dict[str, str]:
@@ -241,6 +245,7 @@ def analyze(g: dict) -> dict:
         "dir_name": g["dir"].name,
         "version": rules_version(st),
         "lite": is_lite(st),
+        "privileged": st.get("full_rule_seats") or [],  # lite 局特权席（独持完整规则书）
         "group": rules_group(st),
         "complete": st.get("winner") is not None,
         "winner": st.get("winner"), "win_reason": st.get("win_reason"),
@@ -340,7 +345,7 @@ def protagonist_candidates(a: dict) -> list[str]:
 
 def script_briefing(script: str) -> list[str]:
     """流程简报：以 script.md（主持人侧全记录）为基础化简——剥掉开局 preamble
-    （标题/背景/阵容表/主人字条，席位段已覆盖）与每日"状态一览"快照表，
+    （标题/背景/阵容表/主神字条，席位段已覆盖）与每日"状态一览"快照表，
     其余逐行保留（发言、公告、密谋频道、行动回执全在）。"""
     lines = script.splitlines()
     start = next((i for i, l in enumerate(lines) if l.startswith("## 第1天")), len(lines))
@@ -365,7 +370,10 @@ def single_report(d: Path) -> str:
     a = analyze(g)
     score, parts = drama(a)
     L = [f"===== 单局报告：{a['dir_name']} ====="]
-    head = f"seed {a['seed']}｜规则 {a['version']}{'·lite' if a['lite'] else ''}｜历时 {a['days']} 天｜"
+    ver_label = a["version"] + ("·lite" if a["lite"] else "")
+    if a["privileged"]:
+        ver_label += f"（特权席：{'、'.join(a['privileged'])}）"
+    head = f"seed {a['seed']}｜规则 {ver_label}｜历时 {a['days']} 天｜"
     head += f"结局：{a['winner']} 胜（{a['win_reason']}）" if a["complete"] else "结局：（中断/未跑完）"
     L.append(head)
     L.append("")
@@ -432,7 +440,7 @@ def multi_report(base: Path, min_version: str | None = None) -> str:
     L.append(f"  {'存档':<10}{'版本':<12}{'结局':<12}{'路径':<10}{'天数':<5}{'谋杀':<5}{'戏剧性':<6}")
     for a in games:
         sc, _ = drama(a)
-        ver = a["version"] + ("·lite" if a["lite"] else "")
+        ver = a["version"] + ("·lite" if a["lite"] else "") + ("+特权" if a["privileged"] else "")
         L.append(f"  {a['dir_name']:<10}{ver:<12}{(a['winner'] or '中断') + '胜' if a['complete'] else '中断':<12}"
                  f"{a['path'] or '-':<10}{a['days']:<5}{a['murders']:<5}{sc:<6}")
 

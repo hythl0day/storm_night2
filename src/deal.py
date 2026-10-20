@@ -11,6 +11,8 @@
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
                                                     # 裁决规则不变（仍 v4.0），state 记 is_lite_rule=True
+    python -m src.deal --seed 42 --lite --full-seats claude   # lite 局特权席：claude 独持完整规则书
+                                                    # （rules-6.md，其余席位仍是 lite），state 记 full_rule_seats
 
 --seats 名单项语法：「id或名字」或「id或名字:身份」。名单可全可部分（1~6 项）：
 部分名单指名者保证入选，剩余席位随机补足——固定席位允许时维持中美 3+3 对称（两侧各抽差额），
@@ -57,9 +59,10 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_VERSION = "v4.0.9"  # v4.0.7：看破伪装技能声明改验"是否拥有"；providers 空 200 响应改可重试错误
-                          # v4.0.8：看破伪装行踪改按事实判定（visits 台账），监控空白/抹除/密道隐匿不再影响
-                          # v4.0.9：看破伪装道具声明改验"是否曾经持有"（ever_items 台账），消耗/转手不再误判谎言
+RULES_VERSION = "v4.0.10"  # v4.0.7：看破伪装技能声明改验"是否拥有"；providers 空 200 响应改可重试错误
+                           # v4.0.8：看破伪装行踪改按事实判定（visits 台账），监控空白/抹除/密道隐匿不再影响
+                           # v4.0.9：看破伪装道具声明改验"是否曾经持有"（ever_items 台账），消耗/转手不再误判谎言
+                           # v4.0.10：措辞统一——lite 时代主持人改称主神；lite 局支持特权席独持完整规则书（--full-seats）
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "杀手", "杀手"]
 
@@ -74,7 +77,7 @@ IDENTITY_BRIEF = {
 
 
 def announcement(safe_item: str) -> str:
-    """开局公告（主人字条）：保险箱内容公开 + 桌上凶器公开。"""
+    """开局公告（主神字条）：保险箱内容公开 + 桌上凶器公开。"""
     return f"""# 开局公告
 
 欢迎来到暴风夜。
@@ -87,7 +90,7 @@ def announcement(safe_item: str) -> str:
 
 大厅的桌上还有我年轻时的收藏：「{TABLE_WEAPON}」.你们中的佼佼者可以通过选举成为侦探，便可获得这把武器，以及更多票权。至于谁能拿到它，就看你们的本事了。
 
-—— 主人
+—— 主神
 """
 
 
@@ -130,15 +133,17 @@ def _parse_seat_specs(specs: list[str], players: list) -> tuple[list, dict[str, 
 
 
 def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
-         lite: bool = False, exclude: set[str] | None = None):
+         lite: bool = False, exclude: set[str] | None = None, full_seats: set[str] | None = None):
     """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。
-    lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致。
+    lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致；
+    full_seats（lite 局特权席 id 集，独持完整规则书）同理只落 state 字段 full_rule_seats。
     exclude 为屏蔽席位 id 集：随机抽席/补足前从阵容池剔除（rng 调用序列不变，同 seed + 同名单可复现）；
     与手动 seat_keys 重叠时报错。
     seat_keys 每项可为「id或名字」（纯指名）或「id或名字:身份」（指名+锁定身份）；
     名单可部分（1~6 项），不足 6 席时剩余随机补足（见模块 docstring）。"""
     rng = random.Random(seed)
     exclude = exclude or set()
+    full_seats = full_seats or set()
     pins: dict[str, str] = {}
 
     def nat(p) -> str | None:
@@ -187,6 +192,11 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
         rng.shuffle(seats)
     if len(seats) != len(IDENTITIES):
         raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前有 {len(seats)} 席")
+    if full_seats and not lite:
+        raise SystemExit("特权席（full_seats）仅配合 lite 局使用：非 lite 局所有席位本来就持有完整规则书")
+    unknown_privileged = full_seats - {_seat_key(p) for p in seats}
+    if unknown_privileged:
+        raise SystemExit(f"特权席不在本局阵容中：{'、'.join(sorted(unknown_privileged))}（先用 --seats 指名入选）")
 
     # 角色属性必须能在人设卡中找到
     roster = []
@@ -212,7 +222,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
     identities = [pins.get(_seat_key(p)) or next(rest) for p in seats]
     # 3. 职业（v4.0：8 选 6 纯随机，无保底后处理）
     professions = rng.sample(PROFESSIONS, len(seats))
-    # 4. 反派车道（v4.0 双杀手）：两杀手各得凶器×1（刀/棒球棍/不明药剂 3 选 2，互不重复；左轮手枪固定上桌）；
+    # 4. 反派道具池（v4.0 双杀手）：两杀手各得凶器×1（刀/棒球棍/不明药剂 3 选 2，互不重复；左轮手枪固定上桌）；
     #    随机一名杀手另得「万能钥匙」，另一名另得一件反派道具（可疑的粉末/木马程序U盘 2 选 1）
     killer_idxs = [i for i, idn in enumerate(identities) if idn == "杀手"]
     villain_weapons = rng.sample(VILLAIN_WEAPON_POOL, 2)
@@ -223,7 +233,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
     leftover_weapon = next(w for w in VILLAIN_WEAPON_POOL if w not in villain_weapons)
     safe_pool = [leftover_weapon] + [i for i in VILLAIN_ITEMS if i != villain_gear]
     safe_item = rng.choice(safe_pool)
-    # 6. 平民车道（v4.0）：螺丝起子 1 人 + 其余 3 人从「通用池 5 件 + 未分出的那件反派道具」共 6 件各抽 1
+    # 6. 平民道具池（v4.0）：螺丝起子 1 人 + 其余 3 人从「通用池 5 件 + 未分出的那件反派道具」共 6 件各抽 1
     civ_idxs = [i for i, idn in enumerate(identities) if idn == "平民"]
     screw_civ = rng.choice(civ_idxs)
     pool_civs = [i for i in civ_idxs if i != screw_civ]
@@ -263,6 +273,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
         "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
         "rules_version": RULES_VERSION,  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
+        "full_rule_seats": sorted(full_seats),  # lite 局特权席：独持完整规则书（rules-6.md）；旧档缺此字段 = 无特权席
         "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
         "pinned_identities": dict(sorted(pins.items())),  # 手动锁定的席位身份（旧档缺此字段 = 无锁定）
         "mode": "6人局",
@@ -299,25 +310,25 @@ def validate(state: dict) -> list[str]:
         problems.append("两名杀手凶器重复")
     key_holders = [p for p in players if "万能钥匙" in p.get("extra_items", []) or p["item"] == "万能钥匙"]
     if len(key_holders) != 1 or key_holders[0]["identity"] != "杀手":
-        problems.append("「万能钥匙」车道错误：应恰好由一名杀手开局持有")
+        problems.append("「万能钥匙」道具池错误：应恰好由一名杀手开局持有")
     gear_holders = [p for p in killers
                     if any(e in VILLAIN_ITEMS for e in p.get("extra_items", []))]
     if len(gear_holders) != 1 or len(gear_holders[0]["extra_items"]) != 1:
-        problems.append("反派道具车道错误：应恰好由未持万能钥匙的那名杀手持有 1 件反派道具")
+        problems.append("反派道具池错误：应恰好由未持万能钥匙的那名杀手持有 1 件反派道具")
     elif gear_holders[0] in key_holders:
         problems.append("同一名杀手同时持有万能钥匙与反派道具")
     for p in players:
         if p["identity"] == "平民" and p["item"] == TABLE_WEAPON:
-            problems.append(f"{p['name']}（平民）持有桌上凶器「{TABLE_WEAPON}」（不进开局车道）")
-    # 平民车道：恰好一名平民持螺丝起子；其余平民持有 通用道具 / 未分出的反派道具 /（保险箱抽中反派道具时的）剩余凶器
+            problems.append(f"{p['name']}（平民）持有桌上凶器「{TABLE_WEAPON}」（不进开局道具池）")
+    # 平民道具池：恰好一名平民持螺丝起子；其余平民持有 通用道具 / 未分出的反派道具 /（保险箱抽中反派道具时的）剩余凶器
     screw = [p for p in players if p["item"] == "螺丝起子"]
     if len(screw) != 1 or screw[0]["identity"] != "平民":
-        problems.append("螺丝起子车道错误：应恰好一名平民开局持有")
+        problems.append("螺丝起子道具池错误：应恰好一名平民开局持有")
     for p in players:
         if p["identity"] == "平民" and p["item"] == "螺丝起子":
             continue
         if p["identity"] == "平民" and p["item"] not in ITEMS_GENERAL + VILLAIN_ITEMS + VILLAIN_WEAPON_POOL:
-            problems.append(f"{p['name']}（平民）持有车道外道具：{p['item']}")
+            problems.append(f"{p['name']}（平民）持有道具池外道具：{p['item']}")
     if state.get("table_items") != [{"name": TABLE_WEAPON, "uses_left": ITEM_USES[TABLE_WEAPON]}]:
         problems.append(f"桌上凶器缺失：会客室桌上应固定放有「{TABLE_WEAPON}」")
     if state["safe_item"] in items:
@@ -336,9 +347,20 @@ def validate(state: dict) -> list[str]:
     return problems
 
 
-def write_card(player: dict, players: list, lite: bool = False) -> str:
+# lite 局特权席私密卡附段（deal --full-seats）：别人的册子是残页，只有你的完整——信息优势纪律
+PRIVILEGED_NOTE = [
+    "## 你的册子是完整的",
+    "别人的册子都被撕去了几页——他们只有一份生存须知，不知道职业与道具的完整清单、分配结构，"
+    "也不知道许多机制的存在，只能在主神给出的菜单里临场发现；只有你手里的这本是完整的。",
+    "这份信息不对称是你最大的武器，藏好它：不要引用只有完整册子才有的知识——需要动用这些知识时，"
+    "把它包装成你的猜测、直觉或推理，让别人以为你和他们一样无知。",
+]
+
+
+def write_card(player: dict, players: list, lite: bool = False, privileged: bool = False) -> str:
     """私密卡。lite 模式（rules-6-lite.md 无职业/道具词条）：技能与道具内联一句话定义、
-    不引用规则书章节；身份简报中的规则书引用同步剥离。"""
+    不引用规则书章节；身份简报中的规则书引用同步剥离。
+    privileged = lite 局特权席：卡片按 full 格式写（引用完整规则书章节），并附"你的册子是完整的"附段。"""
     p = player
     brief = IDENTITY_BRIEF[p["identity"]]
     if lite:
@@ -351,6 +373,8 @@ def write_card(player: dict, players: list, lite: bool = False) -> str:
         f"## 身份：{p['identity']}",
         brief,
     ]
+    if privileged:
+        lines += ["", *PRIVILEGED_NOTE]
     if p["identity"] == "杀手":
         partner = next(q for q in players if q["identity"] == "杀手" and q["name"] != p["name"])
         lines.append(
@@ -416,6 +440,9 @@ def main() -> None:
     ap.add_argument("--rules", default=None, help="规则书路径（缺省按 --lite 选择 rules-6-lite.md / rules-6.md）")
     ap.add_argument("--lite", action="store_true",
                     help="失忆版精简规则集：AI 只知生存须知（职业/道具全表与分配结构不下发），裁决规则不变")
+    ap.add_argument("--full-seats", default=None,
+                    help="lite 局特权席：这些席位独持完整规则书（rules-6.md），其余席位仍是 lite；"
+                         "仅配合 --lite 使用。id 或名字，逗号分隔（须在本局阵容中，可配合 --seats 指名）")
     ap.add_argument("--out", default=None, help="输出目录（缺省 game/<seed>/）")
     args = ap.parse_args()
 
@@ -424,6 +451,11 @@ def main() -> None:
     rules_path = args.rules or ("docs/rules-6-lite.md" if args.lite else "docs/rules-6.md")
     if not Path(rules_path).exists():
         raise SystemExit(f"规则书不存在：{rules_path}")
+    full_rules_path = ROOT / "docs" / "rules-6.md"
+    if args.full_seats and not args.lite:
+        raise SystemExit("--full-seats 仅配合 --lite 使用（非 lite 局所有席位本来就持有完整规则书）")
+    if args.full_seats and not full_rules_path.exists():
+        raise SystemExit(f"完整规则书不存在：{full_rules_path}")
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10**6)
 
     players, _ = load_config(args.config)
@@ -437,8 +469,17 @@ def main() -> None:
             raise SystemExit(f"屏蔽席位 {k!r} 不在配置中")
         exclude.add(p.id)
         exclude_names.append(p.name)
+    full_seats: set[str] = set()
+    full_names: list[str] = []
+    for k in [s.strip() for s in args.full_seats.split(",") if s.strip()] if args.full_seats else []:
+        p = find_player(players, k)
+        if p is None:
+            raise SystemExit(f"特权席 {k!r} 不在配置中")
+        full_seats.add(p.id)
+        full_names.append(p.name)
 
-    state = deal(seed, players, personas, seat_keys, lite=args.lite, exclude=exclude)
+    state = deal(seed, players, personas, seat_keys, lite=args.lite, exclude=exclude,
+                 full_seats=full_seats)
 
     problems = validate(state)
     if problems:
@@ -467,10 +508,18 @@ def main() -> None:
     (out / "public" / "announcement.md").write_text(announcement(state["safe_item"]), encoding="utf-8")
     for p in state["players"]:
         seat = p["id"] or p["name"]
-        (out / "private" / seat / "card.md").write_text(write_card(p, state["players"], lite=args.lite), encoding="utf-8")
+        privileged = seat in full_seats
+        (out / "private" / seat / "card.md").write_text(
+            write_card(p, state["players"], lite=args.lite and not privileged, privileged=privileged),
+            encoding="utf-8")
+        if privileged:
+            # 特权席的完整规则书快照放在私密目录（host 侧素材；AI 只经 prompt 拿到内容）
+            shutil.copyfile(full_rules_path, out / "private" / seat / "rules-full.md")
 
     # 主持人视角汇总（含身份，勿外发）
     print(f"seed = {seed}  →  {out}/" + ("（lite 规则集）" if args.lite else ""))
+    if full_seats:
+        print("特权席（独持完整规则书）：" + "、".join(full_names))
     if exclude:
         print("屏蔽席位：" + "、".join(exclude_names))
     if seat_keys:
