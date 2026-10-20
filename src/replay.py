@@ -114,7 +114,7 @@ def _load_initial(source: Path, source_state: dict) -> tuple[dict, Path]:
                 None,
                 lite=bool(source_state.get("is_lite_rule")),
                 exclude=set(source_state.get("excluded_seats", [])),
-                full_seats=set(source_state.get("full_rule_seats") or []),
+                privileged=set(source_state.get("full_rule_seats") or []),
             )
         except SystemExit as e:
             raise ReplayError(f"无法按源存档重新生成开局：{e}") from e

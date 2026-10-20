@@ -11,10 +11,11 @@
     python -m src.deal --seed 42 --lite             # 失忆版精简规则集（rules-6-lite.md）：AI 只知生存须知，
                                                     # 职业/道具全表与分配结构不下发，机制靠菜单临场发现；
                                                     # 裁决规则不变（仍 v4.0），state 记 is_lite_rule=True
-    python -m src.deal --seed 42 --lite --full-seats claude   # lite 局特权席：claude 独持完整规则书
+    python -m src.deal --seed 42 --lite --seats claude[full]       # lite 局特权席：claude 独持完整规则书
                                                     # （rules-6.md，其余席位仍是 lite），state 记 full_rule_seats
+    python -m src.deal --seed 42 --lite --seats claude:杀手[full]  # 特权席可同时锁定身份；非 lite 局忽略 [full]
 
---seats 名单项语法：「id或名字」或「id或名字:身份」。名单可全可部分（1~6 项）：
+--seats 名单项语法：「id或名字」「id或名字:身份」，可再附 [full] 特权席标记（位置任意）。名单可全可部分（1~6 项）：
 部分名单指名者保证入选，剩余席位随机补足——固定席位允许时维持中美 3+3 对称（两侧各抽差额），
 不允许（如固定席位已超一侧 3 席）则提示后从剩余阵容池合并抽取。身份指定先落位，
 剩余身份（多重集）洗牌后依次补给未指定的席位；指定人数超身份配额（杀手 2、平民 4）报错。
@@ -62,7 +63,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RULES_VERSION = "v4.0.10"  # v4.0.7：看破伪装技能声明改验"是否拥有"；providers 空 200 响应改可重试错误
                            # v4.0.8：看破伪装行踪改按事实判定（visits 台账），监控空白/抹除/密道隐匿不再影响
                            # v4.0.9：看破伪装道具声明改验"是否曾经持有"（ever_items 台账），消耗/转手不再误判谎言
-                           # v4.0.10：措辞统一——lite 时代主持人改称主神；lite 局支持特权席独持完整规则书（--full-seats）
+                           # v4.0.10：措辞统一——lite 时代主持人改称主神；lite 局支持特权席独持完整规则书（--seats 名单项 [full] 标记）
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "杀手", "杀手"]
 
@@ -104,15 +105,18 @@ def _seat_key(p) -> str:
     return p.id or p.name
 
 
-def _parse_seat_specs(specs: list[str], players: list) -> tuple[list, dict[str, str]]:
-    """解析 --seats 名单：每项「id或名字」或「id或名字:身份」。
+def _parse_seat_specs(specs: list[str], players: list) -> tuple[list, dict[str, str], set[str]]:
+    """解析 --seats 名单：每项「id或名字」「id或名字:身份」，可再附 [full] 特权席标记
+    （lite 局中独持完整规则书；位置任意，如 claude:杀手[full] 或 claude[full]:杀手）。
 
-    返回 (席位列表, {席位key: 指定身份})。重复席位、未知席位、非法身份、身份超额均 SystemExit。
+    返回 (席位列表, {席位key: 指定身份}, 特权席key集)。重复席位、未知席位、非法身份、身份超额均 SystemExit。
     """
     seats: list = []
     pins: dict[str, str] = {}
+    privileged: set[str] = set()
     for spec in specs:
-        key, _, ident = spec.partition(":")
+        priv = "[full]" in spec
+        key, _, ident = spec.replace("[full]", "").partition(":")
         key, ident = key.strip(), ident.strip()
         p = find_player(players, key)
         if p is None:
@@ -124,34 +128,40 @@ def _parse_seat_specs(specs: list[str], players: list) -> tuple[list, dict[str, 
             if ident not in set(IDENTITIES):
                 raise SystemExit(f"非法身份 {ident!r}（可选：{'/'.join(dict.fromkeys(IDENTITIES))}）")
             pins[sk] = ident
+        if priv:
+            privileged.add(sk)
         seats.append(p)
     for want, n in (("杀手", 2), ("平民", 4)):
         c = sum(1 for v in pins.values() if v == want)
         if c > n:
             raise SystemExit(f"身份指定超限：{want} 全局仅 {n} 人，当前指定了 {c} 人")
-    return seats, pins
+    return seats, pins, privileged
 
 
 def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
-         lite: bool = False, exclude: set[str] | None = None, full_seats: set[str] | None = None):
+         lite: bool = False, exclude: set[str] | None = None, privileged: set[str] | None = None):
     """核心分配逻辑。返回 state 字典。所有随机操作共用同一个 rng，顺序固定。
     lite 只改信息口径字段（ruleset/is_lite_rule），不消耗随机序列——同 seed 的分配逐字节一致；
-    full_seats（lite 局特权席 id 集，独持完整规则书）同理只落 state 字段 full_rule_seats。
+    特权席（lite 局独持完整规则书）由 seat_keys 名单项的 [full] 标记指定，或由 privileged 参数
+    直接传入（replay 重建旧档用）；只落 state 字段 full_rule_seats，不消耗随机序列；非 lite 局忽略。
     exclude 为屏蔽席位 id 集：随机抽席/补足前从阵容池剔除（rng 调用序列不变，同 seed + 同名单可复现）；
     与手动 seat_keys 重叠时报错。
-    seat_keys 每项可为「id或名字」（纯指名）或「id或名字:身份」（指名+锁定身份）；
+    seat_keys 每项可为「id或名字」（纯指名）或「id或名字:身份」（指名+锁定身份），可再附 [full] 标记；
     名单可部分（1~6 项），不足 6 席时剩余随机补足（见模块 docstring）。"""
     rng = random.Random(seed)
     exclude = exclude or set()
-    full_seats = full_seats or set()
     pins: dict[str, str] = {}
+    privileged: set[str] = set(privileged or ())
 
     def nat(p) -> str | None:
         return personas.get(p.name, {}).get("nationality")
 
-    # 1. 席位：手动名单（可部分、可带身份锁定）或随机抽取（中美 3+3 对称）
+    # 1. 席位：手动名单（可部分、可带身份锁定/[full] 标记）或随机抽取（中美 3+3 对称）
+    fixed: list = []
     if seat_keys:
-        fixed, pins = _parse_seat_specs(seat_keys, players)
+        fixed, pins, priv_specs = _parse_seat_specs(seat_keys, players)
+        privileged |= priv_specs
+    if fixed:
         clash = [_seat_key(p) for p in fixed if p.id in exclude]
         if clash:
             raise SystemExit(f"手动席位与屏蔽名单冲突：{', '.join(clash)}")
@@ -192,11 +202,9 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
         rng.shuffle(seats)
     if len(seats) != len(IDENTITIES):
         raise SystemExit(f"需要恰好 {len(IDENTITIES)} 席，当前有 {len(seats)} 席")
-    if full_seats and not lite:
-        raise SystemExit("特权席（full_seats）仅配合 lite 局使用：非 lite 局所有席位本来就持有完整规则书")
-    unknown_privileged = full_seats - {_seat_key(p) for p in seats}
+    unknown_privileged = privileged - {_seat_key(p) for p in seats}
     if unknown_privileged:
-        raise SystemExit(f"特权席不在本局阵容中：{'、'.join(sorted(unknown_privileged))}（先用 --seats 指名入选）")
+        raise SystemExit(f"特权席不在本局阵容中：{'、'.join(sorted(unknown_privileged))}")
 
     # 角色属性必须能在人设卡中找到
     roster = []
@@ -273,7 +281,7 @@ def deal(seed: int, players: list, personas: dict, seat_keys: list[str] | None,
         "ruleset": "rules-6-lite.md" if lite else "rules-6.md",
         "rules_version": RULES_VERSION,  # 规则版本（统计脚本按版本分组，跨版本不混算平衡数据）
         "is_lite_rule": lite,  # 失忆版精简规则集标记；旧档缺此字段视为 False（高级规则）
-        "full_rule_seats": sorted(full_seats),  # lite 局特权席：独持完整规则书（rules-6.md）；旧档缺此字段 = 无特权席
+        "full_rule_seats": sorted(privileged) if lite else [],  # lite 局特权席：独持完整规则书（rules-6.md）；非 lite 局忽略 [full] 标记；旧档缺此字段 = 无特权席
         "excluded_seats": sorted(exclude),  # 本局屏蔽的席位 id（旧档缺此字段 = 无屏蔽）
         "pinned_identities": dict(sorted(pins.items())),  # 手动锁定的席位身份（旧档缺此字段 = 无锁定）
         "mode": "6人局",
@@ -347,7 +355,7 @@ def validate(state: dict) -> list[str]:
     return problems
 
 
-# lite 局特权席私密卡附段（deal --full-seats）：别人的册子是残页，只有你的完整——信息优势纪律
+# lite 局特权席私密卡附段（deal --seats 的 [full] 标记）：别人的册子是残页，只有你的完整——信息优势纪律
 PRIVILEGED_NOTE = [
     "## 你的册子是完整的",
     "别人的册子都被撕去了几页——他们只有一份生存须知，不知道职业与道具的完整清单、分配结构，"
@@ -439,10 +447,8 @@ def main() -> None:
     ap.add_argument("--personas", default="personas.toml")
     ap.add_argument("--rules", default=None, help="规则书路径（缺省按 --lite 选择 rules-6-lite.md / rules-6.md）")
     ap.add_argument("--lite", action="store_true",
-                    help="失忆版精简规则集：AI 只知生存须知（职业/道具全表与分配结构不下发），裁决规则不变")
-    ap.add_argument("--full-seats", default=None,
-                    help="lite 局特权席：这些席位独持完整规则书（rules-6.md），其余席位仍是 lite；"
-                         "仅配合 --lite 使用。id 或名字，逗号分隔（须在本局阵容中，可配合 --seats 指名）")
+                    help="失忆版精简规则集：AI 只知生存须知（职业/道具全表与分配结构不下发），裁决规则不变；"
+                         "--seats 名单项附 [full] 标记可让该席独持完整规则书（特权席）")
     ap.add_argument("--out", default=None, help="输出目录（缺省 game/<seed>/）")
     args = ap.parse_args()
 
@@ -452,15 +458,15 @@ def main() -> None:
     if not Path(rules_path).exists():
         raise SystemExit(f"规则书不存在：{rules_path}")
     full_rules_path = ROOT / "docs" / "rules-6.md"
-    if args.full_seats and not args.lite:
-        raise SystemExit("--full-seats 仅配合 --lite 使用（非 lite 局所有席位本来就持有完整规则书）")
-    if args.full_seats and not full_rules_path.exists():
-        raise SystemExit(f"完整规则书不存在：{full_rules_path}")
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10**6)
 
     players, _ = load_config(args.config)
     personas = load_personas(Path(args.personas))
     seat_keys = [s.strip() for s in args.seats.split(",") if s.strip()] if args.seats else None
+    if not args.lite and any("[full]" in s for s in seat_keys or []):
+        print("提示：非 lite 局所有席位本来就持有完整规则书，[full] 标记已忽略")
+    if args.lite and any("[full]" in s for s in seat_keys or []) and not full_rules_path.exists():
+        raise SystemExit(f"完整规则书不存在：{full_rules_path}")
     exclude: set[str] = set()
     exclude_names: list[str] = []
     for k in [s.strip() for s in args.exclude.split(",") if s.strip()] if args.exclude else []:
@@ -469,17 +475,10 @@ def main() -> None:
             raise SystemExit(f"屏蔽席位 {k!r} 不在配置中")
         exclude.add(p.id)
         exclude_names.append(p.name)
-    full_seats: set[str] = set()
-    full_names: list[str] = []
-    for k in [s.strip() for s in args.full_seats.split(",") if s.strip()] if args.full_seats else []:
-        p = find_player(players, k)
-        if p is None:
-            raise SystemExit(f"特权席 {k!r} 不在配置中")
-        full_seats.add(p.id)
-        full_names.append(p.name)
 
-    state = deal(seed, players, personas, seat_keys, lite=args.lite, exclude=exclude,
-                 full_seats=full_seats)
+    state = deal(seed, players, personas, seat_keys, lite=args.lite, exclude=exclude)
+    full_seats = set(state["full_rule_seats"])
+    name_of = {_seat_key(p): p.name for p in players}
 
     problems = validate(state)
     if problems:
@@ -519,15 +518,15 @@ def main() -> None:
     # 主持人视角汇总（含身份，勿外发）
     print(f"seed = {seed}  →  {out}/" + ("（lite 规则集）" if args.lite else ""))
     if full_seats:
-        print("特权席（独持完整规则书）：" + "、".join(full_names))
+        print("特权席（独持完整规则书）：" + "、".join(name_of.get(k, k) for k in state["full_rule_seats"]))
     if exclude:
         print("屏蔽席位：" + "、".join(exclude_names))
-    if seat_keys:
-        n_fixed = len(seat_keys)
-        if n_fixed < len(IDENTITIES):
-            print(f"部分名单：指定 {n_fixed} 席，随机补足 {len(IDENTITIES) - n_fixed} 席")
+    named_keys = {_seat_key(p) for spec in (seat_keys or [])
+                  for p in [find_player(players, spec.replace("[full]", "").partition(":")[0].strip())] if p}
+    if named_keys:
+        if len(named_keys) < len(IDENTITIES):
+            print(f"部分名单：指定 {len(named_keys)} 席，随机补足 {len(IDENTITIES) - len(named_keys)} 席")
         if state["pinned_identities"]:
-            name_of = {_seat_key(p): p.name for p in players}
             print("身份指定：" + "、".join(f"{name_of.get(k, k)}→{v}"
                                            for k, v in state["pinned_identities"].items()))
     print("行动顺序：" + " → ".join(state["order"]))

@@ -50,7 +50,7 @@ deal 的 v4.0 道具分配与平衡保证（公开规则见 `rules-6.md` §2）�
 
 随机调用顺序见 `deal.py` docstring，计入 seed 语义，勿随意调整。同 seed + 同参数可复现的是初始分配，不是整局 AI 行为。
 
-信息面变体：`--lite` 失忆版（生存须知 + 临场规则下发，裁决不变）；v4.0.10 起 `--lite --full-seats <席位>` 可在 lite 局中让指定席位独持完整规则书（特权席：full 格式私密卡 + 藏拙纪律附段 + `private/<席位>/rules-full.md` 快照；编排器逐席口径，特权席保留 § 引用；state 记 `full_rule_seats`，评分卡单列 `lite+特权·vX.Y` 池；replay 分叉保留设定）。
+信息面变体：`--lite` 失忆版（生存须知 + 临场规则下发，裁决不变）；v4.0.10 起 `--lite --seats <席位>[full]` 可在 lite 局中让指定席位独持完整规则书（特权席：full 格式私密卡 + 藏拙纪律附段 + `private/<席位>/rules-full.md` 快照；编排器逐席口径，特权席保留 § 引用；state 记 `full_rule_seats`，评分卡单列 `lite+特权·vX.Y` 池；replay 分叉保留设定）。
 
 ### 0.4 接入层：混合渠道兼容（✅ 已确认可行）
 

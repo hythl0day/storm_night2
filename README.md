@@ -35,8 +35,9 @@ python -m src.deal --seed 42 --seats gpt:杀手,claude,glm:平民  # 席位后�
 python -m src.deal --seed 42 --exclude grok   # 随机抽席屏蔽指定席位（逗号分隔，id 或名字；state 记 excluded_seats）
 python -m src.deal --seed 42 --lite    # 失忆版规则集（生存须知 + 临场规则下发；裁决规则不变，
                                        # state 记 is_lite_rule，评分卡独立分池不混算胜率）
-python -m src.deal --seed 42 --lite --full-seats claude   # lite 局特权席：claude 独持完整规则书，
+python -m src.deal --seed 42 --lite --seats claude[full]  # lite 局特权席：claude 独持完整规则书，
                                        # 其余席仍是 lite（state 记 full_rule_seats，评分卡再单列 lite+特权 池）
+                                       # [full] 位置任意、可与 :身份 叠加（claude:杀手[full]）；非 lite 局忽略该标记
 
 # 跑局（二选一），跑到对局结束；中断后加 --resume 按席位断点续跑
 # （所有脚本的 --game 都可只给 id，如 --game 42 自动解析为 game/42）
@@ -161,13 +162,13 @@ python -m src.deal --seed 42 --seats gpt,claude   # 部分名单：指名 2 席�
 python -m src.deal --seed 42 --seats gpt:杀手,claude,glm:平民  # 席位后可锁身份（平民/杀手，先落位，state 记 pinned_identities）
 python -m src.deal --seed 42 --exclude grok,doubao   # 随机抽席时屏蔽席位（id 或名字，逗号分隔；两侧各需剩 ≥3 席）
 python -m src.deal --seed 42 --lite    # 失忆版精简规则集（rules-6-lite.md），见下
-python -m src.deal --seed 42 --lite --full-seats claude   # lite 局特权席：claude 独持完整规则书，见下
+python -m src.deal --seed 42 --lite --seats claude[full]  # lite 局特权席：claude 独持完整规则书，见下
 python -m src.deal --seed 42 --out games/test   # 自定义输出目录
 ```
 
 **lite 规则集（失忆版）**：`--lite` 把注入 AI 的规则书换成 `docs/rules-6.md` 的精简版——只含生存骨架（处境/时间轴/投票/胜负/侦探），职业全表、道具全表与分配结构一律不下发，AI 靠私密卡（内联定义，自包含）和每阶段合法动作菜单临场发现机制；**裁决规则完全不变**（引擎按 v4.0 裁决），变的是 AI 的信息面。state 记 `is_lite_rule=True`，评分卡单独成组（`lite·vX.Y`，不与高级规则混池）。**临场规则下发**：full 局简报中指向"规则书 §X"的引用（投票武装指认/空手谋杀条件/看破伪装名目/统一开锁与进入结算共 4 处），lite 局自动替换为规则内容的内联说明——AI 在需要的那一刻才学到这条规则。
 
-**lite 局特权席**（`--full-seats`，v4.0.10）：lite 局中指定席位独持完整规则书（rules-6.md），其余席位仍是 lite——同一局内信息面不对称（"别人的册子都被撕去了几页，只有你的完整"）。特权席拿 full 格式私密卡（章节引用 + 藏拙纪律附段），完整规则书快照存 `private/<席位>/rules-full.md`；编排器对其保留 § 引用、其余席照常内联。特权席须在阵容中（配合 `--seats` 指名）。state 记 `full_rule_seats`，评分卡再单列 `lite+特权·vX.Y` 池；存档分叉（replay）保留特权席设定。
+**lite 局特权席**（`[full]` 标记，v4.0.10）：lite 局中指定席位独持完整规则书（rules-6.md），其余席位仍是 lite——同一局内信息面不对称（"别人的册子都被撕去了几页，只有你的完整"）。在 `--seats` 名单项上附 `[full]` 即可（位置任意，可与 `:身份` 叠加，如 `claude:杀手[full]`；非 lite 局忽略该标记并提示）。特权席拿 full 格式私密卡（章节引用 + 藏拙纪律附段），完整规则书快照存 `private/<席位>/rules-full.md`；编排器对其保留 § 引用、其余席照常内联。state 记 `full_rule_seats`，评分卡再单列 `lite+特权·vX.Y` 池；存档分叉（replay）保留特权席设定。
 
 生成的 `game/<seed>/` 结构：
 

@@ -10,7 +10,7 @@
 src/          Python 代码（跑局管线）
   providers.py    多协议 API 客户端与配置加载（load_config / chat / find_player）
   gamedata.py     游戏静态数据（职业/道具/体格映射，与规则书对齐）
-  deal.py         开局生成器（M1）→ game/<seed>/（--lite 失忆版规则集；--full-seats lite 局特权席独持完整规则书）
+  deal.py         开局生成器（M1）→ game/<seed>/（--lite 失忆版规则集；--seats 名单项附 [full] 标记 = lite 局特权席独持完整规则书）
   engine/         规则裁决引擎（M3）：state / murder / vote / ledger / core
   orchestrator.py 编排器主循环（M4/M5）：run_game() 驱动完整对局 + 观察者钩子；无头模式与 console 共用
   replay.py       存档分叉：目标前复用原 outbox 重建到指定席位前并另存为，console/orchestrator --resume 接续
@@ -27,7 +27,7 @@ src/          Python 代码（跑局管线）
 players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key 只填环境变量名）
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
-screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md
+screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md / s1-e1-storyboard.md（S1E1 开场分镜）
 docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 / engine.md（引擎参考）；脚本用法已并入 README.md
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）

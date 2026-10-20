@@ -274,11 +274,11 @@ class TestDealVillainGuarantees(unittest.TestCase):
                          deal(42, self.players, self.personas, None))
 
     def test_full_seats_privileged(self):
-        """lite 局特权席（--full-seats）：state 记 full_rule_seats；特权席拿 full 格式卡
+        """lite 局特权席（[full] 标记）：state 记 full_rule_seats；特权席拿 full 格式卡
         （章节引用 + "你的册子是完整的"附段），其余席仍是 lite 自包含卡；
         只改信息口径、不消耗随机序列（同 seed 分配与纯 lite 局逐字节一致）。"""
         lite = deal(42, self.players, self.personas, ["claude"], lite=True)
-        mixed = deal(42, self.players, self.personas, ["claude"], lite=True, full_seats={"claude"})
+        mixed = deal(42, self.players, self.personas, ["claude[full]"], lite=True)
         self.assertEqual(lite["full_rule_seats"], [])
         self.assertEqual(mixed["full_rule_seats"], ["claude"])
         self.assertEqual(lite["players"], mixed["players"])  # 分配不变
@@ -296,14 +296,24 @@ class TestDealVillainGuarantees(unittest.TestCase):
                 self.assertNotIn("规则书 §", card, p["name"])
                 self.assertNotIn("你的册子是完整的", card, p["name"])
 
-    def test_full_seats_requires_lite_and_roster(self):
-        """--full-seats 仅配合 --lite；特权席须在本局阵容中。"""
-        with self.assertRaises(SystemExit):
-            deal(42, self.players, self.personas, ["claude"], full_seats={"claude"})
-        # 屏蔽 claude 后特权席仍指定它 → 不在本局阵容中，报错（不受随机抽席影响）
-        with self.assertRaises(SystemExit):
-            deal(42, self.players, self.personas, None, lite=True,
-                 exclude={"claude"}, full_seats={"claude"})
+    def test_full_seats_requires_lite(self):
+        """[full] 仅 lite 局生效：非 lite 局忽略该标记（不报错、不落 full_rule_seats）。"""
+        st = deal(42, self.players, self.personas, ["claude[full]"])
+        self.assertEqual(st["full_rule_seats"], [])
+        with self.assertRaises(SystemExit):  # 屏蔽名单与固定席位冲突仍报错
+            deal(42, self.players, self.personas, ["claude[full]"], lite=True, exclude={"claude"})
+
+    def test_full_seats_identity_pin(self):
+        """[full] 可与 :身份 叠加（claude:杀手[full]，[full] 位置任意），身份锁定并入 pinned_identities；
+        同 seed 同参数可复现。"""
+        st = deal(42, self.players, self.personas, ["claude:杀手[full]"], lite=True)
+        claude = next(p for p in st["players"] if p["id"] == "claude")
+        self.assertEqual(claude["identity"], "杀手")
+        self.assertEqual(st["full_rule_seats"], ["claude"])
+        self.assertEqual(st["pinned_identities"], {"claude": "杀手"})
+        self.assertFalse(validate(st))
+        st2 = deal(42, self.players, self.personas, ["claude[full]:杀手"], lite=True)
+        self.assertEqual(st, st2)  # [full] 位置任意，同 seed 逐字节一致
 
     def test_deal_writes_lite_flag(self):
         """deal 写入 is_lite_rule（默认 False = 高级规则；评分卡对缺字段旧档同样视为 False）。"""
