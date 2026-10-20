@@ -1,0 +1,1 @@
+The power is out, but someone turned on a flashlight so the room is lit. I have no spare actions that make much sense—viewing monitor recordings? During a blackout, monitoring stops recording but viewing past records might still work. It could be useful to see who entered where on Day 1. Can view monitoring.

@@ -1,0 +1,1 @@
+I'm in the monitoring room with Zhipu, lights on via flashlight. Monitoring stopped due to blackout, so viewing monitoring shows nothing new. Options: view monitoring (blank due to blackout), or gift. Best: view monitoring — but blackout means no recording. Still could confirm. Actually maybe gift flashlight? No. Just view monitoring to confirm nothing recorded today.

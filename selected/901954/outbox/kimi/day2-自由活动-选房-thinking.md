@@ -1,0 +1,1 @@
+Choose room: 监控室 to check monitor with already open door? It's permanently open. Invite 智谱 to discuss strategy. Go 监控室 with 智谱.

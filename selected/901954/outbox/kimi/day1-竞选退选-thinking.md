@@ -1,0 +1,1 @@
+Three candidates. Non-candidates: 智谱、豆包、克劳德. If all stay, they vote. My pitch is decent. Risk: 格罗克 and 杰米尼 could collude? They're both American... My win condition: getting gun is valuable for 指认. Stay seems reasonable—three voters. But risk of tie. Others distrust gun-grabbers (智谱 noted). Still, being detective gives 1.5 vote and monopoly on armed 指认—very strong. Stay.

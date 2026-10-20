@@ -1,0 +1,1 @@
+Accept flashlight. Then next phase (night rest) likely comes.

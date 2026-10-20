@@ -1,0 +1,1 @@
+Vote 克劳德. If not out, I can do armed accusation. My speech was strong. Cast vote.

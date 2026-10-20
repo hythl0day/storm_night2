@@ -1,0 +1,1 @@
+Voting. Evidence: 智谱 opened safe with screwdriver, corroborated. 格罗克 claims 机械师. Vote 格罗克 (1.5 votes). Even if tied, I could consider armed accusation? 武装指认 only when no one out. Let's vote 格罗克, maybe others follow.

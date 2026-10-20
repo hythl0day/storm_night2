@@ -1,0 +1,1 @@
+We are in dark basement. Goal: fix generator to restore power and surveillance. One action. Do it.

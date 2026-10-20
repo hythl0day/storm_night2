@@ -1,0 +1,1 @@
+Accept the bat—need weapons. Killer is still out there (female, per clue: Claude, Gemini, or QiMi? Actually Claude was female... killer clue: female; Gemini female, QiMi female. Claude dead, so killer is Gemini or QiMi... QiMi is detective with gun. Gemini suspect.

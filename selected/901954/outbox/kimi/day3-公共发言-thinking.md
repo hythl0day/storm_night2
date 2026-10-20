@@ -1,0 +1,1 @@
+Female killer, Claude or Gemini. Claude admitted pulling blackout—only killer can. Strong evidence. Call for armed identification? I hold left revolver, monopoly on accusation. Voting then can do armed point after if no execution. Vote Claude, and if tie/no one out, identify Claude with revolver. Speech concise, hard evidence.

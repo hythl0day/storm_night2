@@ -1,0 +1,1 @@
+3 alive: me, 奇米, 杰米尼. Killer remaining: 1 (克劳德 was one). If 杰米尼 is the killer, she must kill to win; if平民, no-kill countdown helps us. 夜宿会客室 bright, unlimited. Invite 杰米尼? If she's killer, being in bright hall with others... whoever comes. Best: invite 杰米尼 to 会客室 — bright, safe.

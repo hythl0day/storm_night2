@@ -1,0 +1,1 @@
+I'm a male player; the killer clue is "female" — Gemini is the only remaining woman. I'm a civilian, receiving the badge gives me 1.5 votes and armed identification rights. Accept it.

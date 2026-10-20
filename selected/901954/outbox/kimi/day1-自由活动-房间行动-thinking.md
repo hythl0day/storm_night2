@@ -1,0 +1,1 @@
+I'm in the monitor room with Grok; he offered to look at monitors while I record. I should view the monitoring records myself to verify rather than rely solely on his report.

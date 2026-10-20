@@ -1,0 +1,1 @@
+I'm in the monitoring room with Zhipu, lights on via flashlight. I should speak, probing about Claude and the master key claim. Keep it short.
