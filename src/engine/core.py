@@ -41,6 +41,7 @@ from .state import (
     is_villain,
     mark_blackout_period,
     record_entry,
+    record_visit,
     reject,
     unlock_means,
 )
@@ -472,6 +473,7 @@ class Engine:
         placed, note = self._settle_entry(name, room)
         s["positions"][name] = placed
         record_entry(s, name, placed)
+        record_visit(s, name, placed)  # v4.0.8 真实行踪台账：不受停电/密道影响
         if note:
             private[name] = note
         return {"ok": True, "type": "choose_room", "public": None, "private": private,
@@ -540,6 +542,7 @@ class Engine:
             placed, note = self._settle_entry(name, assignments[name])
             s["positions"][name] = placed
             record_entry(s, name, placed)
+            record_visit(s, name, placed)  # v4.0.8 真实行踪台账：不受停电/密道影响
             if note:
                 private[name] = (private.get(name, "") + "；" if name in private else "") + note
             if placed != assignments[name]:
@@ -635,6 +638,7 @@ class Engine:
                     private.setdefault(name, note)
             positions[name] = placed
             record_entry(s, name, placed)
+            record_visit(s, name, placed)  # v4.0.8 真实行踪台账：不受停电/密道影响
         for invitee, inviter in invited.items():
             if invitee in notified_invites:
                 continue

@@ -8,7 +8,9 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
 - table_events: [str]                   待清晨公告的桌上物品变动（夜间被取走等）
 - positions: {名字: 房间}               当前阶段所在房间；白天会议阶段为 "会客室"
 - monitoring: {时段: {房间: [名字]}}    公开监控（只记进入；可被反派以【远程入侵】/「木马程序U盘」整段抹除；v3.5 起覆盖会客室）
-- monitoring_true: 同结构               真实进入记录（仅宿主可见；【看破伪装】以它验证行踪）
+- monitoring_true: 同结构               真实进入记录（仅宿主可见；停电/密道同样不留——它回答的是"监控本应记到什么"）
+- visits: {名字: [房间]}                真实行踪台账（v4.0.8，仅裁决用、永不展示）：实际进入即记录，不受停电/监控抹除/密道隐匿影响——
+                                        【看破伪装】的行踪判定以它为准（心理判定对事实，不对记录）
 - skill_uses: {名字: {技能: 剩余}}      技能台账（反派技能仅反派登记；使用时仍校验身份与次数）
 - cases: [案件]                         死亡案件：伤痕/死亡时间/是否移尸/杀手线索（clue_trait）/篡改（falsified={调查项: 假值}）/封存/
                                         announced（清晨已公告）/investigated（公开调查或清晨篡改并宣读已定型）/discovered_by（发现者，host 侧）/reported_by（报案人，公告刊出）
@@ -42,6 +44,8 @@ Engine 在 deal.py 产出的 state 之上扩展以下字段（ensure() 幂等初
   player["items"] = [{"name", "uses_left", "available_day"}]
   deal 还可用 extra_items 额外配发（如一名杀手固定持有的「万能钥匙」，rules-6 §2），ensure 时并入。
   杀手可缴获多件道具；available_day 之前不可用（v3.5：遗嘱分配当天即可用）；转手不改变剩余次数。
+  player["ever_items"] = [道具名]：曾经持有台账（v4.0.9，仅裁决用）——看破伪装的道具判定口径；
+  grant_item 时登记，消耗/送出/被缴获不删除。
 
 v4.0：身份取值只余 平民/杀手（双杀手制，删除帮凶与继任）；与 v3.x 存档不兼容，旧档仅供查看。
 """
@@ -166,6 +170,13 @@ def ensure(state: dict) -> dict:
     s.setdefault("last_vote", None)
     s.setdefault("rooms_entered", None)
     s.setdefault("night_assigned", None)
+    if "visits" not in s:
+        # v4.0.8 真实行踪台账；旧档（v4.0.7 及更早）从真实监控记录尽力回填（停电/密道的行踪无法追回）
+        s["visits"] = {}
+        for rooms in s.get("monitoring_true", {}).values():
+            for room, names in rooms.items():
+                for n in names:
+                    record_visit(s, n, room)
     locks = s.setdefault("locks", {})
     for r in PUBLIC_ROOMS:
         locks.setdefault(r, r == "监控室")  # v3.2：监控室上锁（首开需开锁手段）；地下室取消门锁
@@ -175,6 +186,11 @@ def ensure(state: dict) -> dict:
             p["items"] = [{"name": p["item"], "uses_left": p["item_uses_left"], "available_day": 1}]
             for extra in p.get("extra_items", []):
                 p["items"].append({"name": extra, "uses_left": ITEM_USES[extra], "available_day": 1})
+        if "ever_items" not in p:
+            # v4.0.9 道具历史台账（仅裁决用）：是否曾经持有——看破伪装的道具判定口径。
+            # 新局此刻 items 即开局分配，逐字节准确；旧档（v4.0.8 及更早）以当前持有回填，
+            # 已消耗/已转出的无法追回（尽力而为）。
+            p["ever_items"] = list({e["name"] for e in p["items"]})
         if p["name"] not in s["skill_uses"]:
             # 身份终生不变：反派技能只登记给反派（使用时仍校验身份与次数）
             skills = dict(GENERAL_SKILLS.get(p["profession"], {}))
@@ -274,6 +290,14 @@ def record_entry(state: dict, name: str, room: str) -> None:
     state["monitoring_true"].setdefault(period, {}).setdefault(room, []).append(name)
 
 
+def record_visit(state: dict, name: str, room: str) -> None:
+    """真实行踪台账（v4.0.8）：实际进入即记录——不受停电/监控抹除/密道隐匿影响。
+    仅供裁决（【看破伪装】行踪判定），永不展示、不进公告；去重保留房间名。"""
+    visits = state["visits"].setdefault(name, [])
+    if room not in visits:
+        visits.append(room)
+
+
 def discover_bodies(state: dict) -> dict[str, str]:
     """v3.30 凶案发现：未公告案件的案发房间内有存活玩家 → 该人当场私下发现（记 discovered_by，不记报案）。
 
@@ -326,6 +350,9 @@ def consume_item_entry(p: dict, entry: dict) -> None:
 
 def grant_item(p: dict, name: str, uses_left: int, available_day: int) -> None:
     p["items"].append({"name": name, "uses_left": uses_left, "available_day": available_day})
+    ever = p.setdefault("ever_items", [])  # v4.0.9：道具历史台账（看破伪装判定用）
+    if name not in ever:
+        ever.append(name)
 
 
 def unlock_means(state: dict, name: str) -> str | None:

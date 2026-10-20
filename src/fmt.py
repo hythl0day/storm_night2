@@ -1,10 +1,35 @@
 """共享人读格式化：动作 JSON → 人读文本。
 
 console（屏幕卡片）与 orchestrator（script.md 行动回执）共用，避免编排器反向依赖视图层。
+阵容表（技能/道具列）统一口径也在此：host 侧四处（console 天亮一览 / view status /
+scorecard 席位段 / script.md 阵容与清晨状态表）共用 skills_text / items_text。
 """
 from __future__ import annotations
 
 import json
+
+from .gamedata import ITEM_USES
+
+
+def skills_text(state: dict, name: str) -> str:
+    """技能列统一口径（host 侧阵容表共用）：职业授予的技能全部列出，耗尽显示 ×0 不消失。"""
+    sk = state.get("skill_uses", {}).get(name, {})
+    return "、".join(f"{k}×{v}" for k, v in sk.items()) or "无"
+
+
+def items_text(p: dict) -> str:
+    """道具列统一口径（host 侧阵容表共用，v4.0.9）：曾经持有的全部列出（ever_items 台账），
+    当前持有显示剩余次数，消耗/送出/被缴获显示 ×0；旧档无台账时回退为当前持有，
+    items 键缺失时（未经引擎 ensure 的纯 deal 档）再回退 deal 原生字段（item + extra_items）。"""
+    entries = p.get("items")
+    if entries is None:
+        entries = ([{"name": p["item"], "uses_left": p.get("item_uses_left", 0)}] if p.get("item") else [])
+        entries += [{"name": x, "uses_left": ITEM_USES[x]} for x in p.get("extra_items", [])]
+    ever = p.get("ever_items") or [e["name"] for e in entries]
+    held: dict[str, int] = {}
+    for e in entries:
+        held[e["name"]] = held.get(e["name"], 0) + e["uses_left"]
+    return "、".join(f"{n}×{held.get(n, 0)}" for n in ever) or "无"
 
 
 def third_person(name: str, msg: str) -> str:

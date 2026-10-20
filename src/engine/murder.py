@@ -40,6 +40,7 @@ from .state import (
     held_item_names,
     is_dark,
     is_villain,
+    record_visit,
     reject,
     skill_left,
 )
@@ -404,10 +405,12 @@ def passage_kill(state: dict, user: str, target: str, weapon: str | None = None,
         return reject("passage_kill", "在场非反派角色过多")
     if method == "空手" and not _unarmed_ok(s, kp, tp, room):
         return reject("passage_kill", "空手谋杀条件不满足")
-    # 校验通过后经密道现身该房间：监控不留记录（本阶段记录上你一直在自己卧室）
+    # 校验通过后经密道现身该房间：监控不留记录（本阶段记录上你一直在自己卧室）；
+    # 但真实行踪台账照记（v4.0.8）——监控可以骗过，【看破伪装】的事实判定骗不过
     s["positions"][user] = room
     if user not in s["passage_stealth"]:
         s["passage_stealth"].append(user)
+    record_visit(s, user, room)
     spent_note = ""
     if weapon is not None:
         if entry is not None:

@@ -10,8 +10,9 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 import unittest
+from unittest import mock
 
-from src.providers import _ThinkTagger
+from src.providers import Player, _ThinkTagger, chat
 
 
 def run(tagger: _ThinkTagger, chunks: list[str]) -> list[tuple[str, bool]]:
@@ -51,6 +52,31 @@ class TestThinkTagger(unittest.TestCase):
         tagger = _ThinkTagger()
         self.assertEqual(tagger.feed(""), [])
         self.assertEqual(run(_ThinkTagger(), ["<t"]), [("<t", False)])
+
+
+class TestEmptyResponseRetry(unittest.TestCase):
+    """v4.0.7（game/247671 复盘：apinebula 的 Claude 上游约 3/4 概率返回空 200 → 席位整环节沉默）：
+    HTTP 200 但正文为空视为可重试错误，chat() 内部重试；重试耗尽才 ok=False。"""
+
+    def _player(self):
+        return Player(name="克劳德", model="m", base_url="http://x", api_key_env="K",
+                      api_type="anthropic", api_key="k")
+
+    def test_empty_then_content_recovers(self):
+        responses = iter([("", {}, "end_turn", ""), ("", {}, "end_turn", ""),
+                          ('```json\n{"speech": "好"}\n```', {"total_tokens": 10}, "end_turn", "")])
+        with mock.patch("src.providers._chat_anthropic", side_effect=lambda *a, **k: next(responses)), \
+             mock.patch("src.providers.time.sleep"):
+            r = chat(self._player(), [{"role": "user", "content": "hi"}])
+        self.assertTrue(r.ok)
+        self.assertIn("speech", r.content)
+
+    def test_all_empty_fails_not_ok(self):
+        with mock.patch("src.providers._chat_anthropic", return_value=("", {}, "end_turn", "")), \
+             mock.patch("src.providers.time.sleep"):
+            r = chat(self._player(), [{"role": "user", "content": "hi"}])
+        self.assertFalse(r.ok)
+        self.assertIn("空响应", r.error)
 
 
 if __name__ == "__main__":

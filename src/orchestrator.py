@@ -85,7 +85,7 @@ from .engine.state import (
     skill_left,
     unlock_means,
 )
-from .fmt import fmt_action, player_status, third_person
+from .fmt import fmt_action, items_text, player_status, skills_text, third_person
 from .gamedata import ARMED_WEAPONS, WEAPONS, physique_desc
 from .prompts import render
 from .providers import Player, chat, find_player, load_config
@@ -134,21 +134,13 @@ def fmt_monitoring(data: dict, day: int | None = None) -> str:
 
 
 def morning_roster_rows(state: dict, out_day: dict) -> list[tuple[str, str, str, str, str, str]]:
-    """全剧透状态行（host 侧）：script.md 每日清晨状态表与 console 天亮一览共用。"""
+    """全剧透状态行（host 侧）：script.md 每日清晨状态表与 console 天亮一览共用。
+    技能/道具列走 fmt 统一口径（v4.0.9）：曾经拥有全部列出，耗尽/送走后显示 ×0 不消失。"""
     rows = []
     for p in state["players"]:
         n = p["name"]
         status = player_status(p, state.get("cases", []), out_day)
-        skills = "、".join(f"{k}×{v}" for k, v in state.get("skill_uses", {}).get(n, {}).items() if v > 0) or "无"
-        # items 键存在即以其为准（空列表=真的无道具）；仅在键缺失时回退 deal 旧字段（兼容早期存档/夹具）
-        if "items" in p:
-            entries = p["items"]
-        elif p.get("item"):
-            entries = [{"name": p["item"], "uses_left": p.get("item_uses_left", 0)}]
-        else:
-            entries = []
-        items = "、".join(f"{e['name']}×{e['uses_left']}" for e in entries if e["uses_left"] > 0) or "无"
-        rows.append((n, status, p["identity"], p["profession"], skills, items))
+        rows.append((n, status, p["identity"], p["profession"], skills_text(state, n), items_text(p)))
     return rows
 
 # 开局背景叙述：console 启动画面与 script.md 全记录共用（仅此一份）
@@ -229,13 +221,13 @@ class Orchestrator:
             "",
             "## 阵容与分配（全剧透）",
             "",
-            "| 角色 | 性别 | 体格 | 国籍 | 身份 | 职业 | 初始道具 |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| 角色 | 性别 | 体格 | 国籍 | 身份 | 职业 | 初始道具 | 技能 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for p in s["players"]:
-            items = "、".join(f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])) or "无"
             lines.append(f"| {p['name']} | {p['gender']} | {physique_desc(p['physique'])} | "
-                         f"{p['nationality']} | {p['identity']} | {p['profession']} | {items} |")
+                         f"{p['nationality']} | {p['identity']} | {p['profession']} | "
+                         f"{items_text(p)} | {skills_text(s, p['name'])} |")
         lines += [
             "",
             f"- 首日行动顺序：{' → '.join(s['order'])}",
@@ -437,7 +429,7 @@ class Orchestrator:
             return ""
 
     def call_ai(self, p: dict, label: str, briefing: str) -> dict:
-        """一次席位调用：落盘简报与原始回复，解析三通道 JSON（解析失败重试 ≤2 次）。
+        """一次席位调用：落盘简报与原始回复，解析四通道 JSON（解析失败重试 ≤2 次）。
 
         中断语义（席位粒度断点的根基）：
         - API 请求失败（providers 内部重试已耗尽）→ 落盘 state 并抛 AbortRun，对局中断；
@@ -471,7 +463,10 @@ class Orchestrator:
                 if not result.ok:
                     self.save_state()
                     raise AbortRun(f"{p['name']} · {label}：API 调用失败（{result.error}）")
-                (seat_dir_out / f"day{day}-{label}.md").write_text(result.content, encoding="utf-8")
+                if result.content.strip():
+                    (seat_dir_out / f"day{day}-{label}.md").write_text(result.content, encoding="utf-8")
+                # 空响应不用同名文件覆盖 outbox：保留此前有内容的尝试作证据（v4.0.7，
+                # game/247671 复盘——最后一次空重试曾把首次有内容的回复抹成空文件）
                 if result.reasoning:
                     # 隐藏思考落盘（POV 素材备选；正文解析不受影响）
                     (seat_dir_out / f"day{day}-{label}-thinking.md").write_text(result.reasoning, encoding="utf-8")
@@ -991,7 +986,7 @@ class Orchestrator:
         """每天清晨在 script.md 写全剧透状态表（仅 host 侧，不进任何 prompt）。"""
         day = self.state["phase"]["day"]
         lines = [f"### 第{day}天清晨 · 状态一览（全剧透）", "",
-                 "| 角色 | 状态 | 身份 | 职业 | 技能剩余 | 道具 |", "| --- | --- | --- | --- | --- | --- |"]
+                 "| 角色 | 状态 | 身份 | 职业 | 技能 | 道具 |", "| --- | --- | --- | --- | --- | --- |"]
         lines += ["| " + " | ".join(r) + " |" for r in morning_roster_rows(self.state, self.orch["out_day"])]
         self.script_line("\n".join(lines))
 
@@ -1209,14 +1204,14 @@ class Orchestrator:
                                 '完整结构示例（值照抄对方声明，不要照抄占位描述）：{"type": "see_through", "target": "对方名字", '
                                 '"claims": {"profession": "对方自称的职业名", "item": "对方提到的道具名", "skill": "对方声称的技能名", '
                                 '"visited_rooms": ["书房"], "denied_rooms": ["地下室"]}}。'
-                                '行踪以监控记录为准；存在停电空白时"无记录"不构成谎言证据（判"无法验证"，不计入谎言判定）')
+                                '行踪按事实判定（是否真的进入过该房间），与监控记录无关——停电、监控抹除、密道隐匿都不影响判定；只有无效名目才判"无法验证"')
                 else:
                     menu.append('- 看破伪装（自己发言前。claims 只填你想验证的项，值必须是规则书原名——职业如 "黑客"、道具如 "刀"、房间如 "书房"；填整句描述属于非法名目，全部非法则驳回、不消耗次数。'
                                 '字段仅限 profession/item/skill/visited_rooms/denied_rooms，出现其他键也会驳回且不消耗次数。'
                                 '完整示例——验证对方自称黑客、持有刀、声称会远程入侵、去过书房且否认去过地下室：'
                                 '{"type": "see_through", "target": "对方名字", "claims": {"profession": "黑客", "item": "刀", '
                                 '"skill": "远程入侵", "visited_rooms": ["书房"], "denied_rooms": ["地下室"]}}。'
-                                '行踪以监控记录为准；存在停电空白时"无记录"不构成谎言证据（判"无法验证"，不计入谎言判定）')
+                                '行踪按事实判定（是否真的进入过该房间），与监控记录无关——停电、监控抹除、密道隐匿都不影响判定；只有无效名目才判"无法验证"')
             menu.append("- 发言写在 speech 字段；无需动作时 actions 为 []")
             briefing = self.build_briefing(p, f"第{day}天 · 公共发言（轮到你）", menu,
                                            "现在轮到你公开发言。分析、指控、质疑、声明、辩护均可。")

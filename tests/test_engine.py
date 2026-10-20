@@ -1823,30 +1823,32 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         # 空 claims 驳回
         self.assertFalse(eng.see_through("F", "C", {})["ok"])
 
-    def test_see_through_blackout_gap_unverifiable(self):
-        """v3.12（game/20 复盘：格罗克真实待过会客室，因停电监控空白被误判"谎言"票出）：
-        存在停电空白时，行踪声称的"无记录"不构成谎言证据（判无法验证）；有记录为证的声称不受影响。"""
+    def test_see_through_truth_based_ignores_blackout(self):
+        """v4.0.8：看破伪装是心理判定——行踪按事实（真实行踪台账 visits）判定，与监控记录无关。
+        取代 v3.12 的监控空白折中（game/20：格罗克因停电空白被判"无法验证"→ 旧口径的妥协；
+        v4.0.8 后停电/抹除/密道隐匿都不再影响行踪判定）。"""
         players = default_players()
         players[5] = P("F", "平民", "心理医生", "窃听器", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
         goto(eng, "自由活动", day=1)
         eng.enter_rooms({"A": "书房", "B": "监控室", "C": "书房", "D": "会客室", "E": "会客室", "F": "会客室"})
         goto(eng, "公共发言", day=2)
-        eng.state["blackout_days"] = [2]  # 本局存在停电空白（监控缺失日）
-        ev = eng.see_through("F", "C", {"visited_rooms": ["书房", "会客室"], "denied_rooms": ["会客室"]})
+        eng.state["blackout_days"] = [2]  # 停电空白不再影响行踪判定（旧口径此处会判"无法验证"）
+        ev = eng.see_through("F", "C", {"visited_rooms": ["书房", "会客室"],
+                                        "denied_rooms": ["会客室", "书房"]})
         self.assertTrue(ev["ok"], ev)
         v = ev["private"]["F"]["verdicts"]
-        self.assertEqual(v["去过书房"], "属实")                       # 有记录为证，不受空白影响
-        self.assertTrue(v["去过会客室"].startswith("无法验证"))        # 无记录+空白：不能排除空白期进入
-        self.assertTrue(v["没去过会客室"].startswith("无法验证"))      # 无记录+空白：不能确认从未进入
-        self.assertFalse(ev["private"]["F"]["lies"])
-        # 无停电空白时恢复原口径：无记录 = 谎言/属实
-        eng.state["blackout_days"] = []
-        ev = eng.see_through("F", "C", {"visited_rooms": ["会客室"], "denied_rooms": ["书房"]})
-        v = ev["private"]["F"]["verdicts"]
-        self.assertEqual(v["去过会客室"], "谎言")
+        self.assertEqual(v["去过书房"], "属实")    # 事实：进过
+        self.assertEqual(v["去过会客室"], "谎言")  # 事实：没进过
+        self.assertEqual(v["没去过会客室"], "属实")
         self.assertEqual(v["没去过书房"], "谎言")
         self.assertTrue(ev["private"]["F"]["lies"])
+        # 无效房间名仍是"无法验证"，不计入谎言判定（混入一条合法名目——全部非法会整体驳回不消耗次数）
+        ev = eng.see_through("F", "C", {"visited_rooms": ["厨房", "书房"]})
+        v = ev["private"]["F"]["verdicts"]
+        self.assertTrue(v["去过厨房"].startswith("无法验证"))
+        self.assertEqual(v["去过书房"], "属实")
+        self.assertFalse(ev["private"]["F"]["lies"])
 
     def test_see_through_all_invalid_rejected_no_consume(self):
         """v3.12（game/20 复盘：豆包把整句描述填进 item 白白消耗一次看破伪装）：
@@ -1874,6 +1876,37 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertIn("不消耗次数", ev["error"])
         self.assertEqual(eng.state["skill_uses"]["F"]["看破伪装"], 1)
 
+    def test_see_through_used_up_skill_still_true(self):
+        """v4.0.7（game/247671 复盘：杰普特白天用过【封闭空间】后，杰米尼验其技能声明被误判"谎言"）：
+        技能声明验证"是否拥有"（登记在技能台账即拥有），不看剩余次数——×1 技能用完后声明仍属实。
+        v4.0.9 道具同口径：验"是否曾经持有"（ever_items 台账），用掉/送出/被缴获仍为属实。"""
+        players = default_players()
+        players[2] = P("C", "平民", "建筑师", "急救箱", gender="女", physique=3)
+        players[5] = P("F", "平民", "心理医生", "测谎仪", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        goto(eng, "公共发言", day=1)
+        # C 已用掉封闭空间（剩余 0）：声明仍属实
+        eng.state["skill_uses"]["C"]["封闭空间"] = 0
+        ev = eng.see_through("F", "C", {"skill": "封闭空间"})
+        self.assertTrue(ev["ok"], ev)
+        self.assertEqual(ev["private"]["F"]["verdicts"]["技能声明「封闭空间」"], "属实")
+        self.assertFalse(ev["private"]["F"]["lies"])
+        # C 没有的技能仍是谎言；职业不受消耗影响
+        ev = eng.see_through("F", "C", {"skill": "远程入侵", "profession": "建筑师"})
+        v = ev["private"]["F"]["verdicts"]
+        self.assertEqual(v["技能声明「远程入侵」"], "谎言")
+        self.assertEqual(v["职业声明「建筑师」"], "属实")
+        self.assertTrue(ev["private"]["F"]["lies"])
+        # C 的急救箱用掉后（次数归零销毁），"持有急救箱"声明仍属实（曾经持有口径，测谎仪验证）；
+        # 从未拥有过的道具仍是谎言
+        eng.state["players"][2]["items"] = []
+        ev = eng.see_through("F", "C", {"item": "急救箱"})
+        self.assertEqual(ev["private"]["F"]["verdicts"]["道具声明「急救箱」"], "属实")
+        self.assertFalse(ev["private"]["F"]["lies"])
+        eng.state["skill_uses"]["F"]["看破伪装"] = 1  # 测谎仪已耗，补一次技能次数继续验
+        ev = eng.see_through("F", "C", {"item": "鲁米诺试剂"})
+        self.assertEqual(ev["private"]["F"]["verdicts"]["道具声明「鲁米诺试剂」"], "谎言")
+
     def test_detective_skips_dead_and_order_filtered(self):
         """v3.2 修复（game/42 死侦探）：清晨公告顺序与存活名单不含死者（v3.3 起侦探竞选产生、不再每日轮换）。"""
         eng = Engine(mk_state())
@@ -1891,15 +1924,22 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertIn("目前存活 5 人：B、C、D、E、F", ann)
 
     def test_morning_roster_no_ghost_items(self):
-        """v3.2 修复（game/42 幽灵道具）：items 为空列表时不得回退 deal 旧字段。"""
+        """v3.2 修复（game/42 幽灵道具）：items 为空列表时不得回退 deal 旧字段。
+        v4.0.9：耗尽/送走的道具不消失——按 ever_items 台账显示 ×0（仍不回退 deal 旧字段复活次数）。"""
         from src.orchestrator import morning_roster_rows
         eng = Engine(mk_state())
         player(eng, "C")["items"] = []      # 急救箱已耗尽/被收走
         rows = morning_roster_rows(eng.state, {})
         row = next(r for r in rows if r[0] == "C")
-        self.assertEqual(row[5], "无")
+        self.assertEqual(row[5], "急救箱×0")   # 曾经持有 → ×0
         row = next(r for r in rows if r[0] == "A")
-        self.assertIn("刀", row[5])         # 正常持有不受影响
+        self.assertIn("刀×1", row[5])          # 正常持有不受影响
+        # 技能耗尽同样 ×0 不消失
+        eng.state["skill_uses"]["A"]["舞台魔术"] = 0
+        rows = morning_roster_rows(eng.state, {})
+        row = next(r for r in rows if r[0] == "A")
+        self.assertIn("舞台魔术×0", row[4])
+        self.assertIn("看破伪装×2", row[4])
 
     def test_seal_room_blocks_night_entry(self):
         eng = Engine(mk_state())
@@ -1926,6 +1966,7 @@ class TestMonitoringLocksLedger(unittest.TestCase):
         self.assertEqual(eng.state["positions"]["B"], "书房")          # 杀后人在现场
         recs = eng.state["monitoring"]["第2天晚间休息"]["书房"]
         self.assertEqual(recs, ["E"])  # 监控里只有受害者——密道无痕
+        self.assertIn("书房", eng.state["visits"]["B"])  # v4.0.8：真实行踪台账照记（看破伪装的事实判定骗不过）
         self.assertTrue(eng.state["stage_murder_used"])
         self.assertEqual(eng.state["skill_uses"]["B"]["建造密道"], 0)  # 成功一次后密道损毁
         self.assertTrue(eng.state["passage"]["used"])

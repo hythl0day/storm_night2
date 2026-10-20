@@ -337,6 +337,11 @@ def chat(
     for attempt in range(max_retries + 1):
         try:
             content, usage, finish, reasoning = handler(player, messages, stall, wall_limit, on_token, reasoning_effort)
+            if not content.strip():
+                # v4.0.7（game/247671 复盘）：中转站偶发返回 HTTP 200 但正文为空（usage 也为 0），
+                # 原口径当成功返回，orchestrator 的三次解析重试等于向同一坏路径重复投递，
+                # 席位表现为整环节沉默。空正文一律视为可重试错误。
+                raise ValueError("空响应（HTTP 200 但正文为空）")
             return ChatResult(
                 player.name,
                 ok=True,

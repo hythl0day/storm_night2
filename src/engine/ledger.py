@@ -519,11 +519,14 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
 
     claims 由使用者从目标发言中提取（须引用对方实际声称过的内容）：
     {"profession", "item", "skill", "visited_rooms": [...], "denied_rooms": [...]}。
-    每项裁决为三态：属实 / 谎言 / 无法验证（无效名目、对方未作此类声明、或房间无监控覆盖），
-    "无法验证"不计入谎言判定。行踪以真实监控记录（monitoring_true）验证（v3.5 起监控覆盖所有房间门口，含会客室）。
-    v3.12（game/20 复盘）：存在监控空白（停电或被远程抹除的时段）时，行踪声称的"无记录"不构成谎言证据，
-    判"无法验证"；全部为非法名目的 claims 整体驳回且不消耗次数（进驳回重报流程）；
-    visited_rooms/denied_rooms 容错接受单个字符串。
+    每项裁决为三态：属实 / 谎言 / 无法验证（无效名目），"无法验证"不计入谎言判定。
+    职业/技能声明验证"是否拥有"（职业本身 / 技能是否登记在该玩家台账——用过耗尽仍为属实，v4.0.7）；
+    道具声明验证"是否曾经持有"（ever_items 台账：开局分配或后来获得过；用掉、送出、被缴获仍为属实，v4.0.9）。
+    v4.0.8：看破伪装是心理判定——行踪以真实行踪台账（visits）判定"是否真正进入过"，
+    与监控是否有记录无关：停电、监控抹除、密道隐匿都不影响判定；"无法验证"只留给无效房间名
+    （取代 v3.12 的监控空白折中——那时行踪以 monitoring_true 验证，空白期只能判"无法验证"）。
+    全部为非法名目的 claims 整体驳回且不消耗次数（进驳回重报流程，v3.12）；
+    visited_rooms/denied_rooms 容错接受单个字符串（v3.12）。
     """
     s = state
     day = s["phase"]["day"]
@@ -548,16 +551,8 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
                       f"无法识别的 claims 字段：{'、'.join(unknown)}；仅允许 profession/item/skill/"
                       "visited_rooms/denied_rooms——本次不消耗次数，请重新声明")
 
-    def entered(room: str) -> bool:
-        return any(target in rooms.get(room, []) for rooms in s["monitoring_true"].values())
-
-    def monitorable(room: str) -> bool:
-        return room in FREE_ROOMS or is_bedroom(room)  # v3.5：监控覆盖所有房间门口（含会客室）
-
-    # v3.12（game/20 复盘）：存在监控空白的对局，"无记录"不能作为行踪谎言的证据——
-    # 与清晨宣读"缺失不代表无人进入"同口径；有记录为证的声称不受空白影响。
-    # v4.0：空白来源含停电与【远程入侵】/「木马程序U盘」的整段抹除（均记入 blackout_periods）
-    gap = bool(s.get("blackout_periods")) or bool(s.get("blackout_days"))
+    def valid_room(room: str) -> bool:
+        return room in FREE_ROOMS or is_bedroom(room)
 
     verdicts: dict[str, str] = {}
     wellformed = 0  # 名目合法的声明数；全部为非法名目（如整句描述）→ 整体驳回、不消耗次数（v3.12）
@@ -572,14 +567,21 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
         c = str(claims["item"])
         if c in ITEMS:
             wellformed += 1
-            verdicts[f"道具声明「{c}」"] = "属实" if held_item(tp, c, day) is not None else "谎言"
+            # v4.0.9：道具声明验"是否曾经持有"（开局分配/遗嘱/赠送/缴获/开箱均算），
+            # 不看当前是否持有——"我的道具是急救箱"是历史事实声明，用掉后验成"谎言"属误判
+            # （与 v4.0.7 技能口径同源：说真话的人不应因消耗而变成"骗子"）。
+            verdicts[f"道具声明「{c}」"] = "属实" if c in tp.get("ever_items", []) else "谎言"
         else:
             verdicts[f"道具声明「{c}」"] = "无法验证（不是有效道具名）"
     if claims.get("skill"):
         c = str(claims["skill"])
         if c in ALL_SKILLS:
             wellformed += 1
-            verdicts[f"技能声明「{c}」"] = "属实" if skill_left(s, target, c) > 0 else "谎言"
+            # v4.0.7（game/247671 复盘）：技能声明验证"是否拥有该技能"（职业是否授予、是否登记在
+            # 技能台账），不看剩余次数——杰普特白天用过【封闭空间】（×1 已耗尽），
+            # 声明"我是建筑师/我发动过封闭空间"曾因 skill_left==0 被误判"谎言"。
+            # 反派技能只登记给反派：声称反派技能而台账无此键 → 谎言，口径不变。
+            verdicts[f"技能声明「{c}」"] = "属实" if c in s["skill_uses"].get(tp["name"], {}) else "谎言"
         else:
             verdicts[f"技能声明「{c}」"] = "无法验证（不是有效技能名）"
     for key, ph in (("visited_rooms", "去过"), ("denied_rooms", "没去过")):
@@ -588,25 +590,15 @@ def see_through(state: dict, user: str, target: str, claims: dict) -> dict:
             rooms_claimed = [rooms_claimed]  # 容错：单个房间允许直接填字符串（v3.12）
         for r in rooms_claimed:
             r = str(r)
-            if not monitorable(r):
-                verdicts[f"{ph}{r}"] = "无法验证（该房间无监控覆盖）"
+            if not valid_room(r):
+                verdicts[f"{ph}{r}"] = "无法验证（不是有效房间名）"
                 continue
             wellformed += 1
-            got = entered(r)
+            got = r in s["visits"].get(target, [])  # v4.0.8：事实判定，不看监控
             if key == "visited_rooms":
-                if got:
-                    verdicts[f"{ph}{r}"] = "属实"
-                elif gap:
-                    verdicts[f"{ph}{r}"] = "无法验证（监控存在空白时段，不能排除其在空白期进入）"
-                else:
-                    verdicts[f"{ph}{r}"] = "谎言"
+                verdicts[f"{ph}{r}"] = "属实" if got else "谎言"
             else:
-                if got:
-                    verdicts[f"{ph}{r}"] = "谎言"
-                elif gap:
-                    verdicts[f"{ph}{r}"] = "无法验证（监控存在空白时段，不能确认其从未进入）"
-                else:
-                    verdicts[f"{ph}{r}"] = "属实"
+                verdicts[f"{ph}{r}"] = "谎言" if got else "属实"
     if not wellformed:
         return reject("see_through",
                       '没有可验证的声明：职业/道具/技能/房间须填规则书原名（如 "黑客"、"刀"、"书房"），'

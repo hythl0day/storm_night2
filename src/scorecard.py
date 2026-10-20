@@ -26,7 +26,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import ROOT, resolve_game_dir
-from .fmt import player_status
+from .fmt import items_text, player_status, skills_text
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -249,6 +249,7 @@ def analyze(g: dict) -> dict:
         "players": st.get("players", []),
         "alive": [p["name"] for p in st.get("players", []) if p.get("alive")],
         "out_day": st.get("orch", {}).get("out_day", {}),
+        "skill_uses": st.get("skill_uses", {}),
         "ids": ids,
         "murders": len(cases), "attempts": len(attempts), "cases": cases,
         "attempt_list": attempts,
@@ -373,8 +374,9 @@ def single_report(d: Path) -> str:
         n = p["name"]
         st = player_status(p, a["cases"], a["out_day"])
         idn = a["ids"].get(n, p["identity"])
-        items = "、".join(f"{e['name']}×{e['uses_left']}" for e in p.get("items", [])) or "无"
-        L.append(f"  {n}｜{idn}｜{p['profession']}｜{st}｜剩余道具：{items}")
+        # 技能/道具列走 fmt 统一口径（v4.0.9）：曾经拥有全部列出，耗尽/送走后显示 ×0
+        sk = skills_text({"skill_uses": a["skill_uses"]}, n)
+        L.append(f"  {n}｜{idn}｜{p['profession']}｜{st}｜技能：{sk}｜道具：{items_text(p)}")
     if a["cases"]:
         L.append("")
         L.append("—— 案件 ——")
