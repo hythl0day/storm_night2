@@ -2177,5 +2177,44 @@ class TestInvestigationQueueV4(MockGameTestBase):
         self.assertEqual(log.count("当众宣读了自己的调查结论（E 案"), 1)
 
 
+class TestDeathNoteFrozen(MockGameTestBase):
+    """死者字条记忆冻结（死亡时点由 route 记录）：公告增量/私密历史截断在死亡时点，
+    不下发实时局面与游戏状态段；活人简报不受影响。"""
+
+    def _orch_with_murder(self) -> Orchestrator:
+        orch = Orchestrator(write_game_dir(self.root, default_players()))
+        s = orch.state
+        s["phase"] = {"day": 2, "stage": "自由活动"}
+        orch.log_line("- 第 2/6 天开始。今日行动顺序：A → B → C → D → E → F")  # 死前公告
+        s["positions"] = {"A": "书房", "E": "书房"}
+        ev = orch.eng.murder("A", "E", "刀")
+        assert ev["ok"], ev
+        orch.route(ev)  # 死亡后首个事件批次 → 记录 E 的死亡时点游标
+        orch.log_line("- 第 3/6 天开始。今日行动顺序：B → C → D → E → F → A")  # 死后公告（次日清晨）
+        orch.log_line("- 监控宣读：第2天自由活动[书房←A、E]")
+        orch.tell("E", "你在书房的尸体已被发现")  # 死后私密事件（不应送达）
+        return orch
+
+    def test_death_cursor_recorded_and_briefing_frozen(self):
+        orch = self._orch_with_murder()
+        e = orch.player("E")
+        self.assertFalse(e["alive"])
+        self.assertIn("E", orch.orch["death_cursor"])
+        text = orch.build_briefing(e, "第3天 · 死者字条", [], "你在昨夜遇害。")
+        self.assertIn("你已死亡", text)
+        self.assertNotIn("## 游戏状态", text)
+        self.assertIn("第 2/6 天开始", text)      # 死前公告保留
+        self.assertNotIn("第 3/6 天开始", text)   # 死后清晨公告不送达
+        self.assertNotIn("监控宣读", text)
+        self.assertNotIn("尸体已被发现", text)
+
+    def test_living_briefing_unaffected(self):
+        orch = self._orch_with_murder()
+        d = orch.player("D")
+        text = orch.build_briefing(d, "第3天 · 公共发言", [])
+        self.assertIn("监控宣读", text)           # 活人照常收到全部公告
+        self.assertIn("## 游戏状态", text)
+
+
 if __name__ == "__main__":
     unittest.main()

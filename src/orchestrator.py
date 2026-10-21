@@ -197,6 +197,7 @@ class Orchestrator:
         self.orch.setdefault("hist", {})  # 各席私密事件历史（简报"关键记录"段的数据源）
         self.orch.setdefault("talks", {})  # 房内交谈存档 {f"{day}:{room}": [行]}（窃听器下发用）
         self.orch.setdefault("out_day", {})  # 出局/指认出局者 → 天数（script.md 清晨状态表用）
+        self.orch.setdefault("death_cursor", {})  # 死亡时点的 feed/hist 游标（route 记录；死者字条简报冻结用）
         self._system_cache: dict[str, str] = {}
         self._pending: dict[str, int] = {}  # 席位名 → 待提交的 feed 游标（call_ai 成功后才提交）
         self._receipt_open = False  # script.md 行动回执块分隔头是否已打开（连续回执共享一块）
@@ -390,6 +391,15 @@ class Orchestrator:
         """把引擎事件路由到公开信息流与各席私密队列。script=False 时公告不进 script.md（调用方自记明细，去重）。"""
         if not ev.get("ok"):
             return
+        # 死亡记忆冻结（host 侧信息纪律，规则文本不变）：在死亡后首个事件批次进入 feed 前
+        # 记录新死者的游标——死者字条只能写"死前所知"，其后的清晨公告/监控宣读不再送达死者
+        # （game/892516 复盘：杰普特的字条引用了死后清晨的监控宣读来指导投票）。
+        # 投票/指认出局的遗言在 route 出局事件之前调用 AI（death_cursor 尚未记录），不受影响。
+        dc = self.orch["death_cursor"]
+        for q in self.state["players"]:
+            if not q["alive"] and q["name"] not in dc:
+                dc[q["name"]] = {"feed": len(self.orch["feed"]),
+                                 "hist": len(self.orch["hist"].get(q["name"], []))}
         sink = self.log_line if script else self.feed_line
         public = ev.get("public") or {}
         for line in public.get("announcements", []):
@@ -751,8 +761,18 @@ class Orchestrator:
         name = p["name"]
         cursor = self.orch["cursor"].get(name, 0)
         feed = self.orch["feed"]
-        new_public = feed[cursor:]
+        # 死者（有死亡时点记录）：公告与私密历史一律截断在死亡时点——死者字条只能写"死前所知"，
+        # 其后的清晨公告/监控宣读不进入简报。旧存档无记录时保持原口径（全量下发）。
+        dc = self.orch["death_cursor"].get(name)
+        frozen = dc is not None and not p["alive"]
+        new_public = feed[cursor:min(dc["feed"], len(feed))] if frozen else feed[cursor:]
         private = list(self.orch["private"].get(name, []))
+        hist = self.orch["hist"].get(name, [])
+        if frozen:
+            # 私密队列与历史同样截断在死亡时点（队列是 hist 的尾部，按死亡时点保留前缀）
+            keep = max(0, dc["hist"] - (len(hist) - len(private)))
+            private = private[:keep]
+            hist = hist[:dc["hist"]]
         self._pending[name] = len(feed)
         notes_path = self.dir / "private" / self.seat(p) / "notes.md"
         notes = notes_path.read_text(encoding="utf-8").strip() if notes_path.exists() else "（空）"
@@ -766,7 +786,6 @@ class Orchestrator:
                 if q["name"] != name and self.state["positions"].get(q["name"]) == pos
             ]
         pub_hist = [self._bullet(self._clip(x)) for x in self._compact_public(feed[:cursor]) if not x.startswith("**")]
-        hist = self.orch["hist"].get(name, [])
         priv_hist = self._compact_private(hist[: len(hist) - len(private)] if private else hist)
         lines = [f"# {title}", ""]
         lines.append("## 自你上次行动以来的公告")
@@ -777,28 +796,33 @@ class Orchestrator:
         lines.append("")
         pos_line = f"你现在的位置：{pos}"
         meeting_hall = pos == HALL and self.state["phase"]["stage"] in MEETING_STAGES
-        if pos and not meeting_hall:
-            if dark:
-                partners = self._dark_partners(name, pos)
-                if is_villain(p):
-                    present = "、".join(roommates) if roommates else "无"
-                    pos_line += f"（房间黑暗：你仍知道在场者：{present}；你只知道他们是谁，看不见具体行为"
-                    if partners:
-                        pos_line += "；受邀组合仍可摸黑低语，其余黑暗规则不变）"
+        if frozen:
+            # 死者简报不下发实时局面与游戏状态（存活/倒计时/角色表均为死后口径）
+            lines.append("## 当前局面\n你已死亡——死后的局面不再向你公开；字条只能写下你死前所知道的事。")
+            lines.append("")
+        else:
+            if pos and not meeting_hall:
+                if dark:
+                    partners = self._dark_partners(name, pos)
+                    if is_villain(p):
+                        present = "、".join(roommates) if roommates else "无"
+                        pos_line += f"（房间黑暗：你仍知道在场者：{present}；你只知道他们是谁，看不见具体行为"
+                        if partners:
+                            pos_line += "；受邀组合仍可摸黑低语，其余黑暗规则不变）"
+                        else:
+                            pos_line += "，也无法交谈；其余黑暗规则不变）"
+                    elif partners:
+                        # v3.17：同入邀请成立的伙伴互知在场，可摸黑低语（rules-6 §7.5.6）
+                        pos_line += (f"（房间黑暗：你看不见这里有谁——但你知道 {'、'.join(partners)} 应邀同来、就在身边，"
+                                     "可以摸黑低声交谈；当心被你们看不见的潜伏者旁听）")
                     else:
-                        pos_line += "，也无法交谈；其余黑暗规则不变）"
-                elif partners:
-                    # v3.17：同入邀请成立的伙伴互知在场，可摸黑低语（rules-6 §7.5.6）
-                    pos_line += (f"（房间黑暗：你看不见这里有谁——但你知道 {'、'.join(partners)} 应邀同来、就在身边，"
-                                 "可以摸黑低声交谈；当心被你们看不见的潜伏者旁听）")
+                        pos_line += "（房间黑暗：你看不见这里有谁，也无法交谈）"
                 else:
-                    pos_line += "（房间黑暗：你看不见这里有谁，也无法交谈）"
-            else:
-                pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
-        lines.append(f"## 当前局面\n{pos_line}")
-        lines.append("")
-        lines.append("## 游戏状态（公开事实速查——与你的笔记冲突时以此为准）\n" + "\n".join(self._game_state_lines()))
-        lines.append("")
+                    pos_line += f"；同房者：{'、'.join(roommates) if roommates else '无'}"
+            lines.append(f"## 当前局面\n{pos_line}")
+            lines.append("")
+            lines.append("## 游戏状态（公开事实速查——与你的笔记冲突时以此为准）\n" + "\n".join(self._game_state_lines()))
+            lines.append("")
         lines.append("## 你的状态\n" + "\n".join(self._status_lines(p)))
         lines.append("")
         lines.append(f"## 截至目前的关键记录（{self.host_term}档案：既定事实流水，不含任何发言内容——发言与推理要点请记在你的笔记里）")
