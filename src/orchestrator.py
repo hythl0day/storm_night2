@@ -570,6 +570,7 @@ class Orchestrator:
             return [f"存活 {n} 人：出局线 = 得票严格超过 {n}/2，即至少 {need:g} 票（普通票 1、侦探票 1.5）——"
                     f"{need - 0.5:g} 票不够。",
                     "可弃权；平票或未过线 → 本轮无人出局。",
+                    "投票不记名：只公布每人得票数与裁决，不公布谁投了谁——你的票向只有你自己知道，他人关于票向的说法无法证实。",
                     f"本轮无人出局时，之后可能进入武装指认（{accuse_ref}）。"]
         if "武装指认" in title:
             return ["每次投票至多接受一次指认，按行动顺序先声明者优先。",
@@ -1300,13 +1301,13 @@ class Orchestrator:
                                 f'次日清晨公告桌上变动）：{{"type": "murder", "target": "{"|".join(targets)}", '
                                 f'"weapon": "{"|".join(table_weapons)}"}}')
             if prof == "魔术师" and skill_left(s, name, "舞台魔术") > 0:
-                menu.append(f'- 舞台魔术（任意人数在场也可空手完成谋杀；可被急救箱/敏捷闪避/药理学/药用不明药剂抵消；占用本窗口尝试，整局一次）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
+                menu.append(f'- 舞台魔术（任意人数在场也可空手完成谋杀；仅【敏捷闪避】可抵消，急救箱/药用药剂均无效；占用本窗口尝试，整局一次）：{{"type": "stage_magic", "target": "{"|".join(targets)}"}}')
             if prof == "运动员" and skill_left(s, name, "强袭") > 0:
                 menu.append(f'- 强袭（空手强杀：无附加条件、不可防御，但仍受人数限制；占用本窗口尝试，整局一次）：{{"type": "strong_attack", "target": "{"|".join(targets)}"}}')
             if prof == "医师" and skill_left(s, name, "药理学") > 0:
                 menu.append(f'- 药理学·毒杀（等同凶器不明药剂：凶器判定、可被急救箱/敏捷闪避等救援手段防御；占用本窗口尝试，整局一次）：{{"type": "pharmacology_kill", "target": "{"|".join(targets)}"}}')
             if prof == "化学家" and skill_left(s, name, "缓释毒剂") > 0:
-                menu.append(f'- 缓释毒剂（走空手判定、不可防御；目标不知情、当夜睡梦中死亡；占用本窗口尝试并视为当天成功，整局一次）：{{"type": "slow_poison", "target": "{"|".join(targets)}"}}')
+                menu.append(f'- 缓释毒剂（不受人数/附加条件限制，亮房人群中也可对同房目标下毒；无声无息、当夜毒发时按目标当时持有的道具结算——急救箱/药用药剂可化解，敏捷闪避无效；占用本窗口尝试并视为当天成功，整局一次）：{{"type": "slow_poison", "target": "{"|".join(targets)}"}}')
         if prof == "建筑师" and skill_left(s, name, "建造密道") > 0:
             # v4.0 密道谋杀：出口实况标注（明/暗、在场非反派、可选目标），经密道现身该房间动手
             exits = []
@@ -2015,7 +2016,7 @@ class Orchestrator:
         public = ev.get("public") or {}
         out = public.get("out")
         tally = public.get("tally") or {}
-        # v3.21：出局执行前窗口——投票将导致最后一名平民出局时，先公布票型，
+        # v3.21：出局执行前窗口——投票将导致最后一名平民出局时，先公布计票结果，
         # 该平民可行使武装指认（背水一战）；指认结算（宣言/遗言/公布/遗嘱）由 run_armed_accusation 接管
         if out and self.state.get("pending_out") and not w.get("pre_exec_done"):
             civilians = [q["name"] for q in self.alive() if q["identity"] == "平民"]

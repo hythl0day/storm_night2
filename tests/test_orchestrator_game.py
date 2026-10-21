@@ -782,6 +782,11 @@ class StageHintsTest(MockGameTestBase):
         self.assertTrue(any("至少 2.5 票" in h for h in hints), hints)
         self.assertTrue(any("2 票不够" in h for h in hints), hints)
 
+    def test_vote_hint_secret_ballot(self):
+        """v4.0.11：投票速查明文不记名口径（只公布得票数与裁决，他人票向不可证实）。"""
+        hints = self.orch._stage_hints("第2天 · 投票")
+        self.assertTrue(any("不记名" in h and "票向" in h for h in hints), hints)
+
     def test_election_hint_not_swallowed_by_vote(self):
         hints = self.orch._stage_hints("第1天 · 侦探竞选投票")
         self.assertTrue(any("未参选者" in h for h in hints), hints)
@@ -1152,7 +1157,8 @@ class TestSecondKillerSkills(MockGameTestBase):
         inbox = (d / "inbox" / "B" / "day2-自由活动-谋杀窗口.md").read_text(encoding="utf-8")
         self.assertIn('"type": "stage_magic"', inbox)
         self.assertIn('"type": "murder"', inbox)
-        self.assertIn("可被急救箱", inbox)  # v4.0 削弱：舞台魔术可防御（菜单口径同步）
+        self.assertIn("仅【敏捷闪避】可抵消", inbox)  # v4.1.0：舞台魔术仅敏捷闪避可防（菜单口径同步）
+        self.assertNotIn("可被急救箱", inbox)
         # 击杀落账：E 死亡，案件方法=舞台魔术，凶手=B 本人（独处现场，E 的万能钥匙被 B 缴获）
         self.assertTrue(any(c["victim"] == "E" and c["method"] == "舞台魔术" and c["culprit"] == "B"
                             for c in s["cases"]))

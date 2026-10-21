@@ -62,10 +62,13 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 ROOT = Path(__file__).resolve().parent.parent
 HOST = "主神"  # 措辞统一（v4.0.10）：与 Orchestrator.host_term / game_system.md 的 {host} 占位符同源
-RULES_VERSION = "v4.0.10"  # v4.0.7：看破伪装技能声明改验"是否拥有"；providers 空 200 响应改可重试错误
+RULES_VERSION = "v4.1.1"  # v4.0.7：看破伪装技能声明改验"是否拥有"；providers 空 200 响应改可重试错误
                            # v4.0.8：看破伪装行踪改按事实判定（visits 台账），监控空白/抹除/密道隐匿不再影响
                            # v4.0.9：看破伪装道具声明改验"是否曾经持有"（ever_items 台账），消耗/转手不再误判谎言
                            # v4.0.10：措辞统一——lite 时代主持人改称主神；lite 局支持特权席独持完整规则书（--seats 名单项 [full] 标记）
+                           # v4.0.11：明文"投票不记名"（只公布得票数与裁决，票型不公开）——规则书 §7.3/lite §3/rules-8 与投票速查同步；
+                           # v4.1.0：缓释毒剂重做（无人数/附加条件限制，防御延后至当夜生效时判定）＋舞台魔术仅敏捷闪避可防＋武器自卫消耗
+                           # v4.1.1：未遂回执补充——杀手仍无法分辨失败原因，但得知防御该次袭击的手段已被消耗（含毒剂被化解）
 
 IDENTITIES = ["平民", "平民", "平民", "平民", "杀手", "杀手"]
 

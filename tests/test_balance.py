@@ -15,7 +15,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import unittest
 
-from src.deal import ROOT, announcement, deal, load_personas, validate, write_card
+from src.deal import ROOT, RULES_VERSION, announcement, deal, load_personas, validate, write_card
 from src.engine import Engine
 from src.gamedata import (
     ITEM_DESC,
@@ -245,7 +245,7 @@ class TestDealVillainGuarantees(unittest.TestCase):
         self.assertEqual(full["ruleset"], "rules-6.md")
         self.assertTrue(lite["is_lite_rule"])
         self.assertEqual(lite["ruleset"], "rules-6-lite.md")
-        self.assertEqual(lite["rules_version"], "v4.0.10")
+        self.assertEqual(lite["rules_version"], RULES_VERSION)
         self.assertEqual(full["players"], lite["players"])
         self.assertEqual(full["order"], lite["order"])
         self.assertFalse(validate(lite))  # lite 局同样过分配校验

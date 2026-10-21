@@ -310,7 +310,8 @@ class TestSelfDefense(unittest.TestCase):
         rooms.update(extra or {})
         return free2(eng, rooms)
 
-    def test_knife_vs_club_defended_weapon_not_consumed(self):
+    def test_knife_vs_club_defended_weapon_consumed(self):
+        """v4.1.0：武器自卫成功即消耗该武器（用掉即销毁，与攻击同口径）。"""
         players = default_players()
         players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
         eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
@@ -318,7 +319,7 @@ class TestSelfDefense(unittest.TestCase):
         ev = eng.murder("A", "E", weapon="刀")
         self.assertTrue(ev["ok"])
         self.assertEqual(ev["type"], "murder_attempt")
-        self.assertIn("棒球棍", items_of(eng, "E"))
+        self.assertNotIn("棒球棍", items_of(eng, "E"))
         self.assertNotIn("刀", items_of(eng, "A"))
         self.assertEqual(eng.state["last_murder_day"], 2)
         self.assertTrue(eng.state["stage_murder_used"])
@@ -337,8 +338,22 @@ class TestSelfDefense(unittest.TestCase):
         self.assertNotIn("武器自卫", ev["private"]["A"])
         self.assertIn("「棒球棍」", ev["private"]["E"])
 
+    def test_killer_receipt_notes_defense_consumed(self):
+        """v4.1.1：杀手仍无法分辨失败原因，但回执按事实告知防御该次袭击的手段已被消耗
+        （不指明是什么手段、谁的手段）。"""
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
+        self.rooms_for(eng)
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertIn("无法分辨", ev["private"]["A"])
+        self.assertIn("防御这次袭击的手段已被消耗", ev["private"]["A"])
+        self.assertNotIn("棒球棍", ev["private"]["A"])  # 不点名具体手段
+
     def test_weapon_defense_precedes_dodge_and_receipt(self):
-        """武器优先于消耗型防御：左轮挡刀后敏捷闪避保留，目标回执明确实际来源。"""
+        """武器优先于消耗型防御：左轮挡刀后敏捷闪避保留，目标回执明确实际来源；
+        v4.1.0：武器自卫成功即消耗（左轮手枪用掉）。"""
         players = default_players()
         players[4] = P("E", "平民", "运动员", "左轮手枪", gender="男", physique=2)
         eng = Engine(mk_state(players=players, safe_item="不明药剂"))
@@ -347,10 +362,27 @@ class TestSelfDefense(unittest.TestCase):
         self.assertEqual(ev["type"], "murder_attempt", ev)
         self.assertEqual(eng.state["attempts"][0]["defense"], "武器自卫")
         self.assertEqual(eng.state["skill_uses"]["E"]["敏捷闪避"], 1)
+        self.assertNotIn("左轮手枪", items_of(eng, "E"))
         self.assertIn("「左轮手枪」", ev["private"]["E"])
         self.assertNotIn("敏捷闪避", ev["private"]["E"])
 
+    def test_weapon_defense_consumed_second_attack_kills(self):
+        """v4.1.0：武器自卫成功后武器销毁——次日再袭时目标无武器可用，袭击得手。"""
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "棒球棍", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
+        self.rooms_for(eng)
+        ev = eng.murder("A", "E", weapon="刀")
+        self.assertEqual(ev["type"], "murder_attempt")
+        self.assertNotIn("棒球棍", items_of(eng, "E"))
+        goto(eng, "自由活动", day=3)  # 翻页重置窗口与封顶（last_murder_day=2 避免倒计时）
+        eng.enter_rooms({"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.murder("A", "E")  # 空手：A 体格4 ≥ E 体格2，亮房单目标——条件满足
+        self.assertEqual(ev["type"], "murder", ev)
+        self.assertFalse(player(eng, "E")["alive"])
+
     def test_club_vs_knife_and_gun_defended(self):
+        """v4.1.0：武器自卫矩阵不变（棍防刀/枪防棍刀/枪防刀），但自卫成功后该武器消耗。"""
         for weapon, defender in [("棒球棍", "刀"), ("棒球棍", "左轮手枪"), ("刀", "左轮手枪")]:
             players = default_players()
             players[0] = P("A", "杀手", "魔术师", weapon, gender="男", physique=4)
@@ -362,7 +394,7 @@ class TestSelfDefense(unittest.TestCase):
             self.rooms_for(eng)
             ev = eng.murder("A", "E", weapon=weapon)
             self.assertEqual(ev["type"], "murder_attempt", (weapon, defender, ev))
-            self.assertIn(defender, items_of(eng, "E"))
+            self.assertNotIn(defender, items_of(eng, "E"))
 
     def test_gun_attack_no_weapon_defense(self):
         players = default_players()
@@ -420,7 +452,8 @@ class TestSelfDefense(unittest.TestCase):
         self.assertNotIn("急救箱", items_of(eng, "C"))
 
     def test_statue_defended_by_weapons(self):
-        """v4.0.5：雕像视同刀/棍类攻击——可被刀/棒球棍/左轮手枪武器自卫（自卫不消耗武器）。"""
+        """v4.0.5：雕像视同刀/棍类攻击——可被刀/棒球棍/左轮手枪武器自卫；
+        v4.1.0：自卫成功后该武器消耗。"""
         for defender in ("刀", "棒球棍", "左轮手枪"):
             players = default_players()
             players[4] = P("E", "平民", "黑客", defender, gender="男", physique=2)
@@ -429,7 +462,7 @@ class TestSelfDefense(unittest.TestCase):
             ev = eng.murder("A", "E", weapon="雕像")
             self.assertEqual(ev["type"], "murder_attempt", (defender, ev))
             self.assertEqual(eng.state["attempts"][0]["defense"], "武器自卫")
-            self.assertIn(defender, items_of(eng, "E"))
+            self.assertNotIn(defender, items_of(eng, "E"))
 
     def test_wire_undefendable(self):
         """v4.0.5：电线不可被任何手段防御——武器、急救箱、敏捷闪避并存也全部无效。"""
@@ -593,7 +626,7 @@ class TestDeviceAndMagic(unittest.TestCase):
         self.assertFalse(player(eng, "E")["alive"])
 
     def test_stage_magic_defendable_v4(self):
-        """v4.0 削弱：舞台魔术可被救援系防御——敏捷闪避/急救箱触发则未遂（消耗本窗口尝试）。"""
+        """v4.1.0：舞台魔术仅【敏捷闪避】可抵消——闪避触发则未遂（消耗本窗口尝试）。"""
         eng = Engine(mk_state())
         free2(eng, {"A": "书房", "C": "书房", "D": "书房", "B": "监控室", "E": "会客室", "F": "会客室"})
         ev = eng.stage_magic("A", "D")  # D 的【敏捷闪避】自动抵消
@@ -615,6 +648,25 @@ class TestDeviceAndMagic(unittest.TestCase):
         self.assertEqual(ev["case"]["wound"], "空手")
         self.assertFalse(ev["case"]["evidence_vulnerable"])  # C 在场目击
         self.assertTrue(eng.state["day_kill_capped"])
+
+    def test_stage_magic_kit_and_medicine_cannot_defend(self):
+        """v4.1.0：舞台魔术的防御收窄——「急救箱」/药用的「不明药剂」均不能抵消，道具原样保留。"""
+        eng = Engine(mk_state())
+        free2(eng, {"A": "书房", "C": "书房", "B": "监控室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.stage_magic("A", "C")  # C 持有「急救箱」——但急救箱防不了舞台魔术
+        self.assertEqual(ev["type"], "murder", ev)
+        self.assertFalse(player(eng, "C")["alive"])
+        self.assertIn("急救箱", ev["case"]["looted"])  # 未被防御触发消耗（独处现场，随战利品缴获）
+        self.assertEqual(eng.state["attempts"], [])
+
+        players = default_players()
+        players[4] = P("E", "平民", "黑客", "不明药剂", gender="男", physique=2)
+        eng = Engine(mk_state(players=players, safe_item="左轮手枪"))
+        free2(eng, {"A": "书房", "E": "书房", "B": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        ev = eng.stage_magic("A", "E")  # E 的不明药剂（药用）同样无效
+        self.assertEqual(ev["type"], "murder", ev)
+        self.assertFalse(player(eng, "E")["alive"])
+        self.assertIn("不明药剂", ev["case"]["looted"])  # 未被当作救命药消耗
 
     def test_stage_magic_rejects(self):
         eng = Engine(mk_state())
@@ -2743,7 +2795,8 @@ class TestDailyCapAndWindow(unittest.TestCase):
 
 
 class TestSlowPoison(unittest.TestCase):
-    """v4.0 化学家反派【缓释毒剂】：空手判定、不可防御、当夜睡梦中死亡（翻页结算）；
+    """v4.1.0 化学家反派【缓释毒剂】：不受人数/附加条件限制（亮房人群中也可下毒）；
+    下毒无声无息，当夜毒发时按目标当时持有的道具判定防御（急救箱→药用药剂可化解，敏捷闪避不能防毒）；
     下毒即计入谋杀行为并视为当天成功封顶；中毒者被排除出一切谋杀目标。"""
 
     def test_poison_delays_death_to_night_flip(self):
@@ -2775,25 +2828,112 @@ class TestSlowPoison(unittest.TestCase):
         self.assertIn("E 死亡", "；".join(ev["public"]["announcements"]))
         self.assertEqual(eng.state["poisoned"], [])
 
-    def test_poison_unarmed_conditions_and_no_defense(self):
-        """缓释毒剂走空手判定：亮房附加条件不满足 → 驳回；黑暗豁免；急救箱/闪避均不能防御。"""
+    def test_poison_ignores_crowd_and_unarmed_conditions(self):
+        """v4.1.0：缓释毒剂不受人数限制与空手附加条件约束——亮房多名非反派在场也合法。"""
         players = default_players()
         players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
         eng = Engine(mk_state(players=players))
-        # 亮房：B 体格2 < D 体格3，无性别优势、无同伙在场 → 空手条件驳回
-        free2(eng, {"B": "书房", "D": "书房", "A": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
-        ev = eng.slow_poison("B", "D")
-        self.assertFalse(ev["ok"])
-        self.assertIn("空手", ev["error"])
-        self.assertEqual(eng.state["skill_uses"]["B"]["缓释毒剂"], 1)  # 驳回不消耗
-        # 黑暗（地下室）：无附加条件；人数不限；D 的闪避与 C 的急救箱都不能防御
-        eng = Engine(mk_state(players=players))
-        free2(eng, {"B": "地下室", "D": "地下室", "C": "地下室", "A": "监控室", "E": "会客室", "F": "会客室"})
+        # 亮房书房：B(体格2) + C + D 两名非反派，体格/性别/同伙无一满足空手条件——下毒仍合法
+        free2(eng, {"B": "书房", "C": "书房", "D": "书房", "A": "监控室", "E": "会客室", "F": "会客室"})
         ev = eng.slow_poison("B", "D")
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 1)  # 不可防御：闪避未触发
-        self.assertIn("急救箱", items_of(eng, "C"))
+        self.assertEqual(eng.state["skill_uses"]["B"]["缓释毒剂"], 0)
+        self.assertTrue(eng.state["stage_murder_used"])
+        self.assertTrue(eng.state["day_kill_capped"])
         self.assertEqual(eng.state["poisoned"][0]["name"], "D")
+
+    def test_poison_night_kit_saves_target(self):
+        """v4.1.0：毒发时目标持「急救箱」→ 存活、记未遂、急救箱消耗、次日清晨有未遂公告；
+        目标私下得知被自己的道具救下（不知下毒者），下毒者私下得知毒剂被化解（不知来源）。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "C": "书房", "A": "监控室", "D": "会客室", "E": "会客室", "F": "会客室"})
+        ev = eng.slow_poison("B", "C")  # C 开局持有「急救箱」
+        self.assertTrue(ev["ok"], ev)
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({})
+        ev = eng.advance()
+        self.assertTrue(player(eng, "C")["alive"])               # 急救箱救下
+        self.assertNotIn("急救箱", items_of(eng, "C"))           # 已消耗
+        self.assertEqual(eng.state["attempts"][0]["defense"], "急救箱")
+        self.assertEqual(eng.state["poisoned"], [])
+        anns = "；".join(ev["public"]["announcements"])
+        self.assertIn("C 遇袭但幸存", anns)                      # 未遂公告（不公布袭击者与方式）
+        self.assertNotIn("C 死亡", anns)
+        self.assertIn("已被消耗", ev["private"]["B"])            # v4.1.1：下毒者得知化解手段已消耗
+        self.assertNotIn("急救箱", ev["private"]["B"])           # 但不知防御来源
+        self.assertTrue(eng.state["day_kill_capped"])            # 仍视为当天成功封顶
+        self.assertIn("毒发", ev["private"]["C"])
+        self.assertIn("急救箱", ev["private"]["C"])
+        self.assertNotIn("B", ev["private"]["C"])                # 目标不知是谁下的毒
+        self.assertIn("化解", ev["private"]["B"])
+        self.assertNotIn("急救箱", ev["private"]["B"])           # 下毒者不知防御来源
+
+    def test_poison_night_medicine_saves_target(self):
+        """v4.1.0：药用的「不明药剂」同急救箱——按优先级在急救箱之后自动触发并消耗。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "刀", gender="女", physique=2)
+        players[4] = P("E", "平民", "黑客", "不明药剂", gender="男", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "E": "书房", "A": "监控室", "C": "会客室", "D": "会客室", "F": "会客室"})
+        self.assertTrue(eng.slow_poison("B", "E")["ok"])
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({})
+        ev = eng.advance()
+        self.assertTrue(player(eng, "E")["alive"])
+        self.assertNotIn("不明药剂", items_of(eng, "E"))
+        self.assertEqual(eng.state["attempts"][0]["defense"], "不明药剂（药用）")
+        self.assertIn("E 遇袭但幸存", "；".join(ev["public"]["announcements"]))
+
+    def test_poison_night_kit_acquired_after_poison_saves(self):
+        """v4.1.0：生效时刻判定——下毒后目标经当面赠送拿到急救箱，毒发仍被救下。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "C": "书房", "E": "书房", "A": "监控室", "D": "会客室", "F": "会客室"})
+        self.assertTrue(eng.slow_poison("B", "E")["ok"])   # E 此时只持「万能钥匙」
+        ev = eng.transfer("C", "E", "急救箱")               # 同房间行动：当面赠送
+        self.assertTrue(ev["ok"], ev)
+        self.assertIn("急救箱", items_of(eng, "E"))
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({})
+        ev = eng.advance()
+        self.assertTrue(player(eng, "E")["alive"])          # 下毒后才拿到的急救箱也算
+        self.assertNotIn("急救箱", items_of(eng, "E"))      # 已消耗
+        self.assertIn("E 遇袭但幸存", "；".join(ev["public"]["announcements"]))
+
+    def test_poison_night_kit_given_away_dies(self):
+        """v4.1.0：生效时刻判定——下毒后目标把急救箱送走，毒发无药可用，目标死亡。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "C": "书房", "D": "书房", "A": "监控室", "E": "会客室", "F": "会客室"})
+        self.assertTrue(eng.slow_poison("B", "C")["ok"])   # C 开局持「急救箱」
+        ev = eng.transfer("C", "D", "急救箱")               # 下毒后把急救箱送给同房者 D
+        self.assertTrue(ev["ok"], ev)
+        self.assertNotIn("急救箱", items_of(eng, "C"))
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({})
+        ev = eng.advance()
+        self.assertFalse(player(eng, "C")["alive"])         # 送走了急救箱 → 毒发身亡
+        self.assertIn("C 死亡", "；".join(ev["public"]["announcements"]))
+        self.assertEqual(eng.state["attempts"], [])
+
+    def test_poison_night_dodge_cannot_defend(self):
+        """v4.1.0：【敏捷闪避】不能防毒——毒发身亡且闪避次数原样保留。"""
+        players = default_players()
+        players[1] = P("B", "杀手", "化学家", "不明药剂", gender="女", physique=2)
+        eng = Engine(mk_state(players=players))
+        free2(eng, {"B": "书房", "D": "书房", "A": "监控室", "C": "会客室", "E": "会客室", "F": "会客室"})
+        self.assertTrue(eng.slow_poison("B", "D")["ok"])   # D 是运动员（【敏捷闪避】）
+        goto(eng, "晚间休息", day=2)
+        eng.night_assign({})
+        ev = eng.advance()
+        self.assertFalse(player(eng, "D")["alive"])
+        self.assertEqual(eng.state["skill_uses"]["D"]["敏捷闪避"], 1)  # 闪避未触发
+        self.assertEqual(eng.state["attempts"], [])
+        self.assertIn("D 死亡", "；".join(ev["public"]["announcements"]))
 
     def test_poison_civilian_and_wrong_profession_rejected(self):
         eng = Engine(mk_state())

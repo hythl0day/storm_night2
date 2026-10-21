@@ -12,10 +12,14 @@
 - 凶器谋杀无条件（用一次即消耗，无论成败）；环境凶器（雕像/电线）无条件且不限次数；
   v3.31：会客室桌上凶器视同环境凶器供反派临时取用（无需持有，用后消耗，桌上变动次日清晨公告）。
 - 自卫自动触发：武器克制覆盖 刀↔棍、枪防刀棍，v4.0.5 起雕像视同刀/棍类攻击（可被刀/棍/枪自卫）；
-  急救箱/不明药剂（药用）/敏捷闪避/药理学防一切可防御攻击（含不明药剂、雕像、空手、舞台魔术）；
-  延时装置、缓释毒剂、强袭不可被任何方式防御；v4.0.5 起电线同样不可被任何手段防御（武器与救援系均无效）。
+  v4.1.0 起武器自卫成功即消耗该武器（用掉即销毁，与攻击同口径）；
+  急救箱/不明药剂（药用）/敏捷闪避/药理学防一切可防御攻击（含不明药剂、雕像、空手）；
+  舞台魔术仅【敏捷闪避】可防（v4.1.0：急救箱/药用药剂/药理学均无效）；
+  延时装置、缓释毒剂（下毒瞬间）、强袭不可被任何方式防御；v4.0.5 起电线同样不可被任何手段防御。
+- v4.1.0：缓释毒剂重做——不受人数限制与空手附加条件约束；防御延后至当夜毒发时按目标当时持有物判定
+  （急救箱 → 药用的不明药剂按优先级自动触发并消耗；敏捷闪避/药理学不能防毒），被防住记未遂。
 - 多种防御并存时按 武器自卫 → 急救箱 → 药用药剂 → 敏捷闪避 → 药理学 的顺序自动触发；
-  武器不消耗，其余按实际触发消耗；目标私密回执会说明实际防御来源（v4.0.4）。
+  全部按实际触发消耗（v4.1.0 起含武器自卫）；目标私密回执会说明实际防御来源（v4.0.4）。
 - 现场无其他非反派角色时杀手缴获尸体全部未使用道具，且案件可在毁证窗口被篡改（v3.18 须身处现场；v3.19 仅限案发当天）。
 - v3.30：旁观者口径统一——黑暗目击者/未遂在场者/舞台魔术在场者当场只知"些许奇怪的动静"，
   不知死亡发生；死亡随"再进现场发现"或"次日清晨公告"公开（发现/报案见 state.discover_bodies 与 ledger.report）。
@@ -30,6 +34,7 @@ from .state import (
     FREE_ROOMS,
     HALL,
     WOUND_LABEL,
+    bedroom_of,
     check_winner,
     consume_item_entry,
     consume_skill,
@@ -47,7 +52,7 @@ from .state import (
 
 WEAPON_DEFENSE = {"刀": {"左轮手枪", "棒球棍"}, "棒球棍": {"左轮手枪", "刀"},
                   "雕像": {"左轮手枪", "刀", "棒球棍"}}  # v4.0.5：雕像视同刀/棍类攻击，可被刀/棍/枪自卫
-UNDEFENDABLE = ("延时装置", "缓释毒剂", "强袭", "电线")  # v4.0：舞台魔术改为可防御（救援系可抵消）；v4.0.5：电线不可被任何手段防御
+UNDEFENDABLE = ("延时装置", "缓释毒剂", "强袭", "电线")  # v4.0.5：电线不可被任何手段防御；v4.1.0：舞台魔术收窄为仅敏捷闪避可防（不在此列）；缓释毒剂的防御已延后至当夜毒发时判定（settle_poison），下毒瞬间仍不可被即时阻止
 
 CLUE_TRAITS = ("性别", "国籍", "体格")
 
@@ -75,43 +80,83 @@ def poisoned_names(state: dict) -> set[str]:
 
 
 def _defense(state: dict, target: dict, method: str, room: str, day: int, savior: str | None) -> tuple[bool, str | None]:
-    """自卫矩阵（自动触发）。返回 (是否防御成功, 防御途径)。UNDEFENDABLE（延时装置/缓释毒剂/强袭/电线）不可防御。"""
+    """自卫矩阵（自动触发，仅判定不消耗——消耗统一由 _consume_defense 执行，v4.1.0）。
+    返回 (是否防御成功, 防御途径)。UNDEFENDABLE（延时装置/缓释毒剂/强袭/电线）不可防御；
+    【舞台魔术】仅【敏捷闪避】可防（v4.1.0：急救箱/药用药剂/药理学均无效）。"""
     if method in UNDEFENDABLE:
+        return False, None
+    if method == "舞台魔术":
+        if skill_left(state, target["name"], "敏捷闪避") > 0:
+            return True, "敏捷闪避"
         return False, None
     holds = held_item_names(target, day)
     blockers = WEAPON_DEFENSE.get(method, set())
     if holds & blockers:
         return True, "武器自卫"
-    kit = held_item(target, "急救箱", day)
-    if kit is not None:
-        consume_item_entry(target, kit)
+    if held_item(target, "急救箱", day) is not None:
         return True, "急救箱"
-    med = held_item(target, "不明药剂", day)
-    if med is not None:
-        consume_item_entry(target, med)
+    if held_item(target, "不明药剂", day) is not None:
         return True, "不明药剂（药用）"
     if skill_left(state, target["name"], "敏捷闪避") > 0:
-        consume_skill(state, target["name"], "敏捷闪避")
         return True, "敏捷闪避"
     if skill_left(state, target["name"], "药理学") > 0:
         # v4.0：【药理学】可自救（等同急救箱）；反派医师持有时才登记，故此处天然限反派医师
-        consume_skill(state, target["name"], "药理学")
         return True, "药理学"
     if savior and savior != target["name"]:
         sp = get_player(state, savior)
         if sp and sp["alive"] and state["positions"].get(savior) == room:
-            skit = held_item(sp, "急救箱", day)
-            if skit is not None:
-                consume_item_entry(sp, skit)
+            if held_item(sp, "急救箱", day) is not None:
                 return True, "急救箱(他人)"
-            smed = held_item(sp, "不明药剂", day)
-            if smed is not None:
-                consume_item_entry(sp, smed)
+            if held_item(sp, "不明药剂", day) is not None:
                 return True, "不明药剂（药用·他人）"
             if skill_left(state, savior, "药理学") > 0:
-                consume_skill(state, savior, "药理学")
                 return True, "药理学(他人)"
     return False, None
+
+
+def _consume_defense(state: dict, target: dict, via: str, method: str, day: int, savior: str | None) -> bool:
+    """按实际触发的防御途径执行消耗（v4.1.0：武器自卫成功即消耗该武器——用掉即销毁，
+    与该武器用于攻击同口径；救援系防御本来就消耗）。判定与消耗分离，保证目标回执
+    仍能说清"是哪件武器挡下了袭击"。返回是否实际发生了消耗（供杀手回执按事实生成）。"""
+    if via == "武器自卫":
+        for weapon in ("左轮手枪", "刀", "棒球棍"):
+            entry = held_item(target, weapon, day)
+            if entry is not None and weapon in WEAPON_DEFENSE.get(method, set()):
+                consume_item_entry(target, entry)
+                return True
+        return False
+    if via == "急救箱":
+        entry = held_item(target, "急救箱", day)
+        if entry is not None:
+            consume_item_entry(target, entry)
+            return True
+    elif via == "不明药剂（药用）":
+        entry = held_item(target, "不明药剂", day)
+        if entry is not None:
+            consume_item_entry(target, entry)
+            return True
+    elif via == "敏捷闪避":
+        consume_skill(state, target["name"], "敏捷闪避")
+        return True
+    elif via == "药理学":
+        consume_skill(state, target["name"], "药理学")
+        return True
+    elif via == "急救箱(他人)":
+        sp = get_player(state, savior)
+        entry = held_item(sp, "急救箱", day) if sp else None
+        if entry is not None:
+            consume_item_entry(sp, entry)
+            return True
+    elif via == "不明药剂（药用·他人）":
+        sp = get_player(state, savior)
+        entry = held_item(sp, "不明药剂", day) if sp else None
+        if entry is not None:
+            consume_item_entry(sp, entry)
+            return True
+    elif via == "药理学(他人)":
+        consume_skill(state, savior, "药理学")
+        return True
+    return False
 
 
 def _defense_receipt(state: dict, target: dict, method: str, via: str, day: int) -> str:
@@ -241,12 +286,19 @@ def _fire(s: dict, killer: str, target: str, method: str, room: str, savior: str
     defended, via = _defense(s, tp, method, room, day, savior)
     witnesses = [p["name"] for p in _present(s, room) if p["name"] not in (killer, target)]
     if defended:
+        receipt = _defense_receipt(s, tp, method, via, day)  # 回执先取（说明实际防御来源），再执行消耗
+        consumed = _consume_defense(s, tp, via, method, day, savior)
         s["attempts"].append({
             "target": target, "day": day, "stage": stage, "room": room, "period": current_period(s),
             "defense": via,  # 防御途径（host 侧统计用；目标另收不含攻击者信息的私密回执）
         })
-        private = {killer: f"谋杀失败（{spent_note}你无法分辨是武器、药品还是技能所致）",
-                   target: f"你遭遇了袭击，但侥幸幸存——{_defense_receipt(s, tp, method, via, day)}"}
+        # v4.1.1：杀手仍无法分辨失败原因，但按事实告知防御手段已被消耗（不指明是什么、谁的手段）
+        killer_note = f"谋杀失败（{spent_note}你无法分辨是武器、药品还是技能所致"
+        if consumed:
+            killer_note += "；但防御这次袭击的手段已被消耗"
+        killer_note += "）"
+        private = {killer: killer_note,
+                   target: f"你遭遇了袭击，但侥幸幸存——{receipt}"}
         for w in witnesses:
             private[w] = "你听到些许奇怪的动静，但不知道是谁造成的。"
         ev = {"ok": True, "type": "murder_attempt", "public": None, "private": private, "defended": True}
@@ -347,9 +399,11 @@ def strong_attack(state: dict, user: str, target: str) -> dict:
 
 
 def slow_poison(state: dict, user: str, target: str) -> dict:
-    """化学家反派【缓释毒剂】：谋杀窗口对同房一名非反派下毒——走空手谋杀判定（人数限制 +
-    空手附加条件，黑暗豁免），不可防御。目标不知情、照常行动，当夜睡梦中死亡
-    （翻页时结算：案发房间=其卧室，时段=晚间休息，伤痕=毒或药物）。下毒即计入谋杀行为并视为当天成功封顶。"""
+    """化学家反派【缓释毒剂】：谋杀窗口对同房一名非反派下毒——不受人数限制与空手附加条件约束
+    （亮房人群中也合法），仍需同房，占用本窗口尝试，整局限一次。下毒瞬间无声无息：
+    目标不知情、无任何回执、在场者一无所知。当夜毒发（翻页时由 settle_poison 按目标
+    当时持有的道具结算防御——急救箱/药用的不明药剂可化解；敏捷闪避/药理学不能防毒）。
+    下毒即计入谋杀行为、视为当天成功封顶（即使当夜被防住也不变）。"""
     s = state
     day = s["phase"]["day"]
     err, kp, tp = _check_window(s, "slow_poison", user, target)
@@ -362,10 +416,6 @@ def slow_poison(state: dict, user: str, target: str) -> dict:
     room = s["positions"].get(user)
     if room is None or s["positions"].get(target) != room:
         return reject("slow_poison", "你与目标不在同一房间")
-    if not _presence_ok(s, room):
-        return reject("slow_poison", "在场非反派角色过多")
-    if not _unarmed_ok(s, kp, tp, room):
-        return reject("slow_poison", "空手谋杀条件不满足")
     consume_skill(s, user, "缓释毒剂")
     s["stage_murder_used"] = True
     s["last_murder_day"] = day        # 以下毒那一刻计入谋杀行为（重置无杀倒计时）
@@ -373,7 +423,45 @@ def slow_poison(state: dict, user: str, target: str) -> dict:
     s["poisoned"].append({"name": target, "day": day, "by": user})
     # 目标与旁观者不收任何通知（毒发前无人知情）
     return {"ok": True, "type": "slow_poison", "public": None,
-            "private": {user: f"你已给 {target} 下毒——TA 毫无察觉、照常行动，将于当夜睡梦中死亡"}}
+            "private": {user: f"你已给 {target} 下毒——无声无息、无人察觉，TA 照常行动；"
+                              f"当夜毒发时按 TA 当时持有的道具结算（急救箱/救命药可化解），结果夜间私下告知你"}}
+
+
+def settle_poison(state: dict, entry: dict, stage: str) -> dict:
+    """v4.1.0：缓释毒剂毒发结算（晚间休息→清晨翻页时由 core.advance 调用）。
+    按目标毒发时实际持有的道具判定：「急救箱」→「不明药剂」（药用）按此优先级自动触发并消耗；
+    【敏捷闪避】/【药理学】不能防毒（药理学自救是反派技能，目标只会是平民）。
+    被防住：记未遂（次日清晨按现行未遂口径公告），目标私下得知被自己的哪件道具救下
+    （不知是谁下的毒）、下毒者私下得知毒剂被化解（不知防御来源）。
+    致死：当夜睡梦中死亡（案发房间=其卧室，时段=晚间休息，伤痕=毒或药物），与现行一致。"""
+    s = state
+    day = s["phase"]["day"]
+    name, by = entry["name"], entry["by"]
+    tp = get_player(s, name)
+    if tp is None or not tp["alive"]:
+        return {"defended": False, "case": None, "private": {}}
+    via = None
+    kit = held_item(tp, "急救箱", day)
+    if kit is not None:
+        consume_item_entry(tp, kit)
+        via = "急救箱"
+    else:
+        med = held_item(tp, "不明药剂", day)
+        if med is not None:
+            consume_item_entry(tp, med)
+            via = "不明药剂（药用）"
+    if via:
+        s["attempts"].append({
+            "target": name, "day": day, "stage": stage, "room": bedroom_of(name),
+            "period": current_period(s), "defense": via,
+        })
+        saved = "「急救箱」" if via == "急救箱" else "「不明药剂」（被当作救命药）"
+        return {"defended": True, "via": via, "case": None,
+                "private": {name: f"你夜里毒发，随身{saved}救了你一命——你不知道是谁下的毒",
+                            by: f"你下的毒未能奏效——{name} 夜里毒发但被化解了"
+                                 f"（你无法分辨是什么化解了它，但化解毒剂的手段已被消耗）"}}  # v4.1.1
+    case = _apply_kill(s, name, "缓释毒剂", bedroom_of(name), by)
+    return {"defended": False, "via": None, "case": case, "private": {}}
 
 
 def passage_kill(state: dict, user: str, target: str, weapon: str | None = None, savior: str | None = None) -> dict:
@@ -507,7 +595,7 @@ def device_fire(state: dict, user: str) -> dict:
 def stage_magic(state: dict, user: str, target: str, savior: str | None = None) -> dict:
     """魔术师反派【舞台魔术】：任意人数非反派在场时可空手谋杀。
 
-    v4.0 削弱：可被「急救箱」/【敏捷闪避】/【药理学】/药用的「不明药剂」抵消（抵消则未遂、消耗本窗口尝试）。
+    v4.1.0：仅【敏捷闪避】可抵消（急救箱/药用的不明药剂/药理学均无效）——抵消则未遂、消耗本窗口尝试。
     v3.30：在场者当场只察觉些许奇怪动静、不知是谋杀（与黑暗旁观者同口径，并非真的表演）；
     死讯随"再进现场发现"或"次日清晨公告"公开。占用本窗口尝试，整局限一次。
     """

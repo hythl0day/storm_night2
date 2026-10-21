@@ -221,15 +221,15 @@ class Engine:
         elif stage == "自由活动":
             new_day, new_stage = day, "晚间休息"
         elif stage == "晚间休息":
-            # v4.0：缓释毒剂延迟死亡在翻页时、清晨公告前结算——中毒者死于自己卧室
-            # （案发房间=其卧室，时段=晚间休息，伤痕=毒或药物；已被投票出局者不再结算）
+            # v4.0：缓释毒剂延迟死亡在翻页时、清晨公告前结算；v4.1.0：毒发时按目标当时持有物
+            # 判定防御（急救箱/药用药剂可化解——记未遂；否则死于自己卧室，详见 murder.settle_poison）
             for e in list(s["poisoned"]):
                 if e["day"] != day:
                     continue
                 s["poisoned"].remove(e)
-                tp = get_player(s, e["name"])
-                if tp and tp["alive"]:
-                    murder_mod._apply_kill(s, e["name"], "缓释毒剂", bedroom_of(e["name"]), e["by"])
+                res = murder_mod.settle_poison(s, e, stage)
+                for who, msg in res["private"].items():
+                    private[who] = (private[who] + "；" if who in private else "") + msg
             new_day, new_stage = day + 1, "案件调查"
             s["order"] = s["order"][1:] + s["order"][:1]
             alive_names = [p["name"] for p in s["players"] if p["alive"]]
