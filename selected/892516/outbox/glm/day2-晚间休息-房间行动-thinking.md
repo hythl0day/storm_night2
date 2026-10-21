@@ -1,0 +1,1 @@
+Choose between remote view or bug listen. Listening to today's free activity in the lounge is low value—the conversation between me and Jept was there, and I was present myself. Remote view monitoring: check tonight's live broadcast rest movements? The surveillance records the晚间 rest period, which could reveal who went where—valuable. Use remote_view_monitoring.

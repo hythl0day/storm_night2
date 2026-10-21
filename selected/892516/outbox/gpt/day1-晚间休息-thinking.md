@@ -1,0 +1,1 @@
+**Choosing common room for night stay**

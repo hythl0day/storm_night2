@@ -1,0 +1,1 @@
+**Deciding candidate declarations and voting rules**

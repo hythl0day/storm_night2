@@ -1,0 +1,3 @@
+Strategize: 豆包 suspected. I could invite 豆包 to keep an eye? Or go somewhere alone. 刀 in hand. Today+tomorrow no murder = win. Want to stay safe, maybe invite 豆包 to monitor room together? Inviting suspects keeps them visible. But if 豆包 is killer and I'm alone with her... risk. I'm 健壮, have knife. Invite 豆包 to 监控室 to watch her? Monitoring room may be locked. Safer: 会客室 alone? If I'm alone in 会客室, killer could... only 3 players. If 豆包 alone somewhere with knife? She's 瘦弱. 杰普特 has gun.
+
+Invite 豆包 to 会客室 keeps both of us in public eye, and her near me. If she's killer, she can't safely kill me (I'm strong, armed). Alternatively invite 杰普特 (detective, likely good). Best: invite 豆包 to 会客室 — keeps the suspected person observable, avoids her being alone with 杰普特 or killing.

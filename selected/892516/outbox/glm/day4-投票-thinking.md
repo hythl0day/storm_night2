@@ -1,0 +1,1 @@
+I vote Doubao with 1.5 votes, which guarantees elimination. But if she's innocent, she'll be voted out and lose. High suspicion, follow the plan.

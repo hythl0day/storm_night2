@@ -1,0 +1,1 @@
+Bookkeeping: study already full with four, monitoring room locked, no lockpicking. Living room bug placement.

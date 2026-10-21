@@ -1,0 +1,1 @@
+Fix: my notes said "no room action"—but this stage allows placement. Place bug in reception room.

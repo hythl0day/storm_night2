@@ -1,0 +1,1 @@
+**Assigning badge and planning speech**

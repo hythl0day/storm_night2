@@ -1,0 +1,1 @@
+平民黑客，不宜当侦探（枪会成靶子）。Decline. Speech: brief. Maybe declare职业？黑客职业有利隐藏。不参选。

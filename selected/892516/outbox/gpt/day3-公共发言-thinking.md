@@ -1,0 +1,1 @@
+**Planning speech accusing Claude**
