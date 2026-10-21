@@ -1,44 +1,8 @@
 [
   {
-    "ts": "2026-10-20T12:15:34",
-    "kind": "image",
-    "file": "media\\canon\\characters\\claude-sheet-v2.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/5e5ec82d7bd0629a2910eb7458d56952106c1c952776964297120/Image/2132815097/021792469677259c1c60125965d8547be0192a9260db7d28ce5e5.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T041534Z&X-Tos-Expires=86400&X-Tos-Signature=8c187beb3af70588853ec5822a153edac4f8ea05b6d0122f099f93f2da354b4c&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：克劳德，26岁美国女性，体格健美挺拔。铂金色长直发高颅顶垂落，冷白皮，灰蓝色眼眸锐利冷静，妆容精致，神情高傲克制、气场强大。身穿象牙白丝质衬衫、黑色",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:16:33",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gpt-sheet-v2.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/614792ba30f7cd4ab1aab5233e638e614a867c539637964297120/Image/2132815097/021792469736935c768a416e836e3325baa1ba4dc7f03ab297416.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T041634Z&X-Tos-Expires=86400&X-Tos-Signature=fba8ad281948fb1db06b17cca1fce493645031d3c43cf49be128c5053970e5c4&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰普特，35岁左右美国男性，体格魁梧高大，肩背宽阔。深棕色整齐背头，下颌线分明，金丝细边眼镜，眼神冷静锋利、一丝不苟的精英气质。身穿深灰色高领羊绒衫，外",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:17:20",
-    "kind": "image",
-    "file": "media\\canon\\characters\\deepseek-sheet-v2.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/7018a71c72a881036fcbfb8280ee9602482643140697964297120/Image/2132815097/0217924697960413462842069ee0828bfbcf630188a27c17a8107.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T041720Z&X-Tos-Expires=86400&X-Tos-Signature=d115270e6bdebc7a2e1d9a931767883e84e47cd4a944e5046793bb92f9d7be06&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：狄西，26岁中国男性，体格魁梧结实、肩宽背挺。黑色利落短发微分，眉眼清澈，笑容温和憨厚、接地气。身穿米白色高领针织衫，外搭燕麦色长款羊毛大衣，深色直筒长",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:18:06",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gemini-sheet-v2.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/596df28354d2b147c4793a83a7771d8cfa41e7835248964297120/Image/2132815097/0217924698425387e14afc8d1777a38a3974c741b2d45382fd695.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T041807Z&X-Tos-Expires=86400&X-Tos-Signature=3f5e0d09f5b7611d14a35c67d5491dda8ee1d39221ba8873dce93c0d0f322d9a&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰米尼，23岁美国女性，普通体格。蜂蜜棕色法式慵懒卷发，细框猫眼眼镜，笑容明媚灿烂、有点天真迷糊。身穿燕麦色粗花针织毛衣内搭白色衬衫（翻出衬衫领），",
-    "refs": []
-  },
-  {
     "ts": "2026-10-20T12:19:01",
     "kind": "image",
-    "file": "media\\canon\\characters\\grok-sheet-v2.png",
+    "file": "media\\canon\\characters\\grok-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/13e825955b84f3eb67a027fd7a91c7dedd57bd788888964297120/Image/2132815097/021792469888887db75dded7c19a7df720a76be3f48b559528e31.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T041901Z&X-Tos-Expires=86400&X-Tos-Signature=e081dda07adda3008ee30b7b6078a76add88c6a35c2583e582e15617d826e4d9&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：格罗克，24岁美国男性，体格瘦弱颀长。深金棕色凌乱纹理烫短发，左耳一枚银色小耳环，嘴角挂着玩世不恭的坏笑，眼神狡黠。身穿 oversize 黑色做旧皮夹",
@@ -47,7 +11,7 @@
   {
     "ts": "2026-10-20T12:19:55",
     "kind": "image",
-    "file": "media\\canon\\characters\\kimi-sheet-v2.png",
+    "file": "media\\canon\\characters\\kimi-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/4e01462547ba844cbbb34be91008a516e2a6d1307349964297120/Image/2132815097/0217924699437031d6a2e615a80019eb43bbbc448ab74526410e4.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T041955Z&X-Tos-Expires=86400&X-Tos-Signature=566c2f241adb958a328cfbbf0202aeb92bc033d7ed0683091a362fd8fb43de99&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：奇米，25岁中国女性，普通体格、身形利落。黑色高马尾束得一丝不苟，细长挑眉，眼神冷静锐利、好胜心写在眉眼里，红唇。身穿黛蓝色新中式立领盘扣衬衫（剪裁",
@@ -56,137 +20,55 @@
   {
     "ts": "2026-10-20T12:20:48",
     "kind": "image",
-    "file": "media\\canon\\characters\\glm-sheet-v2.png",
+    "file": "media\\canon\\characters\\glm-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/57f9ea1aabf5e439d5b6c811c11c0ff2d2695c404899964297120/Image/2132815097/021792469998404c5962d2ff0c11c118c6b5d934e5fbaa1ae9f75.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T042049Z&X-Tos-Expires=86400&X-Tos-Signature=384264669199e5cb711fc3a593125390fce8499f19ff15d9450745cabf9b3a08&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：智谱，27岁中国男性，体格健壮、肩背厚实。极短的黑色碎发寸头，眉骨高，眼神深邃冷静，面无表情、沉默寡言的气场。身穿黑色高领修身毛衣，外搭深灰色立领工装夹",
     "refs": []
   },
   {
-    "ts": "2026-10-20T12:29:36",
-    "kind": "image",
-    "file": "media\\canon\\characters\\claude-sheet-v3.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/e00ae28033c8c4374326c98c1948681c55d622080415074297120/Image/2132815097/021792470514080226d55c1868491c89c6234734c8c33082ea00e.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T042935Z&X-Tos-Expires=86400&X-Tos-Signature=c9406b2fd66ea93adeb83f97c5606e0cbf1040ac664d1930ef19eb6afc34e1b0&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：克劳德，21岁欧美女性，体格匀称挺拔，皮肤冷白。铂金色长直发（空气感、柔顺垂落），脸型精致小巧偏柔和（不要典型欧美大轮廓，偏亚洲审美的精致混血感），",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:30:35",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gemini-sheet-v3.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/7e1dbd08f2b451578676bd608cf51a0c2d7ed8402975074297120/Image/2132815097/0217924705792048de7d2c0a15fc806db676875154b2f80dbd1e7.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T043035Z&X-Tos-Expires=86400&X-Tos-Signature=62a194576cbd0adeeeb727ea8e46adaa6ba688df32d0e1f33f03e219c0a66363&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰米尼，20岁美国女性，普通体格。蜂蜜棕色法式慵懒卷发（及肩、蓬松有光泽），脸型圆润甜美、非常年轻（像大一新生），戴细框圆形眼镜，笑容明媚灿烂、天真",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:31:33",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gpt-sheet-v3.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/87ea1b575d1530aff6981db9677093f27eb816067736074297120/Image/2132815097/021792470637760618be72f3907769bd1896ffa0351d575b1ae78.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T043129Z&X-Tos-Expires=86400&X-Tos-Signature=f3ef3a49902377fab1e6abd7e10a960bfaaf301f38ccddaa1bbd744dfeb89633&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰普特，40岁左右美国男性，体格魁梧壮硕、肩背极宽，把西装撑得满满的。深棕色背头略有不羁，短而整齐的胡茬（胡子拉碴但有型），眉骨深、眼神锐利冷静，儒雅与",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:32:24",
-    "kind": "image",
-    "file": "media\\canon\\characters\\deepseek-sheet-v3.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/2e5967d056a2cc6aed9ad2d30f8bbed6528f67646596074297120/Image/2132815097/02179247069564676f8256debb8f03d2da9dea6cc2a650d7695e2.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T043224Z&X-Tos-Expires=86400&X-Tos-Signature=c13653ec0fea4f284781fa449e08ea3e53e59bb0f22083c2dda0175c629cd797&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：狄西，26岁中国男性，体格高大挺拔。形象参考中国年轻技术创业者梁文峰的公开形象气质：黑色利落短发、浓眉、眼神温和中带着专注与锐利，笑容干净腼腆。身穿深蓝",
-    "refs": []
-  },
-  {
     "ts": "2026-10-20T12:40:39",
     "kind": "image",
-    "file": "media\\canon\\characters\\claude-sheet-v4.png",
+    "file": "media\\canon\\characters\\claude-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/fcc5aa9a5734a8f440d9ec02308cdefeafe1b3977681174297120/Image/2132815097/0217924711867793b1efaefedc80320ce9d044f8a4375a9aa5ccf.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T044039Z&X-Tos-Expires=86400&X-Tos-Signature=9c37a03cd39c0ec203c602b4094207b81d47e69a680f710e89e11eb6360cbe63&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：克劳德，21岁欧美女性，体格匀称挺拔、肩部线条好看，皮肤冷白。铂金色长直发（空气感、柔顺垂落），脸型精致小巧偏柔和（不要典型欧美大轮廓，偏亚洲审美的",
     "refs": []
   },
   {
-    "ts": "2026-10-20T12:41:48",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gemini-sheet-v4.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/a1be5fedcb04cad3236a5d38aa4fe98b9037f2068142174297120/Image/2132815097/0217924712418602f7309b89ef4aa83d5a6323dac40bcdef5eb1a.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T044149Z&X-Tos-Expires=86400&X-Tos-Signature=83787c3228aad2803117a352524a61e829a7239bbf86bc80e44e4c558110c6fa&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰米尼，20岁美国女性，普通体格。蜂蜜棕色法式慵懒卷发（及肩、蓬松有光泽），脸型圆润甜美、非常年轻（像大一新生），戴细框圆形眼镜，笑容明媚灿烂、天真",
-    "refs": []
-  },
-  {
-    "ts": "2026-10-20T12:47:52",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gemini-sheet-v5.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/44de438feff79c50976d942b4b683b592cbb5b340416174297120/Image/2132815097/021792471614043b5bbc295b386b4b249d67905c97ffef834ed44.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T044752Z&X-Tos-Expires=86400&X-Tos-Signature=bf2ce9281467f8420712aca80203641485d9068cbdf015cac8d24417c331e53b&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名年轻女性在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰米尼，20岁美国女性，普通体格。蜂蜜棕色法式慵懒卷发（及肩、蓬松有光泽），脸型圆润甜美、非常年轻（像大一新生），戴细框圆形眼镜，笑容明媚灿烂、天真",
-    "refs": []
-  },
-  {
     "ts": "2026-10-20T12:54:28",
     "kind": "image",
-    "file": "media\\canon\\characters\\doubao-sheet-v2.png",
+    "file": "media\\canon\\characters\\doubao-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/a2422916d989fc5797b68d61827583d4bd32fc889030274297120/Image/2132815097/021792472030988cf23db4d38572816d86b7975cf989d6192242a.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T045429Z&X-Tos-Expires=86400&X-Tos-Signature=fe2bd64888015da3ec63467a0d243e2d222c532be5261e9698e9381789dda77d&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "以图1的角色设定图为基础重新生成：保持图1人物完全不变（同一张脸、深棕内扣波波头与浅色挑染发尾、两枚粉色发夹、红围巾、黑色针织上衣、深色短裙与黑色打底裤、棕色小皮靴），只调整身材比例——腿更修长、比例更好（娇小但腿长，短裙下腿部线条拉长）。仍然是四视图并排（面部特写、正面全身、侧面全身、背面全身），纯白背景，高级影棚柔光，21:9 宽幅，无文字无水印。// 图1是豆包的已定稿设定图",
-    "refs": [
-      "media/characters/doubao-sheet-v1.png"
-    ]
-  },
-  {
-    "ts": "2026-10-20T12:54:41",
-    "kind": "image",
-    "file": "media\\canon\\characters\\gemini-sheet-v6.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/882aa46cace7748e289430e68d51a12a4883a8559030274297120/Image/2132815097/0217924720309558a3884a21a15d86e034982e8477ecac64aa288.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T045441Z&X-Tos-Expires=86400&X-Tos-Signature=86c383b2812bb579e36cb80212801589aa3b0f34191fa58e491d38c194cbd4b0&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "以图1的角色设定图为基础重新生成：保持图1人物完全不变（同一张脸、蜂蜜棕色法式卷发、细框圆眼镜、JK 制服穿搭：白衬衫、酒红领结、米色针织背心、深蓝黑格纹百褶裙、黑色过膝袜、黑色乐福鞋），只调整身材比例——身形更纤细、个子更高挑、腿更修长（模特比例，腿长占全身比例明显加大，百褶裙下的腿部线条修长笔直）。仍然是四视图并排（面部特写、正面全身、侧面全身、背面全身），纯白背景，高级影棚柔光，21:9 宽",
-    "refs": [
-      "media/characters/gemini-sheet-v5.png"
-    ]
+    "refs": ["media/characters/doubao-sheet-v1.png"]
   },
   {
     "ts": "2026-10-20T12:59:20",
     "kind": "image",
-    "file": "media\\canon\\characters\\gemini-sheet-v7.png",
+    "file": "media\\canon\\characters\\gemini-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/354002280c72e46d0d33ae0ae8a0b2e1d1dfac132823274297120/Image/2132815097/021792472328231cafd1d1e2b0a8ea0ea33d0d64e27c082200453.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T045921Z&X-Tos-Expires=86400&X-Tos-Signature=c01c67fead5be55b17b86a0399c3796ddbf3436cb0dc4f3990fcaf4247f0538b&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "以图1的角色设定图为基础重新生成：保持图1人物完全不变（同一张脸、蜂蜜棕色卷发、细框圆眼镜、JK 制服穿搭、纤细高挑的身材比例），唯一调整：黑色过膝长袜的袜口再往上提，一直延伸到接近百褶短裙裙摆下方（大腿高位，袜口与裙摆之间只留一小截腿部肌肤）。仍然是四视图并排（面部特写、正面全身、侧面全身、背面全身），纯白背景，高级影棚柔光，21:9 宽幅，无文字无水印。// 图1是杰米尼的已定稿设定图",
-    "refs": [
-      "media/characters/gemini-sheet-v6.png"
-    ]
-  },
-  {
-    "ts": "2026-10-20T13:09:19",
-    "kind": "image",
-    "file": "media\\canon\\characters\\deepseek-sheet-v4.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/54bf2bbd98768b52abc7cf606de3e8bcd730c5444319274297120/Image/2132815097/0217924729134445c037dcb8e3ed606fc7cba25b86789dbb2fb45.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T050919Z&X-Tos-Expires=86400&X-Tos-Signature=6c0bdb281a17db005bdd5affd773401713076bfa12696a5273300ad1eb28d4df&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "以图1的角色设定图为基础重新生成：保持图1人物完全不变（同一张脸、黑色利落短发、浓眉、温和腼腆的笑容、深蓝色西装与白衬衫），只做两处调整：① 体格更魁梧壮实——肩背明显更宽更厚、胸膛把西装撑起来，身形向图1更壮一圈的方向走（他是全剧最魁梧的角色之一）；② 西装外套不扣扣子，自然敞开露出白衬衫。仍然是四视图并排（面部特写、正面全身、侧面全身、背面全身），纯白背景，高级影棚柔光，21:9 宽幅，无文字",
-    "refs": [
-      "media/characters/deepseek-sheet.png"
-    ]
+    "refs": ["media/characters/gemini-sheet-v6.png"]
   },
   {
     "ts": "2026-10-20T13:13:06",
     "kind": "image",
-    "file": "media\\canon\\characters\\deepseek-sheet-v5.png",
+    "file": "media\\canon\\characters\\deepseek-sheet.png",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/2b1f5a56ae54cc7b5b1f0098578172bd45a17b208141374297120/Image/2132815097/021792473141802b71a54db2718758900f1b5b7cc45ea65a5f1b2.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T051307Z&X-Tos-Expires=86400&X-Tos-Signature=d498d84e6225840e17c605ce89d2628d2f77b8cbcccde99093fce993b5d1a155&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5.0-pro",
     "prompt": "以图1的角色设定图为基础重新生成：保持图1人物完全不变（同一张脸、黑色利落短发、浓眉、温和腼腆的笑容、深蓝色西装不扣扣子自然敞开、白衬衫），唯一调整：体格更壮——他是常年坚持健身的人，明显的健身痕迹：肩背宽阔厚实呈倒三角，胸肌把白衬衫撑出饱满轮廓，手臂粗壮，西装被肌肉撑得紧绷。脸不变、发型不变、笑容不变，只有身材更壮。仍然是四视图并排（面部特写、正面全身、侧面全身、背面全身），纯白背景，高级影棚柔",
-    "refs": [
-      "media/characters/deepseek-sheet-v4.png"
-    ]
+    "refs": ["media/characters/deepseek-sheet-v4.png"]
   },
   {
-    "ts": "2026-10-20T21:58:13",
+    "ts": "2026-10-21T19:19:40",
     "kind": "image",
-    "file": "media\\scenes\\cyberpunk-street.png",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/a8903c59d6cfe66b1fa55e2b72ee1f83fe577b178856405297120/Image/2132815097/021792504658871b775ef38f1ee27b2e55af1b66efc6d95c3098a.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261020%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261020T135812Z&X-Tos-Expires=86400&X-Tos-Signature=77c17228bb17909211971a4aa8c2a45d688860175137b55cc35fabb9b392999d&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedream-5.0-pro",
-    "prompt": "写实真人电影质感，夜雨中的霓虹都市街道，电影宽幅构图。潮湿柏油路面反射着粉蓝与暖橙的霓虹灯牌，细雨在光晕中可见，远处高楼没入雨雾。画面视觉重心是街角一家老式电器行的橱窗：橱窗内一整面墙的电视机堆叠陈列，所有屏幕亮着、播放着同样的蓝白色闪烁光影（内容抽象不可辨），荧光洒在橱窗外湿漉漉的人行道上。街道上行人稀少、撑伞匆匆。氛围：繁华但疏离，酷似现实世界的某座城市，却隐约令人不安。影调：低饱和底色 + ",
+    "file": "media/characters/gpt-sheet.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/954e9de584d40e72f33f446d2fbbdb0c345b14753625185297120/Image/2132815097/02179258152635741b543c0bdbbf2d644f33f27e04d485ed9e459.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T111938Z&X-Tos-Expires=86400&X-Tos-Signature=04bfa0515349c9259fd65a4eec93502647b0ea984b98321171120d97832aa15d&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "角色设定参考图（character reference sheet），写实真人电影质感，短剧高颜值选角标准。同一名男子在一张图中的四个视图并排：面部特写、正面全身、侧面全身、背面全身；纯白背景，高级影棚柔光，21:9 宽幅构图，布局整齐等距。角色：杰普特，45岁左右美国男性，体格魁梧壮硕、肩背极宽，三件套西装被胸肩撑得紧绷。深棕色背头梳得一丝不苟、两鬓微霜，短须修剪得精确整齐，戴玳瑁细框眼镜，眉骨",
     "refs": []
   },
   {
@@ -227,29 +109,11 @@
   },
   {
     "ts": "2026-10-21T12:47:18",
-    "kind": "video",
-    "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021124517-9hkuo.mp4",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Video/oukh9-71542112016202-c-tgc_4f699398eb51caffff00000000000000000000275819755297120/cgt-c-20261021124517-9hkuo.mp4?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T044708Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=f5083ce00726698d4932b191798063d51d364bcef4d46fa6b67b0e36581c3990&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedance-2-5-260628",
-    "task_id": "cgt-c-20261021124517-9hkuo",
-    "prompt": "@图片1 为开场画面（雨夜都市高空远景，两栋高楼在画面左右形成画框），@图片2 为结尾画面（地面漆黑小巷）。写实真人电影质感：镜头从高空两楼之间悬停开始，缓慢前推后急速垂直坠落，穿过楼间雨雾，失重下坠，最终落进地面的漆黑小巷——画面左右两侧是高耸砖墙与防火梯，巷道深黑，巷口外街道灯火通明。细雨在霓虹光里可见，远处高架车流拉出红白色光轨。声音：亢奋的电视广告促销腔男声旁白{六个真实AI参与的杀人游戏"
-  },
-  {
-    "ts": "2026-10-21T12:47:18",
     "kind": "last_frame",
     "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021124517-9hkuo-last.jpg",
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Image/oukh9-71542112016202-c-tgc_4f699398eb51caffff00000000000000000000275819755297120/cgt-c-20261021124517-9hkuo.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T044706Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=ea5b081362a93a64017beaeb2ade2280f70a07ea984468c9e57593e622ddcbe6&X-Tos-SignedHeaders=host",
     "model": "doubao-seedance-2-5-260628",
     "task_id": "cgt-c-20261021124517-9hkuo"
-  },
-  {
-    "ts": "2026-10-21T13:03:08",
-    "kind": "video",
-    "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021125824-fv8e2.mp4",
-    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Video/2e8vf-42852112016202-c-tgc_a6b254fbfb51caffff00000000000000000000493707855297120/cgt-c-20261021125824-fv8e2.mp4?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T050300Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=08d8344d264a4ca148d87628663a8f3719c02ca07ffba0ebb05b3cb18154c96e&X-Tos-SignedHeaders=host",
-    "model": "doubao-seedance-2-5-260628",
-    "task_id": "cgt-c-20261021125824-fv8e2",
-    "prompt": "写实真人电影质感，赛博朋克都市雨夜，一镜到底连续运镜（全程一个镜头，不切换、不转场、不叠化）：0-2s：高空夜景悬停——两栋摩天高楼在画面左右形成画框，远处多层高速立交与过江高架桥上车流拉出红白色光轨，近处霓虹在雨雾中晕开，细雨在光里可见；2-5.5s：镜头开始自然、持续地向下运动，像乘电梯一样垂直下降，穿过楼间雨雾，楼群从画面两侧向上掠过，下降过程连续流畅，逐渐接近地面；5.5-8s：镜头降到地"
   },
   {
     "ts": "2026-10-21T13:03:08",
@@ -320,9 +184,7 @@
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/f7f2c89715c8c0148bf5656726c17026eea708782959836297120/Image/2132815097/021792638959287807aee62071c6276565fb8410c8c51798c2f7f.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T031750Z&X-Tos-Expires=86400&X-Tos-Signature=b47decef446599471012c3293de5ddfe9736ac1ce78821daf9cd525234ff1120&X-Tos-SignedHeaders=host",
     "model": "doubao-seedream-5-0-pro-260628",
     "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n图1为角色官方形象参考：参考其发型、面部特征与服装配色，转化为二次元动漫风格角色设定图。\n\n角色：豆包，女性，约16岁，中国元气少女。体格娇",
-    "refs": [
-      "media/anime/doubao.png"
-    ]
+    "refs": ["media/anime/doubao.png"]
   },
   {
     "ts": "2026-10-22T11:19:25",
