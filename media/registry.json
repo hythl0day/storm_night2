@@ -224,5 +224,39 @@
     "model": "doubao-seedream-5-0-pro-260628",
     "prompt": "写实真人电影质感，雨夜小巷，主观视角低位构图，电影宽幅。画面左右两侧是高耸的深色砖墙与防火梯，墙根堆着垃圾桶与杂物，正中间巷道漆黑深邃；巷子尽头外是灯火通明的街道，霓虹灯光从巷口涌进来，在湿漉漉的地面水洼上拉出长长的彩色倒影。细雨。氛围：压抑、潮湿、城市的背面。影调：低饱和 + 巷口高饱和霓虹的强对比。画面无文字、无水印。",
     "refs": []
+  },
+  {
+    "ts": "2026-10-21T12:47:18",
+    "kind": "video",
+    "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021124517-9hkuo.mp4",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Video/oukh9-71542112016202-c-tgc_4f699398eb51caffff00000000000000000000275819755297120/cgt-c-20261021124517-9hkuo.mp4?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T044708Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=f5083ce00726698d4932b191798063d51d364bcef4d46fa6b67b0e36581c3990&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedance-2-5-260628",
+    "task_id": "cgt-c-20261021124517-9hkuo",
+    "prompt": "@图片1 为开场画面（雨夜都市高空远景，两栋高楼在画面左右形成画框），@图片2 为结尾画面（地面漆黑小巷）。写实真人电影质感：镜头从高空两楼之间悬停开始，缓慢前推后急速垂直坠落，穿过楼间雨雾，失重下坠，最终落进地面的漆黑小巷——画面左右两侧是高耸砖墙与防火梯，巷道深黑，巷口外街道灯火通明。细雨在霓虹光里可见，远处高架车流拉出红白色光轨。声音：亢奋的电视广告促销腔男声旁白{六个真实AI参与的杀人游戏"
+  },
+  {
+    "ts": "2026-10-21T12:47:18",
+    "kind": "last_frame",
+    "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021124517-9hkuo-last.jpg",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Image/oukh9-71542112016202-c-tgc_4f699398eb51caffff00000000000000000000275819755297120/cgt-c-20261021124517-9hkuo.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T044706Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=ea5b081362a93a64017beaeb2ade2280f70a07ea984468c9e57593e622ddcbe6&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedance-2-5-260628",
+    "task_id": "cgt-c-20261021124517-9hkuo"
+  },
+  {
+    "ts": "2026-10-21T13:03:08",
+    "kind": "video",
+    "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021125824-fv8e2.mp4",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Video/2e8vf-42852112016202-c-tgc_a6b254fbfb51caffff00000000000000000000493707855297120/cgt-c-20261021125824-fv8e2.mp4?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T050300Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=08d8344d264a4ca148d87628663a8f3719c02ca07ffba0ebb05b3cb18154c96e&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedance-2-5-260628",
+    "task_id": "cgt-c-20261021125824-fv8e2",
+    "prompt": "写实真人电影质感，赛博朋克都市雨夜，一镜到底连续运镜（全程一个镜头，不切换、不转场、不叠化）：0-2s：高空夜景悬停——两栋摩天高楼在画面左右形成画框，远处多层高速立交与过江高架桥上车流拉出红白色光轨，近处霓虹在雨雾中晕开，细雨在光里可见；2-5.5s：镜头开始自然、持续地向下运动，像乘电梯一样垂直下降，穿过楼间雨雾，楼群从画面两侧向上掠过，下降过程连续流畅，逐渐接近地面；5.5-8s：镜头降到地"
+  },
+  {
+    "ts": "2026-10-21T13:03:08",
+    "kind": "last_frame",
+    "file": "media\\s1-e1\\shot-1\\videos\\cgt-c-20261021125824-fv8e2-last.jpg",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Image/2e8vf-42852112016202-c-tgc_a6b254fbfb51caffff00000000000000000000493707855297120/cgt-c-20261021125824-fv8e2.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T050258Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=110a3056cf40b8b2343ff5de77cd94338951945dfb4ebccf89703403681ab446&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedance-2-5-260628",
+    "task_id": "cgt-c-20261021125824-fv8e2"
   }
 ]
