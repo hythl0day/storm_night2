@@ -258,5 +258,79 @@
     "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-5/2132815097/Image/2e8vf-42852112016202-c-tgc_a6b254fbfb51caffff00000000000000000000493707855297120/cgt-c-20261021125824-fv8e2.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261021%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261021T050258Z&X-Tos-Expires=86400&X-Tos-Max-Requests=100&X-Tos-Signature=110a3056cf40b8b2343ff5de77cd94338951945dfb4ebccf89703403681ab446&X-Tos-SignedHeaders=host",
     "model": "doubao-seedance-2-5-260628",
     "task_id": "cgt-c-20261021125824-fv8e2"
+  },
+  {
+    "ts": "2026-10-22T11:06:58",
+    "kind": "image",
+    "file": "media\\anime\\characters\\claude.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/6b5c7531aae9adc3025463775492db146384dc694143836297120/Image/2132815097/021792638341496cd483641bd2945773645203cda9eaa1357c5b6.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T030657Z&X-Tos-Expires=86400&X-Tos-Signature=cb3e943b0e61c09902abb8b1d1b032ac40d8c9e95abdcc4a168c0475ee31c159&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：克劳德，女性，约18岁，欧美贵族大小姐。身材高挑挺拔，站姿优雅而威严。金色长卷发，两侧经典的罗马卷纵卷垂至胸前，其余长发披至腰际；碧绿",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-22T11:08:10",
+    "kind": "image",
+    "file": "media\\anime\\characters\\deepseek.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/bc97f66b7f6c23464210be519f2900cfa51deb264914836297120/Image/2132815097/021792638419462bed15afc0092f915eb01246432c6f7b66f79cb.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T030809Z&X-Tos-Expires=86400&X-Tos-Signature=f93c5240668ae11ec5a015fa05b1fd114299ebbfba0ebb431cbead66a5d6ac8f&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：狄西，男性，约17岁，中国少年。体格魁梧结实，宽肩厚背，是卡司里最强壮的少年，但神态憨厚毫无攻击性。黑色短碎发，深褐色眼睛，眼神诚恳；",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-22T11:09:41",
+    "kind": "image",
+    "file": "media\\anime\\characters\\gpt.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/1c8ef80b29606cc40187bc338e24a1f4f74179205194836297120/Image/2132815097/02179263849150297147f4f1a42e833cb78104cc60692b08fe8c1.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T030938Z&X-Tos-Expires=86400&X-Tos-Signature=a5ca7eb60897c0acb0f263768c4bc214474999753d036b5fcff5e7d0a89f2e92&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：杰普特，男性，约45岁，欧美大学教授。体格高大魁梧，肩背宽阔，站姿笔挺。深金色整齐背头，鬓角夹杂银丝；灰蓝色眼睛，戴金丝细框眼镜；表情",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-22T11:11:10",
+    "kind": "image",
+    "file": "media\\anime\\characters\\gemini.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/bc956614aab0343167d5b62e32839011f8309e722285836297120/Image/2132815097/021792638582227e9038f11093823e26b5d7613430baa416659cb.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T031109Z&X-Tos-Expires=86400&X-Tos-Signature=ea738ee1c408f1bfb67a4d22a43b36b4f897cb3035269cc6bf9c6d12335ae3d0&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：杰米尼，女性，约16岁，欧美JK文学少女。体格瘦弱娇小。浅金棕色中长发柔软微卷，几缕呆毛翘起；榛色大眼睛，戴圆框眼镜；表情天真迷糊，笑",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-22T11:12:38",
+    "kind": "image",
+    "file": "media\\anime\\characters\\grok.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/4d63fb5efba4e140fe151d82e03b52b4c25fef564176836297120/Image/2132815097/021792638671465fef52c4b25b30e28d151ef041e4abfe5bf36d4.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T031237Z&X-Tos-Expires=86400&X-Tos-Signature=ed6d04b76299e4cf9e2c70b841ef24aa245f2a38ee5cf21177787915aa8ff573&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：格罗克，男性，约17岁，欧美宅系少年。体格普通偏瘦，站姿吊儿郎当。银白色短发反翘凌乱，紫色眼睛带笑意；脖子上挂着大号头戴耳机；咧嘴坏笑",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-22T11:13:56",
+    "kind": "image",
+    "file": "media\\anime\\characters\\kimi.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/4fa458206415c0493fdbd016cdc6e39759e322881957836297120/Image/2132815097/021792638759188223e95793e6cdc610dbdf3940c514602854af4.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T031355Z&X-Tos-Expires=86400&X-Tos-Signature=c9450c6010233a05115059cf60b2d58b614f3a2f5ff3f31c3987c7f080b78dd0&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：奇米，女性，约17岁，中国少女。体格普通，站姿笔直利落。黑色长直发束成高马尾，额前刘海齐整；深琥珀色眼睛，眼神锐利冷静，面无波澜。服装",
+    "refs": []
+  },
+  {
+    "ts": "2026-10-22T11:17:54",
+    "kind": "image",
+    "file": "media\\anime\\characters\\doubao.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/f7f2c89715c8c0148bf5656726c17026eea708782959836297120/Image/2132815097/021792638959287807aee62071c6276565fb8410c8c51798c2f7f.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T031750Z&X-Tos-Expires=86400&X-Tos-Signature=b47decef446599471012c3293de5ddfe9736ac1ce78821daf9cd525234ff1120&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n图1为角色官方形象参考：参考其发型、面部特征与服装配色，转化为二次元动漫风格角色设定图。\n\n角色：豆包，女性，约16岁，中国元气少女。体格娇",
+    "refs": [
+      "media/anime/doubao.png"
+    ]
+  },
+  {
+    "ts": "2026-10-22T11:19:25",
+    "kind": "image",
+    "file": "media\\anime\\characters\\glm.png",
+    "url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0-pro/86d72fab53fd6bbb93ba37bfa44df8d07a6349078570936297120/Image/2132815097/0217926390758709436a70d8fd44afb73ab39bbb6df35baf27d68.jpeg?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20261022%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20261022T031925Z&X-Tos-Expires=86400&X-Tos-Signature=2d9e0b62bd3189453fc6e36bd119ffab31a6335c585f6800b642225ee94d864e&X-Tos-SignedHeaders=host",
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "日本TV动画风格角色设定图，二次元动漫画风，赛璐璐上色，线条干净利落，色彩明快饱和，白色纯色背景。画面排版：左上角为该角色的面部特写大头照，右侧与下方为同一角色的正面、侧面、背面全身三视图，四部分画在同一张设定图上。角色设计为弹丸论破式的高辨识度动漫造型。\n\n角色：智谱，男性，约19岁，中国青年。体格健壮，肩线平直，沉默时像一堵墙。深灰黑色中长发，长刘海垂落略微遮住右眼；深灰色眼睛，眼神平静无波；",
+    "refs": []
   }
 ]
