@@ -1,0 +1,1 @@
+Japanese TV animation style, anime character design, cel shading with clean crisp line art, bright saturated colors, high silhouette recognizability, plain white background, absolutely no text, no letters, no words, no numbers, no logos, no emblems with writing, no watermarks, no signatures anywhere in the image.
