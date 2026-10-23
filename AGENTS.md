@@ -2,7 +2,7 @@
 
 ## 这是什么项目
 
-《暴风夜》：多家顶尖 AI 参与的"暴风雪山庄"身份推理游戏节目工程。核心是一条**自动化跑局管线**：自研编排器直连各家 AI 的 API，让它们扮演失忆后被困古堡的角色互相推理、欺骗、谋杀，产出结构化、防剧透、可直接用于剪辑的对局素材。节目规划（两季 + 彩蛋单集）见 `screenwriting/show-bible.md`。
+《暴风夜》：多家顶尖 AI 参与的"暴风雪山庄"身份推理游戏节目工程。核心是一条**自动化跑局管线**：自研编排器直连各家 AI 的 API，让它们扮演失忆后被困古堡的角色互相推理、欺骗、谋杀，产出结构化、防剧透、可直接用于剪辑的对局素材。节目规划（短片连载路线 v3）见 `show/show-plan.md`。
 
 ## 目录结构
 
@@ -27,7 +27,7 @@ src/          Python 代码（跑局管线）
 players.toml  席位配置（项目根，无密钥，随仓库跟踪；api_key 只填环境变量名）
 personas.toml 角色人设卡（项目根；性别/体格/国籍/性格 persona/语言习惯 voice）——角色属性的唯一权威来源
 prompt/       prompt 模板（md，{占位符} 渲染；game_system.md 含输出篇幅纪律）
-screenwriting/ 节目计划 show-bible.md（两季 + 彩蛋单集）/ video_script.md / s1-e1-storyboard.md（S1E1 开场分镜）
+show/         节目侧：show-plan.md（短片连载路线 v3，当前执行口径）/ anime/（二次元 canon 立绘）/ registry.json（素材登记）；旧规划（戏中戏 show-bible、长片方案 v2、试播集脚本、s1-e1 长片工程、写实风 canon、冷开场场景图）全部归档 show/_old/，不删不改
 docs/         规则书 rules-6.md（6人局）/ rules-6-lite.md（失忆版精简规则集：AI 只知生存须知，机制靠菜单临场发现）/ rules-8.md（8人局）+ dev-plan.md 工程计划 / engine.md（引擎参考）；脚本用法已并入 README.md
 game/<seed>/  对局存档（gitignore；seed 可复现 deal，AI 输出不可复现）
 tests/        unittest（python -m unittest discover -s tests）
